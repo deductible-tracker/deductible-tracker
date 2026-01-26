@@ -1,0 +1,29 @@
+import db from './db.js';
+
+export async function seedDatabase() {
+    const count = await db.val_items.count();
+    if (count > 0) return;
+
+    console.log('Seeding valuation database...');
+    
+    // Categories
+    const categories = [
+        { id: 'cat_clothing', name: 'Clothing', parent_id: null },
+        { id: 'cat_mens', name: 'Men\'s Clothing', parent_id: 'cat_clothing' },
+        { id: 'cat_womens', name: 'Women\'s Clothing', parent_id: 'cat_clothing' },
+        { id: 'cat_household', name: 'Household Goods', parent_id: null },
+    ];
+    await db.val_categories.bulkPut(categories);
+
+    // Items
+    const items = [
+        { id: 'item_1', category_id: 'cat_mens', name: 'Shirt, Dress', fmv_low: 3, fmv_avg: 6, fmv_high: 12 },
+        { id: 'item_2', category_id: 'cat_mens', name: 'Slacks', fmv_low: 5, fmv_avg: 10, fmv_high: 20 },
+        { id: 'item_3', category_id: 'cat_womens', name: 'Dress, Casual', fmv_low: 6, fmv_avg: 12, fmv_high: 25 },
+        { id: 'item_4', category_id: 'cat_household', name: 'Lamp, Floor', fmv_low: 10, fmv_avg: 20, fmv_high: 40 },
+        { id: 'item_5', category_id: 'cat_household', name: 'Toaster', fmv_low: 4, fmv_avg: 8, fmv_high: 15 },
+    ];
+    await db.val_items.bulkPut(items);
+    
+    console.log('Seeding complete.');
+}
