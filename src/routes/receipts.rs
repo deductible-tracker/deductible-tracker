@@ -28,7 +28,7 @@ pub async fn generate_upload_url(
         "image/jpeg" => "jpg",
         "image/png" => "png",
         "application/pdf" => "pdf",
-        _ => "bin",
+        _ => return (StatusCode::BAD_REQUEST, "Unsupported file type").into_response(),
     };
 
     let now = chrono::Utc::now();

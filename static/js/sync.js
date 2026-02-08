@@ -2,11 +2,6 @@ import db from './db.js';
 
 const API_BASE = '/api';
 
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('jwt');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
-};
-
 export const Sync = {
     async pushChanges() {
         const queue = await db.sync_queue.toArray();
@@ -24,9 +19,9 @@ export const Sync = {
                             const res = await fetch(`${API_BASE}/donations`, {
                                 method: 'POST',
                                 headers: { 
-                                    'Content-Type': 'application/json',
-                                    ...getAuthHeaders()
+                                    'Content-Type': 'application/json'
                                 },
+                                credentials: 'include',
                                 body: JSON.stringify(donation)
                             });
                             if (res.ok) success = true;
@@ -59,7 +54,7 @@ export const Sync = {
         console.log('Pulling changes...');
         try {
             const res = await fetch(`${API_BASE}/donations`, {
-                headers: getAuthHeaders()
+                credentials: 'include'
             });
             if (res.ok) {
                 const data = await res.json();

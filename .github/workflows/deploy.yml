@@ -14,6 +14,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_ref: ${{ steps.set-image-ref.outputs.image_ref }}
 
     steps:
       - name: Checkout repository
@@ -44,14 +46,28 @@ jobs:
           context: .
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Set image_ref build output
+        id: set-image-ref
+        run: |
+          echo "image_ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
   deploy:
     needs: build
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: true
+    environment: production
     steps:
       - name: Deploy to Oracle VM via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -59,43 +75,73 @@ jobs:
           host: ${{ secrets.OCI_INSTANCE_IP }}
           username: opc
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
           script: |
-            # 1. Login to GHCR
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            set -euo pipefail
+            umask 077
 
-            # 2. Create/Update environment file
-            cat <<EOF > /home/opc/app.env
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
-            OBJECT_STORAGE_ENDPOINT=${{ secrets.OBJECT_STORAGE_ENDPOINT }}
-            OBJECT_STORAGE_BUCKET=${{ secrets.OBJECT_STORAGE_BUCKET }}
-            OCI_REGION=${{ secrets.OCI_REGION }}
-            OCI_ACCESS_KEY_ID=${{ secrets.OCI_ACCESS_KEY_ID }}
-            OCI_SECRET_ACCESS_KEY=${{ secrets.OCI_SECRET_ACCESS_KEY }}
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            DEV_PASSWORD=${{ secrets.DEV_PASSWORD }}
-            EOF
+            # Ensure target dir exists and set ownership
+            sudo mkdir -p /home/opc
+            sudo chown opc:opc /home/opc
 
-            # 3. Pull latest image
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main || docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:master
+            # 1. Login to GHCR (using sudo so docker daemon access is available)
+            printf "%s" "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 4. Stop existing container
-            docker stop deductible-app || true
-            docker rm deductible-app || true
+            # 2. Create/Update environment file safely (avoid heredoc indentation problems)
+            sudo bash -lc 'printf "DB_USER=%s\n" "${{ secrets.DB_USER }}" > /home/opc/app.env'
+            sudo bash -lc 'printf "DB_PASSWORD=%s\n" "${{ secrets.DB_PASSWORD }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "DB_CONNECT_STRING=%s\n" "${{ secrets.DB_CONNECT_STRING }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "MY_WALLET_DIRECTORY=%s\n" "/app/wallet" >> /home/opc/app.env'
+            sudo bash -lc 'printf "OBJECT_STORAGE_ENDPOINT=%s\n" "${{ secrets.OBJECT_STORAGE_ENDPOINT }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "OBJECT_STORAGE_BUCKET=%s\n" "${{ secrets.OBJECT_STORAGE_BUCKET }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "OCI_REGION=%s\n" "${{ secrets.OCI_REGION }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "OCI_ACCESS_KEY_ID=%s\n" "${{ secrets.OCI_ACCESS_KEY_ID }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "OCI_SECRET_ACCESS_KEY=%s\n" "${{ secrets.OCI_SECRET_ACCESS_KEY }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "JWT_SECRET=%s\n" "${{ secrets.JWT_SECRET }}" >> /home/opc/app.env'
+            sudo bash -lc 'printf "DEV_PASSWORD=%s\n" "${{ secrets.DEV_PASSWORD }}" >> /home/opc/app.env'
+            sudo chmod 600 /home/opc/app.env
+            sudo chown opc:opc /home/opc/app.env
 
-            # 5. Run DB Migrations
-            docker run --rm --env-file /home/opc/app.env ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main ./migrate || \
-            docker run --rm --env-file /home/opc/app.env ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:master ./migrate
+            # 2b. (Optional) Install unzip and hydrate wallet from secret
+            WALLET_DIR="/home/opc/wallet"
+            if [ -n "${{ secrets.WALLET_ZIP_BASE64 }}" ]; then
+              sudo yum install -y unzip
+              sudo mkdir -p "$WALLET_DIR"
+              printf "%s" "${{ secrets.WALLET_ZIP_BASE64 }}" | base64 -d | sudo tee /tmp/wallet.zip >/dev/null
+              sudo unzip -o /tmp/wallet.zip -d "$WALLET_DIR" >/dev/null
+              sudo rm -f /tmp/wallet.zip
+              sudo chmod -R go-rwx "$WALLET_DIR"
+              sudo chown -R opc:opc "$WALLET_DIR"
+            fi
 
-            # 6. Run Application
-            docker run -d \
+            # 3. Pull the exact image built in CI
+            IMAGE_REF="${{ needs.build.outputs.image_ref }}"
+            sudo docker pull "$IMAGE_REF"
+
+            # 4. Stop and remove existing container (if present)
+            sudo docker stop deductible-app || true
+            sudo docker rm deductible-app || true
+
+            # 5. Run DB migrations (run container as transient job)
+            WALLET_VOLUME=""
+            if [ -d "$WALLET_DIR" ]; then
+              WALLET_VOLUME="-v ${WALLET_DIR}:/app/wallet:ro"
+            fi
+
+            sudo docker run --rm \
+              --env-file /home/opc/app.env \
+              --cap-drop=ALL \
+              --security-opt no-new-privileges \
+              $WALLET_VOLUME \
+              "$IMAGE_REF" ./migrate || true
+
+            # 6. Run Application (detached) using the exact built image
+            sudo docker run -d \
               --name deductible-app \
               --restart always \
               -p 80:8080 \
               --env-file /home/opc/app.env \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main || \
-            docker run -d \
-              --name deductible-app \
-              --restart always \
-              -p 80:8080 \
-              --env-file /home/opc/app.env \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:master
+              --cap-drop=ALL \
+              --security-opt no-new-privileges \
+              $WALLET_VOLUME \
+              "$IMAGE_REF"

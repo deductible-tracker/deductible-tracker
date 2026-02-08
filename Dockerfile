@@ -3,6 +3,12 @@ FROM rust:1.93.0-slim-bookworm AS builder
 
 WORKDIR /app
 
+# Reduce memory usage during build
+ENV CARGO_BUILD_JOBS=1 \
+    CARGO_PROFILE_RELEASE_LTO=false \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8 \
+    CARGO_PROFILE_RELEASE_OPT_LEVEL=2
+
 # Install dependencies required for building (and linking if dynamic)
 # We need libaio for Oracle
 RUN apt-get update && apt-get install -y \
@@ -43,8 +49,8 @@ RUN cargo build --release || true
 RUN mkdir -p /opt/oracle
 WORKDIR /opt/oracle
 # Downloading ARM64 Instant Client
-RUN wget https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux-aarch64-19.19.0.0.0dbru.zip -O basic.zip && \
-    wget https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux-aarch64-19.19.0.0.0dbru.zip -O sdk.zip && \
+RUN wget https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.arm64-19.19.0.0.0dbru.zip -O basic.zip && \
+    wget https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.arm64-19.19.0.0.0dbru.zip -O sdk.zip && \
     unzip basic.zip && \
     unzip sdk.zip && \
     rm *.zip && \
@@ -66,21 +72,26 @@ FROM oraclelinux:9-slim
 
 WORKDIR /app
 
+# Create a non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 # Install runtime deps
 RUN microdnf install -y libaio openssl && microdnf clean all
 
-# Install Oracle Instant Client for Runtime (ARM64)
-# Oracle Linux yum repos usually have it?
-RUN microdnf install -y oracle-instantclient-release-el9 && \
-    microdnf install -y oracle-instantclient-basic && \
-    microdnf clean all
+# Copy Oracle Instant Client from builder
+COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
 
 COPY --from=builder /app/target/release/deductible-tracker /app/deductible-tracker
 COPY --from=builder /app/target/release/migrate /app/migrate
 COPY migrations /app/migrations
+COPY static /app/static
 
-ENV LD_LIBRARY_PATH=/usr/lib/oracle/21/client64/lib
-# (Check exact path in container, usually standard rpms put it in /usr/lib/oracle/...)
+ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
+
+# Give ownership to the appuser
+RUN chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8080
 

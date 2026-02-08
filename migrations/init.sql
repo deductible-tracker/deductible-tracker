@@ -27,5 +27,14 @@ CREATE TABLE donations (
 CREATE INDEX idx_donations_user_year ON donations(user_id, donation_year);
 
 -- Default Users for testing
-INSERT INTO users (id, email, name, provider) VALUES ('dev-1', 'dev@local', 'Developer', 'local');
-INSERT INTO users (id, email, name, provider) VALUES ('user-123', 'test@example.com', 'Test User', 'local');
+MERGE INTO users t
+USING (SELECT 'dev-1' id, 'dev@local' email, 'Developer' name, 'local' provider FROM dual) s
+ON (t.id = s.id)
+WHEN NOT MATCHED THEN
+    INSERT (id, email, name, provider) VALUES (s.id, s.email, s.name, s.provider);
+
+MERGE INTO users t
+USING (SELECT 'user-123' id, 'test@example.com' email, 'Test User' name, 'local' provider FROM dual) s
+ON (t.id = s.id)
+WHEN NOT MATCHED THEN
+    INSERT (id, email, name, provider) VALUES (s.id, s.email, s.name, s.provider);

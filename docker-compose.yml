@@ -1,0 +1,27 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - RUST_LOG=deductible_tracker=debug,tower_http=debug
+    volumes:
+      - ./Wallet_deductibledb:/app/wallet:ro
+    restart: always
+
+  # Optional: Migration service that runs and exits
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ./migrate
+    env_file:
+      - .env
+    volumes:
+      - ./Wallet_deductibledb:/app/wallet:ro
+    depends_on:
+      - app

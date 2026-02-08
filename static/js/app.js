@@ -9,6 +9,16 @@ const routes = {
     '/reports': renderReports
 };
 
+const escapeHtml = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+
 async function navigate(path) {
     window.history.pushState({}, '', path);
     const handler = routes[path] || routes['/'];
@@ -70,12 +80,11 @@ async function renderLogin() {
             const res = await fetch('/auth/dev/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
 
             if (res.ok) {
-                const { token } = await res.json();
-                localStorage.setItem('jwt', token);
                 document.getElementById('nav-container').classList.remove('hidden', 'sm:hidden');
                 document.getElementById('auth-actions').classList.remove('hidden');
                 navigate('/');
@@ -90,7 +99,7 @@ async function renderLogin() {
 }
 
 function handleLogout() {
-    localStorage.removeItem('jwt');
+    fetch('/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     document.getElementById('nav-container').classList.add('hidden');
     document.getElementById('auth-actions').classList.add('hidden');
     renderLogin();
@@ -137,10 +146,10 @@ async function renderRecentList() {
     list.innerHTML = donations.map(d => `
         <li class="px-4 py-4 sm:px-6 hover:bg-gray-50">
             <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-blue-600 truncate">${d.charity_name}</p>
+                <p class="text-sm font-medium text-blue-600 truncate">${escapeHtml(d.charity_name)}</p>
                 <div class="ml-2 flex-shrink-0 flex">
                     <p class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        ${d.sync_status || 'synced'}
+                        ${escapeHtml(d.sync_status || 'synced')}
                     </p>
                 </div>
             </div>
@@ -148,7 +157,7 @@ async function renderRecentList() {
                 <div class="sm:flex">
                     <p class="flex items-center text-sm text-gray-500">
                         <i data-lucide="calendar" class="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400"></i>
-                        ${d.date}
+                        ${escapeHtml(d.date)}
                     </p>
                 </div>
             </div>
@@ -182,9 +191,9 @@ async function renderDonations() {
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     ${donations.map(d => `
                                         <tr>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${d.date}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${d.charity_name}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${d.sync_status || 'synced'}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(d.date)}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${escapeHtml(d.charity_name)}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(d.sync_status || 'synced')}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
@@ -219,7 +228,11 @@ function renderReports() {
 // --- Init ---
 async function init() {
     console.log('App initializing...');
-    
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
     // 1. Network Status & Initial UI State
     const updateStatus = () => {
         const isOnline = navigator.onLine;
@@ -265,17 +278,16 @@ async function init() {
         await seedDatabase();
         
         // 4. Auth Check
-        const token = localStorage.getItem('jwt');
-        if (!token) {
-            console.log('No token found, rendering login');
+        const authRes = await fetch('/api/me', { credentials: 'include' });
+        if (!authRes.ok) {
+            console.log('Not authenticated, rendering login');
             document.getElementById('nav-container').classList.add('hidden');
             document.getElementById('auth-actions').classList.add('hidden');
             renderLogin();
         } else {
-            console.log('Token found, navigating to route');
+            console.log('Authenticated, navigating to route');
             document.getElementById('nav-container').classList.remove('hidden', 'sm:hidden');
             document.getElementById('auth-actions').classList.remove('hidden');
-            // Initial Route
             const initialRoute = location.pathname === '/index.html' || location.pathname === '/' 
                 ? '/' 
                 : location.pathname;
