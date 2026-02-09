@@ -1,93 +1,87 @@
-# Stage 1: Build
-FROM rust:1.93.0-slim-bookworm AS builder
+# syntax=docker/dockerfile:1.4
 
+# Stage 1: Build (with BuildKit cache mounts)
+FROM --platform=$BUILDPLATFORM rust:1.93.0-slim-bookworm AS builder
 WORKDIR /app
 
-# Reduce memory usage during build
-ENV CARGO_BUILD_JOBS=1 \
-    # syntax=docker/dockerfile:1.4
+ARG TARGETARCH
 
-    # Stage 1: Build (with BuildKit cache mounts)
-    FROM rust:1.93.0-slim-bookworm AS builder
-    WORKDIR /app
+# Install build dependencies in a single layer and clean up
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
-    ARG TARGETARCH
+ENV CARGO_TARGET_DIR=/app/target
+ENV RUSTFLAGS="-C target-cpu=native"
 
-    # Install build dependencies in a single layer and clean up
-    RUN apt-get update && apt-get install -y --no-install-recommends \
-            pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates \
-        && rm -rf /var/lib/apt/lists/*
+# Install Oracle Instant Client for the build target architecture
+RUN set -eux; \
+  mkdir -p /opt/oracle; cd /opt/oracle; \
+  case "${TARGETARCH:-amd64}" in \
+    arm64) \
+      B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.arm64-19.19.0.0.0dbru.zip"; \
+      B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.arm64-19.19.0.0.0dbru.zip";; \
+    amd64|x86_64) \
+      B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.x64-19.19.0.0.0dbru.zip"; \
+      B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.x64-19.19.0.0.0dbru.zip";; \
+    *) echo "Unsupported arch ${TARGETARCH}, skipping instant client install"; exit 0;; \
+  esac; \
+  wget -q "$B_BASIC" -O basic.zip; unzip basic.zip; rm basic.zip; \
+  wget -q "$B_SDK" -O sdk.zip; unzip sdk.zip; rm sdk.zip; \
+  mv instantclient_19_19 instantclient || true
 
-    ENV CARGO_TARGET_DIR=/app/target
-    ENV RUSTFLAGS="-C target-cpu=native"
+ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
+ENV OCI_LIB_DIR=/opt/oracle/instantclient
+ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
 
-    # Install Oracle Instant Client for the build architecture (conditional)
-    RUN set -eux; \
-        mkdir -p /opt/oracle; cd /opt/oracle; \
-        case "${TARGETARCH:-amd64}" in \
-            arm64) \
-                B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.arm64-19.19.0.0.0dbru.zip"; \
-                B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.arm64-19.19.0.0.0dbru.zip";; \
-            amd64|x86_64) \
-                B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.x64-19.19.0.0.0dbru.zip"; \
-                B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.x64-19.19.0.0.0dbru.zip";; \
-            *) echo "Unsupported arch ${TARGETARCH}, skipping instant client install"; exit 0;; \
-        esac; \
-        wget -q "$B_BASIC" -O basic.zip; unzip basic.zip; rm basic.zip; \
-        wget -q "$B_SDK" -O sdk.zip; unzip sdk.zip; rm sdk.zip; \
-        mv instantclient_19_19 instantclient || true
+# Copy manifest first and build dummy to cache dependencies
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p src && printf "fn main() { println!(\"dummy\"); }\n" > src/main.rs
 
-    ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
-    ENV OCI_LIB_DIR=/opt/oracle/instantclient
-    ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --release || true
 
-    # Copy manifest first and build a small dummy binary to cache dependencies
-    COPY Cargo.toml Cargo.lock ./
-    RUN mkdir -p src && printf "fn main() { println!(\"dummy\"); }\n" > src/main.rs
+# Copy full source and build the real binaries
+COPY . .
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --release --bins
 
-    RUN --mount=type=cache,target=/root/.cargo/registry \
-            --mount=type=cache,target=/root/.cargo/git \
-            --mount=type=cache,target=/app/target \
-            cargo build --release || true
+# Build migrate binary explicitly
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --release --bin migrate || true
 
-    # Copy full source and build the real binaries using the same cache mounts
-    COPY . .
-    RUN --mount=type=cache,target=/root/.cargo/registry \
-            --mount=type=cache,target=/root/.cargo/git \
-            --mount=type=cache,target=/app/target \
-            cargo build --release --bins
+# Strip binaries to reduce image size
+RUN strip /app/target/release/deductible-tracker || true && \
+    strip /app/target/release/migrate || true
 
-    # Build migrate binary explicitly if present
-    RUN --mount=type=cache,target=/root/.cargo/registry \
-            --mount=type=cache,target=/root/.cargo/git \
-            --mount=type=cache,target=/app/target \
-            cargo build --release --bin migrate || true
+# Stage 2: Runtime
+FROM oraclelinux:9-slim AS runtime
+WORKDIR /app
 
-    # Strip binaries to reduce image size
-    RUN strip /app/target/release/deductible-tracker || true && \
-            strip /app/target/release/migrate || true
+# Minimal runtime deps
+RUN microdnf install -y libaio openssl && microdnf clean all
 
-    # Stage 2: Runtime
-    FROM oraclelinux:9-slim AS runtime
-    WORKDIR /app
+# Copy Oracle Instant Client from builder
+COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
+ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
 
-    # Minimal runtime deps
-    RUN microdnf install -y libaio openssl && microdnf clean all
+# Copy binaries and assets
+COPY --from=builder /app/target/release/deductible-tracker /app/deductible-tracker
+COPY --from=builder /app/target/release/migrate /app/migrate
+COPY migrations /app/migrations
+COPY static /app/static
 
-    # Copy Oracle Instant Client from builder if present
-    COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
-    ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
+# Create non-root user and set permissions
+RUN groupadd -r appuser && useradd -r -g appuser appuser && chown -R appuser:appuser /app
+USER appuser
 
-    # Copy binaries and assets
-    COPY --from=builder /app/target/release/deductible-tracker /app/deductible-tracker
-    COPY --from=builder /app/target/release/migrate /app/migrate
-    COPY migrations /app/migrations
-    COPY static /app/static
+EXPOSE 8080
+CMD ["./deductible-tracker"]
 
-    # Create non-root user and set permissions
-    RUN groupadd -r appuser && useradd -r -g appuser appuser && chown -R appuser:appuser /app
-    USER appuser
-
-    EXPOSE 8080
-    CMD ["./deductible-tracker"]
 
