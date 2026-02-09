@@ -214,11 +214,7 @@ jobs:
               echo "Setting up Caddy for $SITE_DOMAIN"
               # remove existing caddy container if present
               sudo docker rm -f caddy || true
-              cat > /home/opc/Caddyfile <<'CADDY'
-$SITE_DOMAIN {
-  reverse_proxy 127.0.0.1:8080
-}
-CADDY
+              sudo bash -lc "printf '%s\n' \"${SITE_DOMAIN} {\" '  reverse_proxy 127.0.0.1:8080' '}' > /home/opc/Caddyfile"
               sudo chown opc:opc /home/opc/Caddyfile
               sudo docker run -d --name caddy --restart unless-stopped -p 80:80 -p 443:443 \
                 -v /home/opc/Caddyfile:/etc/caddy/Caddyfile \
