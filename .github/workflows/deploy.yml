@@ -111,6 +111,7 @@ jobs:
               echo "DB_PASSWORD=$DB_PASSWORD"
               echo "DB_CONNECT_STRING=$DB_CONNECT_STRING"
               echo "MY_WALLET_DIRECTORY=/app/wallet"
+              echo "TNS_ADMIN=/app/wallet"
               echo "OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT"
               echo "OBJECT_STORAGE_BUCKET=$OBJECT_STORAGE_BUCKET"
               echo "OCI_REGION=$OCI_REGION"
@@ -131,6 +132,10 @@ jobs:
               printf "%s" "$WALLET_ZIP_BASE64" | base64 -d | sudo tee /tmp/wallet.zip >/dev/null
               sudo unzip -o /tmp/wallet.zip -d "$WALLET_DIR" >/dev/null
               sudo rm -f /tmp/wallet.zip
+              # Fix sqlnet.ora WALLET_LOCATION to point to /app/wallet (container path)
+              if [ -f "$WALLET_DIR/sqlnet.ora" ]; then
+                sudo sed -i 's|DIRECTORY="[^"]*"|DIRECTORY="/app/wallet"|g' "$WALLET_DIR/sqlnet.ora"
+              fi
               sudo chmod -R go-rwx "$WALLET_DIR"
               sudo chown -R opc:opc "$WALLET_DIR"
             fi
@@ -220,10 +225,17 @@ jobs:
               "$IMAGE_REF" ./migrate || true
 
             # 6. Run Application (detached) using the exact built image
+            # If SITE_DOMAIN is set, Caddy handles ports 80/443; app listens on localhost:8080 only
+            if [ -n "$SITE_DOMAIN" ]; then
+              APP_PORT_BINDING="127.0.0.1:8080:8080"
+            else
+              APP_PORT_BINDING="80:8080"
+            fi
+
             sudo docker run -d \
               --name deductible-app \
               --restart always \
-              -p 80:8080 \
+              -p "$APP_PORT_BINDING" \
               --env-file /home/opc/app.env \
               --cap-drop=ALL \
               --security-opt no-new-privileges \
@@ -235,9 +247,10 @@ jobs:
               echo "Setting up Caddy for $SITE_DOMAIN"
               # remove existing caddy container if present
               sudo docker rm -f caddy || true
-              sudo bash -lc "printf '%s\n' \"${SITE_DOMAIN} {\" '  reverse_proxy 127.0.0.1:8080' '}' > /home/opc/Caddyfile"
+              sudo bash -lc "printf '%s\n' \"${SITE_DOMAIN} {\" '  reverse_proxy localhost:8080' '}' > /home/opc/Caddyfile"
               sudo chown opc:opc /home/opc/Caddyfile
-              sudo docker run -d --name caddy --restart unless-stopped -p 80:80 -p 443:443 \
+              # Use --network host so Caddy can reach the app on localhost:8080
+              sudo docker run -d --name caddy --restart unless-stopped --network host \
                 -v /home/opc/Caddyfile:/etc/caddy/Caddyfile \
-                -v caddy_data:/data -v caddy_config:/config caddy:2
+                -v caddy_data:/data -v caddy_config:/config docker.io/library/caddy:2
             fi
