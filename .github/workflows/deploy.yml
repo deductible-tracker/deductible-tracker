@@ -139,16 +139,37 @@ jobs:
             sudo yum install -y nmap-ncat || true
             parse_host_port() {
               s="$1"
-              # strip common prefixes like jdbc:oracle:thin:@ and leading // and user@host forms
-              s=$(echo "$s" | sed -E 's#.*@##; s#^jdbc:oracle:thin:@##; s#^//##')
-              if echo "$s" | grep -E ":[0-9]+" >/dev/null 2>&1; then
-                host=$(echo "$s" | sed -E 's#^([^:/]+):([0-9]+).*$#\\1#')
-                port=$(echo "$s" | sed -E 's#^([^:/]+):([0-9]+).*$#\\2#')
-              else
-                host=$(echo "$s" | sed -E 's#([^/]+)/.*$#\\1#')
-                port=""
+              # Normalize common prefixes
+              s=$(echo "$s" | sed -E 's#^jdbc:oracle:thin:@##; s#^//##')
+
+              # 1) Try common host:port or host:port/service formats
+              if echo "$s" | grep -E "^[^/]+:[0-9]+" >/dev/null 2>&1; then
+                host=$(echo "$s" | sed -E 's#^([^:/]+):([0-9]+).*$#\1#')
+                port=$(echo "$s" | sed -E 's#^([^:/]+):([0-9]+).*$#\2#')
+                echo "$host $port" && return
               fi
-              echo "$host $port"
+
+              # 2) Try to extract from Oracle TNS-style descriptors: look for host=... and port=...
+              host_match=$(echo "$s" | sed -nE 's#.*host=([^\)\(, ]+).*#\1#Ip; t; q') || true
+              port_match=$(echo "$s" | sed -nE 's#.*port=([0-9]+).*#\1#Ip; t; q') || true
+              if [ -n "$host_match" ] || [ -n "$port_match" ]; then
+                # sanitize (remove surrounding parens or trailing chars)
+                host=$(echo "$host_match" | sed -E 's#[() ,]+##g')
+                port=$(echo "$port_match" | sed -E 's#[^0-9]*##g')
+                echo "$host $port"
+                return
+              fi
+
+              # 3) Fallback: try to extract a bare hostname from the string (first token containing a dot)
+              host_fallback=$(echo "$s" | tr '()' ' ' | tr '\\n' ' ' | awk '{ for(i=1;i<=NF;i++) if($i ~ /[A-Za-z0-9.-]+\.[A-Za-z]{2,}/){ print $i; exit } }') || true
+              if [ -n "$host_fallback" ]; then
+                echo "$host_fallback "
+                return
+              fi
+
+              # Final fallback: return the raw value's first token
+              first_token=$(echo "$s" | awk '{print $1}')
+              echo "$first_token "
             }
 
             read DB_HOST DB_PORT <<< $(parse_host_port "$DB_CONNECT_STRING")
