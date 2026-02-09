@@ -72,12 +72,26 @@ jobs:
     steps:
       - name: Deploy to Oracle VM via SSH
         uses: appleboy/ssh-action@v1.2.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_CONNECT_STRING: ${{ secrets.DB_CONNECT_STRING }}
+          OBJECT_STORAGE_ENDPOINT: ${{ secrets.OBJECT_STORAGE_ENDPOINT }}
+          OBJECT_STORAGE_BUCKET: ${{ secrets.OBJECT_STORAGE_BUCKET }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_ACCESS_KEY_ID: ${{ secrets.OCI_ACCESS_KEY_ID }}
+          OCI_SECRET_ACCESS_KEY: ${{ secrets.OCI_SECRET_ACCESS_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DEV_PASSWORD: ${{ secrets.DEV_PASSWORD }}
+          WALLET_ZIP_BASE64: ${{ secrets.WALLET_ZIP_BASE64 }}
         with:
           debug: true
           host: ${{ secrets.OCI_INSTANCE_IP }}
           username: opc
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           timeout: 60s
+          envs: GITHUB_TOKEN,DB_USER,DB_PASSWORD,DB_CONNECT_STRING,OBJECT_STORAGE_ENDPOINT,OBJECT_STORAGE_BUCKET,OCI_REGION,OCI_ACCESS_KEY_ID,OCI_SECRET_ACCESS_KEY,JWT_SECRET,DEV_PASSWORD,WALLET_ZIP_BASE64
           script: |
             set -euo pipefail
             umask 077
@@ -87,29 +101,32 @@ jobs:
             sudo chown opc:opc /home/opc
 
             # 1. Login to GHCR (using sudo so docker daemon access is available)
-            printf "%s" "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            printf "%s" "$GITHUB_TOKEN" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # 2. Create/Update environment file safely (avoid heredoc indentation problems)
-            sudo bash -lc 'printf "DB_USER=%s\n" "${{ secrets.DB_USER }}" > /home/opc/app.env'
-            sudo bash -lc 'printf "DB_PASSWORD=%s\n" "${{ secrets.DB_PASSWORD }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "DB_CONNECT_STRING=%s\n" "${{ secrets.DB_CONNECT_STRING }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "MY_WALLET_DIRECTORY=%s\n" "/app/wallet" >> /home/opc/app.env'
-            sudo bash -lc 'printf "OBJECT_STORAGE_ENDPOINT=%s\n" "${{ secrets.OBJECT_STORAGE_ENDPOINT }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "OBJECT_STORAGE_BUCKET=%s\n" "${{ secrets.OBJECT_STORAGE_BUCKET }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "OCI_REGION=%s\n" "${{ secrets.OCI_REGION }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "OCI_ACCESS_KEY_ID=%s\n" "${{ secrets.OCI_ACCESS_KEY_ID }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "OCI_SECRET_ACCESS_KEY=%s\n" "${{ secrets.OCI_SECRET_ACCESS_KEY }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "JWT_SECRET=%s\n" "${{ secrets.JWT_SECRET }}" >> /home/opc/app.env'
-            sudo bash -lc 'printf "DEV_PASSWORD=%s\n" "${{ secrets.DEV_PASSWORD }}" >> /home/opc/app.env'
+            # 2. Create/Update environment file safely
+            {
+              echo "DB_USER=$DB_USER"
+              echo "DB_PASSWORD=$DB_PASSWORD"
+              echo "DB_CONNECT_STRING=$DB_CONNECT_STRING"
+              echo "MY_WALLET_DIRECTORY=/app/wallet"
+              echo "OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT"
+              echo "OBJECT_STORAGE_BUCKET=$OBJECT_STORAGE_BUCKET"
+              echo "OCI_REGION=$OCI_REGION"
+              echo "OCI_ACCESS_KEY_ID=$OCI_ACCESS_KEY_ID"
+              echo "OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY"
+              echo "JWT_SECRET=$JWT_SECRET"
+              echo "DEV_PASSWORD=$DEV_PASSWORD"
+            } > /home/opc/app.env
+
             sudo chmod 600 /home/opc/app.env
             sudo chown opc:opc /home/opc/app.env
 
             # 2b. (Optional) Install unzip and hydrate wallet from secret
             WALLET_DIR="/home/opc/wallet"
-            if [ -n "${{ secrets.WALLET_ZIP_BASE64 }}" ]; then
+            if [ -n "$WALLET_ZIP_BASE64" ]; then
               sudo yum install -y unzip
               sudo mkdir -p "$WALLET_DIR"
-              printf "%s" "${{ secrets.WALLET_ZIP_BASE64 }}" | base64 -d | sudo tee /tmp/wallet.zip >/dev/null
+              printf "%s" "$WALLET_ZIP_BASE64" | base64 -d | sudo tee /tmp/wallet.zip >/dev/null
               sudo unzip -o /tmp/wallet.zip -d "$WALLET_DIR" >/dev/null
               sudo rm -f /tmp/wallet.zip
               sudo chmod -R go-rwx "$WALLET_DIR"
