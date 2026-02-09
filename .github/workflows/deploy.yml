@@ -86,13 +86,14 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           DEV_PASSWORD: ${{ secrets.DEV_PASSWORD }}
           WALLET_ZIP_BASE64: ${{ secrets.WALLET_ZIP_BASE64 }}
+          SITE_DOMAIN: ${{ secrets.SITE_DOMAIN }}
         with:
           debug: true
           host: ${{ secrets.OCI_INSTANCE_IP }}
           username: opc
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           timeout: 60s
-          envs: GITHUB_TOKEN,DB_USER,DB_PASSWORD,DB_CONNECT_STRING,OBJECT_STORAGE_ENDPOINT,OBJECT_STORAGE_BUCKET,OCI_REGION,OCI_ACCESS_KEY_ID,OCI_SECRET_ACCESS_KEY,JWT_SECRET,DEV_PASSWORD,WALLET_ZIP_BASE64
+          envs: GITHUB_TOKEN,DB_USER,DB_PASSWORD,DB_CONNECT_STRING,OBJECT_STORAGE_ENDPOINT,OBJECT_STORAGE_BUCKET,OCI_REGION,OCI_ACCESS_KEY_ID,OCI_SECRET_ACCESS_KEY,JWT_SECRET,DEV_PASSWORD,WALLET_ZIP_BASE64,SITE_DOMAIN
           script: |
             set -euo pipefail
             umask 077
@@ -134,6 +135,48 @@ jobs:
               sudo chown -R opc:opc "$WALLET_DIR"
             fi
 
+            # 2c. Wait for DB to be reachable (parse DB_CONNECT_STRING and test TCP)
+            sudo yum install -y nmap-ncat || true
+            parse_host_port() {
+              s="$1"
+              # strip common prefixes like jdbc:oracle:thin:@ and leading // and user@host forms
+              s=$(echo "$s" | sed -E 's#.*@##; s#^jdbc:oracle:thin:@##; s#^//##')
+              if echo "$s" | grep -E ":[0-9]+" >/dev/null 2>&1; then
+                host=$(echo "$s" | sed -E 's#^([^:/]+):([0-9]+).*$#\\1#')
+                port=$(echo "$s" | sed -E 's#^([^:/]+):([0-9]+).*$#\\2#')
+              else
+                host=$(echo "$s" | sed -E 's#([^/]+)/.*$#\\1#')
+                port=""
+              fi
+              echo "$host $port"
+            }
+
+            read DB_HOST DB_PORT <<< $(parse_host_port "$DB_CONNECT_STRING")
+            # If DB port not present, try common Oracle admin ports in order (1522 then 1521)
+            if [ -n "$DB_PORT" ]; then
+              ports_to_try=("$DB_PORT")
+            else
+              ports_to_try=(1522 1521)
+            fi
+
+            echo "Checking DB connectivity to $DB_HOST on ports: ${ports_to_try[*]}"
+            reachable=0
+            for i in $(seq 1 24); do
+              for p in "${ports_to_try[@]}"; do
+                if nc -z -w5 "$DB_HOST" "$p" >/dev/null 2>&1; then
+                  echo "DB reachable on $DB_HOST:$p"
+                  reachable=1
+                  break 2
+                fi
+              done
+              echo "Waiting for DB $DB_HOST ports ${ports_to_try[*]} ($i/24)..."
+              sleep 5
+            done
+            if [ "$reachable" -ne 1 ]; then
+              echo "ERROR: DB $DB_HOST not reachable on ports ${ports_to_try[*]} after retries"
+              exit 1
+            fi
+
             # 3. Pull the exact image built in CI
             IMAGE_REF="${{ needs.build.outputs.image_ref }}"
             sudo docker pull "$IMAGE_REF"
@@ -165,3 +208,19 @@ jobs:
               --security-opt no-new-privileges \
               $WALLET_VOLUME \
               "$IMAGE_REF"
+
+            # 7. (Optional) If SITE_DOMAIN is set, install/run Caddy for automatic Let's Encrypt
+            if [ -n "$SITE_DOMAIN" ]; then
+              echo "Setting up Caddy for $SITE_DOMAIN"
+              # remove existing caddy container if present
+              sudo docker rm -f caddy || true
+              cat > /home/opc/Caddyfile <<'CADDY'
+$SITE_DOMAIN {
+  reverse_proxy 127.0.0.1:8080
+}
+CADDY
+              sudo chown opc:opc /home/opc/Caddyfile
+              sudo docker run -d --name caddy --restart unless-stopped -p 80:80 -p 443:443 \
+                -v /home/opc/Caddyfile:/etc/caddy/Caddyfile \
+                -v caddy_data:/data -v caddy_config:/config caddy:2
+            fi

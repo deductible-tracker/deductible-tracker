@@ -13,8 +13,9 @@ pub async fn init_pool() -> anyhow::Result<DbPool> {
     
     let manager = OracleConnectionManager::new(&username, &password, &conn_str);
     let pool = Pool::builder()
-        .max_size(5)
-        .connection_timeout(std::time::Duration::from_secs(30))
+        // Increase pool size and timeout to tolerate transient connectivity delays
+        .max_size(10)
+        .connection_timeout(std::time::Duration::from_secs(60))
         .build(manager)
         .map_err(|e| anyhow::anyhow!("Failed to create DB pool: {}", e))?;
     
