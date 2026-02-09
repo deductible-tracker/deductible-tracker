@@ -65,6 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
     concurrency:
       group: deploy-production
       cancel-in-progress: true
