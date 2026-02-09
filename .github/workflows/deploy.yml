@@ -116,7 +116,7 @@ jobs:
               echo "OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY"
               echo "JWT_SECRET=$JWT_SECRET"
               echo "DEV_PASSWORD=$DEV_PASSWORD"
-            } > /home/opc/app.env
+            } | sudo tee /home/opc/app.env > /dev/null
 
             sudo chmod 600 /home/opc/app.env
             sudo chown opc:opc /home/opc/app.env
