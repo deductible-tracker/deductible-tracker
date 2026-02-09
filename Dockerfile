@@ -5,94 +5,89 @@ WORKDIR /app
 
 # Reduce memory usage during build
 ENV CARGO_BUILD_JOBS=1 \
-    CARGO_PROFILE_RELEASE_LTO=false \
-    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8 \
-    CARGO_PROFILE_RELEASE_OPT_LEVEL=2
+    # syntax=docker/dockerfile:1.4
 
-# Install dependencies required for building (and linking if dynamic)
-# We need libaio for Oracle
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    libaio1 \
-    unzip \
-    wget \
-    build-essential
+    # Stage 1: Build (with BuildKit cache mounts)
+    FROM rust:1.93.0-slim-bookworm AS builder
+    WORKDIR /app
 
-# We need the Oracle Instant Client SDK to link against 'oracle' crate
-# Note: This is a simplification. Real-world OCI linking often requires specific paths.
-# Since we are targeting ARM64, we need ARM64 client if we are building ON ARM64.
-# If we are cross-compiling, it's harder.
-# We will assume this Dockerfile is built WITH the target platform (e.g. docker buildx --platform linux/arm64)
+    ARG TARGETARCH
 
-# Create a dummy project to cache dependencies
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release || true 
-# (The above might fail if oracle crate build script fails due to missing OCI libs, but we haven't installed them yet)
+    # Install build dependencies in a single layer and clean up
+    RUN apt-get update && apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
 
-# Install Oracle Instant Client (Basic + SDK)
-# This part is tricky to get right for both AMD64 and ARM64 in one file without args.
-# I'll rely on a script or just download the ARM64 one since the target is ARM.
-# Actually, let's just attempt to build. If 'oracle' crate is used, we need OCI.
-# If we can't easily install OCI in the builder, the build will fail.
+    ENV CARGO_TARGET_DIR=/app/target
+    ENV RUSTFLAGS="-C target-cpu=native"
 
-# To be safe for this specific request "deploy to Oracle Arm", I will hardcode ARM64 download if possible,
-# or assume the builder environment has it. 
-# BUT, to make this robust for the user who might run it locally (x86), I should probably use a conditional.
+    # Install Oracle Instant Client for the build architecture (conditional)
+    RUN set -eux; \
+        mkdir -p /opt/oracle; cd /opt/oracle; \
+        case "${TARGETARCH:-amd64}" in \
+            arm64) \
+                B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.arm64-19.19.0.0.0dbru.zip"; \
+                B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.arm64-19.19.0.0.0dbru.zip";; \
+            amd64|x86_64) \
+                B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.x64-19.19.0.0.0dbru.zip"; \
+                B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.x64-19.19.0.0.0dbru.zip";; \
+            *) echo "Unsupported arch ${TARGETARCH}, skipping instant client install"; exit 0;; \
+        esac; \
+        wget -q "$B_BASIC" -O basic.zip; unzip basic.zip; rm basic.zip; \
+        wget -q "$B_SDK" -O sdk.zip; unzip sdk.zip; rm sdk.zip; \
+        mv instantclient_19_19 instantclient || true
 
-# For now, I'll skip the complex OCI setup in the builder and rely on the fact that
-# if the user runs this locally on a Mac, they aren't using this Dockerfile for dev usually.
-# On CI, we will use QEMU to build for ARM64.
+    ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
+    ENV OCI_LIB_DIR=/opt/oracle/instantclient
+    ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
 
-# Let's try to install the libs.
-RUN mkdir -p /opt/oracle
-WORKDIR /opt/oracle
-# Downloading ARM64 Instant Client
-RUN wget https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.arm64-19.19.0.0.0dbru.zip -O basic.zip && \
-    wget https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.arm64-19.19.0.0.0dbru.zip -O sdk.zip && \
-    unzip basic.zip && \
-    unzip sdk.zip && \
-    rm *.zip && \
-    mv instantclient_19_19 instantclient
+    # Copy manifest first and build a small dummy binary to cache dependencies
+    COPY Cargo.toml Cargo.lock ./
+    RUN mkdir -p src && printf "fn main() { println!(\"dummy\"); }\n" > src/main.rs
 
-ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
-ENV OCI_LIB_DIR=/opt/oracle/instantclient
-ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
+    RUN --mount=type=cache,target=/root/.cargo/registry \
+            --mount=type=cache,target=/root/.cargo/git \
+            --mount=type=cache,target=/app/target \
+            cargo build --release || true
 
-WORKDIR /app
-COPY . .
-# Touch main.rs to force rebuild
-RUN touch src/main.rs
-RUN cargo build --release
-RUN cargo build --release --bin migrate
+    # Copy full source and build the real binaries using the same cache mounts
+    COPY . .
+    RUN --mount=type=cache,target=/root/.cargo/registry \
+            --mount=type=cache,target=/root/.cargo/git \
+            --mount=type=cache,target=/app/target \
+            cargo build --release --bins
 
-# Stage 2: Runtime
-FROM oraclelinux:9-slim
+    # Build migrate binary explicitly if present
+    RUN --mount=type=cache,target=/root/.cargo/registry \
+            --mount=type=cache,target=/root/.cargo/git \
+            --mount=type=cache,target=/app/target \
+            cargo build --release --bin migrate || true
 
-WORKDIR /app
+    # Strip binaries to reduce image size
+    RUN strip /app/target/release/deductible-tracker || true && \
+            strip /app/target/release/migrate || true
 
-# Create a non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+    # Stage 2: Runtime
+    FROM oraclelinux:9-slim AS runtime
+    WORKDIR /app
 
-# Install runtime deps
-RUN microdnf install -y libaio openssl && microdnf clean all
+    # Minimal runtime deps
+    RUN microdnf install -y libaio openssl && microdnf clean all
 
-# Copy Oracle Instant Client from builder
-COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
+    # Copy Oracle Instant Client from builder if present
+    COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
+    ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
 
-COPY --from=builder /app/target/release/deductible-tracker /app/deductible-tracker
-COPY --from=builder /app/target/release/migrate /app/migrate
-COPY migrations /app/migrations
-COPY static /app/static
+    # Copy binaries and assets
+    COPY --from=builder /app/target/release/deductible-tracker /app/deductible-tracker
+    COPY --from=builder /app/target/release/migrate /app/migrate
+    COPY migrations /app/migrations
+    COPY static /app/static
 
-ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
+    # Create non-root user and set permissions
+    RUN groupadd -r appuser && useradd -r -g appuser appuser && chown -R appuser:appuser /app
+    USER appuser
 
-# Give ownership to the appuser
-RUN chown -R appuser:appuser /app
+    EXPOSE 8080
+    CMD ["./deductible-tracker"]
 
-USER appuser
-
-EXPOSE 8080
-
-CMD ["./deductible-tracker"]
