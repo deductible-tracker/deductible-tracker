@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Stage 1: Build (with BuildKit cache mounts)
-FROM --platform=$BUILDPLATFORM rust:1.93.0-slim-bookworm AS builder
+FROM rust:1.93.0-slim-bookworm AS builder
 WORKDIR /app
 
 ARG TARGETARCH
@@ -41,24 +41,16 @@ RUN mkdir -p src && printf "fn main() { println!(\"dummy\"); }\n" > src/main.rs
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/app/target \
-    cargo build --release || true
+    cargo build --release
 
 # Copy full source and build the real binaries
 COPY . .
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/app/target \
-    cargo build --release --bins
-
-# Build migrate binary explicitly
-RUN --mount=type=cache,target=/root/.cargo/registry \
-    --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/app/target \
-    cargo build --release --bin migrate || true
-
-# Strip binaries to reduce image size
-RUN strip /app/target/release/deductible-tracker || true && \
-    strip /app/target/release/migrate || true
+    cargo build --release --bins && \
+    cp /app/target/release/deductible-tracker /app/deductible-tracker && \
+    cp /app/target/release/migrate /app/migrate
 
 # Stage 2: Runtime
 FROM oraclelinux:9-slim AS runtime
@@ -72,8 +64,8 @@ COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
 ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
 
 # Copy binaries and assets
-COPY --from=builder /app/target/release/deductible-tracker /app/deductible-tracker
-COPY --from=builder /app/target/release/migrate /app/migrate
+COPY --from=builder /app/deductible-tracker /app/deductible-tracker
+COPY --from=builder /app/migrate /app/migrate
 COPY migrations /app/migrations
 COPY static /app/static
 
