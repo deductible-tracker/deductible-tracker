@@ -76,8 +76,7 @@ jobs:
           debug: true
           host: ${{ secrets.OCI_INSTANCE_IP }}
           username: opc
-          key: |
-            ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -euo pipefail
             umask 077

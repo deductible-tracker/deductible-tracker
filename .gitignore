@@ -17,3 +17,7 @@ Wallet_deductibledb/
 
 # Terraform
 terraform/
+
+# Local SSH keys for GitHub Actions (do NOT commit)
+github_action_key
+github_action_key.pub
