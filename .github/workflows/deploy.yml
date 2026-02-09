@@ -76,7 +76,6 @@ jobs:
           host: ${{ secrets.OCI_INSTANCE_IP }}
           username: opc
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          fingerprint: ${{ secrets.SSH_FINGERPRINT }}
           script: |
             set -euo pipefail
             umask 077
