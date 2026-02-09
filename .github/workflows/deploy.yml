@@ -71,11 +71,13 @@ jobs:
     environment: production
     steps:
       - name: Deploy to Oracle VM via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
+          debug: true
           host: ${{ secrets.OCI_INSTANCE_IP }}
           username: opc
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: |
+            ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -euo pipefail
             umask 077
