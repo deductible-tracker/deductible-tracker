@@ -1,8 +1,8 @@
+use async_trait::async_trait;
 use axum::{
     extract::{Path, State, Query, Json, FromRequestParts},
     response::{Redirect, IntoResponse},
     http::{StatusCode, request::Parts, HeaderValue, header},
-    async_trait,
 };
 use serde::{Deserialize, Serialize};
 use crate::AppState;

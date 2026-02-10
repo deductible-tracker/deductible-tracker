@@ -4,7 +4,7 @@ use axum::{
     http::HeaderValue,
 };
 use std::net::SocketAddr;
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
