@@ -43,10 +43,14 @@ ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
 # Copy manifest first and fetch dependencies to cache them
 COPY Cargo.toml Cargo.lock ./
 
+# Create a tiny dummy source file so cargo recognizes a target
+# (allows `cargo fetch` to run using only the manifest files)
+RUN mkdir -p src && echo 'fn main() { println!("__dummy__"); }' > src/main.rs
+
 RUN --mount=type=cache,target=/root/.cargo/registry \
-    --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/app/target \
-    cargo fetch
+  --mount=type=cache,target=/root/.cargo/git \
+  --mount=type=cache,target=/app/target \
+  cargo fetch
 
 
 # Copy full source and build the real binaries
