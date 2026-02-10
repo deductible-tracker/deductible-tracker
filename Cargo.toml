@@ -23,7 +23,7 @@ anyhow = "1.0"
 url = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-oauth2 = "4.4"
+oauth2 = "5.0"
 dotenvy = "0.15"
 tower_governor = "0.5"
 # oracle = "0.6" # Commented out until we confirm OCI lib availability or strategy. 
