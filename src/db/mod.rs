@@ -1,15 +1,22 @@
 use r2d2::Pool;
 use r2d2_oracle::OracleConnectionManager;
 use std::env;
+use anyhow::anyhow;
 
 pub mod models;
 
 pub type DbPool = Pool<OracleConnectionManager>;
 
 pub async fn init_pool() -> anyhow::Result<DbPool> {
-    let username = env::var("DB_USER").expect("Environment variable DB_USER must be set to the Oracle database username (used to initialize the DB connection pool). Set DB_USER in your environment or deployment configuration before starting this service.");
-    let password = env::var("DB_PASSWORD").expect("Environment variable DB_PASSWORD must be set to the Oracle database user's password (used to initialize the DB connection pool). Set DB_PASSWORD in your environment or deployment configuration before starting this service.");
-    let conn_str = env::var("DB_CONNECT_STRING").expect("Environment variable DB_CONNECT_STRING must be set to the Oracle database connect string (for example, host/service or TNS name, used to initialize the DB connection pool). Set DB_CONNECT_STRING in your environment or deployment configuration before starting this service.");
+    let username = env::var("DB_USER").map_err(|e| {
+        anyhow!("Environment variable DB_USER must be set to the Oracle database username (used to initialize the DB connection pool). Set DB_USER in your environment or deployment configuration before starting this service. Underlying error: {}", e)
+    })?;
+    let password = env::var("DB_PASSWORD").map_err(|e| {
+        anyhow!("Environment variable DB_PASSWORD must be set to the Oracle database user's password (used to initialize the DB connection pool). Set DB_PASSWORD in your environment or deployment configuration before starting this service. Underlying error: {}", e)
+    })?;
+    let conn_str = env::var("DB_CONNECT_STRING").map_err(|e| {
+        anyhow!("Environment variable DB_CONNECT_STRING must be set to the Oracle database connect string (for example, host/service or TNS name, used to initialize the DB connection pool). Set DB_CONNECT_STRING in your environment or deployment configuration before starting this service. Underlying error: {}", e)
+    })?;
     
     eprintln!("[DB] Initializing Oracle connection pool");
     eprintln!("[DB] Using configured database user");
