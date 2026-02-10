@@ -12,7 +12,7 @@ tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header"]
 opendal = { version = "0.51", features = ["services-s3"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.10", features = ["v4", "serde"] }
+uuid = { version = "1.20", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "10.3"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
