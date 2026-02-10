@@ -53,7 +53,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     cp /app/target/release/migrate /app/migrate
 
 # Stage 2: Runtime
-FROM oraclelinux:9-slim AS runtime
+FROM oraclelinux:10-slim AS runtime
 WORKDIR /app
 
 # Minimal runtime deps
