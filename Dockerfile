@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     cp /app/target/release/migrate /app/migrate
 
 # Stage 2: Runtime
-FROM oraclelinux:10-slim AS runtime
+FROM oraclelinux:10-slim@sha256:<REPLACE_WITH_ACTUAL_DIGEST> AS runtime
 WORKDIR /app
 
 # Minimal runtime deps
