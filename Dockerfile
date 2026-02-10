@@ -17,9 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 ENV CARGO_TARGET_DIR=/app/target
-ENV RUSTFLAGS=""
 
 # Install Oracle Instant Client for the build target architecture
+RUN set -eux; \
 RUN set -eux; \
   mkdir -p /opt/oracle; cd /opt/oracle; \
   case "${TARGETARCH:-amd64}" in \
