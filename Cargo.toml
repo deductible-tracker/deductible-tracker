@@ -16,7 +16,7 @@ uuid = { version = "1.20", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "10.3"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-printpdf = "0.7"
+printpdf = "0.9"
 base64 = "0.22"
 anyhow = "1.0"
 url = "2.5"
