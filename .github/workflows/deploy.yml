@@ -136,8 +136,11 @@ jobs:
               if [ -f "$WALLET_DIR/sqlnet.ora" ]; then
                 sudo sed -i 's|DIRECTORY="[^"]*"|DIRECTORY="/app/wallet"|g' "$WALLET_DIR/sqlnet.ora"
               fi
-              sudo chmod -R go-rwx "$WALLET_DIR"
+              # Ensure wallet is readable by the app inside the container (appuser)
+              sudo find "$WALLET_DIR" -type d -exec chmod 755 {} \;
+              sudo find "$WALLET_DIR" -type f -exec chmod 644 {} \;
               sudo chown -R opc:opc "$WALLET_DIR"
+              sudo ls -l "$WALLET_DIR"
             fi
 
             # 2c. Wait for DB to be reachable (parse DB_CONNECT_STRING and test TCP)
