@@ -18,8 +18,8 @@ pub async fn init_pool() -> anyhow::Result<DbPool> {
     if env::var("TNS_ADMIN").is_ok() {
         eprintln!("[DB] TNS_ADMIN is set");
     }
-    if let Ok(wallet_dir) = env::var("MY_WALLET_DIRECTORY") {
-        eprintln!("[DB] MY_WALLET_DIRECTORY: {}", wallet_dir);
+    if let Ok(_wallet_dir) = env::var("MY_WALLET_DIRECTORY") {
+        eprintln!("[DB] MY_WALLET_DIRECTORY is set");
     }
     
     eprintln!("[DB] Creating connection manager...");
