@@ -45,7 +45,11 @@ COPY Cargo.toml Cargo.lock ./
 
 # Create a tiny dummy source file so cargo recognizes a target
 # (allows `cargo fetch` to run using only the manifest files)
-RUN mkdir -p src && echo 'fn main() { println!("__dummy__"); }' > src/main.rs
+RUN mkdir -p src && printf '%s\n' \
+  '// Dummy binary used only for `cargo fetch` dependency caching in Docker builds.' \
+  'fn main() {' \
+  '    println!("dummy main for dependency caching");' \
+  '}' > src/main.rs
 
 RUN --mount=type=cache,target=/root/.cargo/registry \
   --mount=type=cache,target=/root/.cargo/git \
