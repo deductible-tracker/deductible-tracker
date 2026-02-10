@@ -217,12 +217,17 @@ jobs:
               WALLET_VOLUME="-v ${WALLET_DIR}:/app/wallet:ro"
             fi
 
-            sudo docker run --rm \
+            echo "Running database migrations..."
+            if ! sudo docker run --rm \
               --env-file /home/opc/app.env \
               --cap-drop=ALL \
               --security-opt no-new-privileges \
               $WALLET_VOLUME \
-              "$IMAGE_REF" ./migrate || true
+              "$IMAGE_REF" ./migrate; then
+              echo "ERROR: Migration failed. Checking app container logs if running..."
+              sudo docker logs deductible-app 2>&1 | tail -50 || echo "No app container logs available"
+              echo "Continuing deployment despite migration failure (app may auto-migrate on startup)"
+            fi
 
             # 6. Run Application (detached) using the exact built image
             # If SITE_DOMAIN is set, Caddy handles ports 80/443; app listens on localhost:8080 only
@@ -241,6 +246,18 @@ jobs:
               --security-opt no-new-privileges \
               $WALLET_VOLUME \
               "$IMAGE_REF"
+            
+            # Wait a few seconds and check if container is still running
+            sleep 5
+            if sudo docker ps | grep -q deductible-app; then
+              echo "✓ App container is running"
+              echo "Recent logs:"
+              sudo docker logs deductible-app 2>&1 | tail -20
+            else
+              echo "✗ ERROR: App container exited. Full logs:"
+              sudo docker logs deductible-app 2>&1
+              exit 1
+            fi
 
             # 7. (Optional) If SITE_DOMAIN is set, install/run Caddy for automatic Let's Encrypt
             if [ -n "$SITE_DOMAIN" ]; then

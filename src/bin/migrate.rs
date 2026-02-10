@@ -13,10 +13,23 @@ fn main() -> anyhow::Result<()> {
     let username = env::var("DB_USER").expect("DB_USER must be set");
     let password = env::var("DB_PASSWORD").expect("DB_PASSWORD must be set");
     let conn_str = env::var("DB_CONNECT_STRING").expect("DB_CONNECT_STRING must be set");
+    
+    // Debug: Check TNS_ADMIN and wallet directory
+    if let Ok(tns_admin) = env::var("TNS_ADMIN") {
+        println!("TNS_ADMIN: {}", tns_admin);
+        if let Ok(entries) = fs::read_dir(&tns_admin) {
+            println!("Wallet files:");
+            for entry in entries.flatten() {
+                println!("  - {}", entry.path().display());
+            }
+        }
+    }
 
+    println!("Connecting to database (60s timeout)...");
     let manager = OracleConnectionManager::new(&username, &password, &conn_str);
     let pool = Pool::builder()
         .max_size(1)
+        .connection_timeout(std::time::Duration::from_secs(60))
         .build(manager)
         .map_err(|e| anyhow::anyhow!("Failed to create DB pool: {}", e))?;
 

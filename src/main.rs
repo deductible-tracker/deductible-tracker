@@ -46,8 +46,12 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    tracing::info!("Starting Deductible Tracker application...");
+
     // Database Setup
+    tracing::info!("Initializing database connection pool...");
     let db_pool = db::init_pool().await?;
+    tracing::info!("Database connection pool initialized successfully");
 
     // Oracle Object Storage Setup (Using S3 Compat via OpenDAL)
     let endpoint = env::var("OBJECT_STORAGE_ENDPOINT").expect("OBJECT_STORAGE_ENDPOINT must be set");
