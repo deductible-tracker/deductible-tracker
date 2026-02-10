@@ -36,7 +36,7 @@ ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
 
 # Copy manifest first and build dummy to cache dependencies
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir -p src && printf "fn main() { println!(\"dummy\"); }\n" > src/main.rs
+RUN mkdir -p src && echo 'fn main() { println!("dummy"); }' > src/main.rs
 
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
