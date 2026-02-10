@@ -25,7 +25,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 oauth2 = "5.0"
 dotenvy = "0.15"
-tower_governor = "0.5"
+tower_governor = "0.8"
 # oracle = "0.6" # Commented out until we confirm OCI lib availability or strategy. 
 # Using a feature flag or conditional compilation would be better but let's assume we can build it.
 # Actually, let's include it but we might face build errors in this environment if OCI isn't here.
