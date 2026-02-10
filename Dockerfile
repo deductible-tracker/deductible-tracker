@@ -24,7 +24,7 @@ RUN set -eux; \
     amd64|x86_64) \
       B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.x64-19.19.0.0.0dbru.zip"; \
       B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.x64-19.19.0.0.0dbru.zip";; \
-    *) echo "Unsupported arch ${TARGETARCH}, skipping instant client install"; exit 0;; \
+    *) echo "ERROR: Unsupported arch ${TARGETARCH}, cannot install Oracle Instant Client"; exit 1;; \
   esac; \
   wget -q "$B_BASIC" -O basic.zip; unzip basic.zip; rm basic.zip; \
   wget -q "$B_SDK" -O sdk.zip; unzip sdk.zip; rm sdk.zip; \
