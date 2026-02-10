@@ -6,6 +6,11 @@ WORKDIR /app
 
 ARG TARGETARCH
 
+# Oracle Instant Client configuration (centralized for maintainability)
+ARG ORACLE_IC_BASE_URL="https://download.oracle.com/otn_software/linux/instantclient"
+ARG ORACLE_IC_VERSION_PATH="1919000"
+ARG ORACLE_IC_VERSION_FULL="19.19.0.0.0dbru"
+
 # Install build dependencies in a single layer and clean up
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates \
@@ -19,11 +24,11 @@ RUN set -eux; \
   mkdir -p /opt/oracle; cd /opt/oracle; \
   case "${TARGETARCH:-amd64}" in \
     arm64) \
-      B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.arm64-19.19.0.0.0dbru.zip"; \
-      B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.arm64-19.19.0.0.0dbru.zip";; \
+      B_BASIC="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-basic-linux.arm64-${ORACLE_IC_VERSION_FULL}.zip"; \
+      B_SDK="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-sdk-linux.arm64-${ORACLE_IC_VERSION_FULL}.zip";; \
     amd64|x86_64) \
-      B_BASIC="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-basic-linux.x64-19.19.0.0.0dbru.zip"; \
-      B_SDK="https://download.oracle.com/otn_software/linux/instantclient/1919000/instantclient-sdk-linux.x64-19.19.0.0.0dbru.zip";; \
+      B_BASIC="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-basic-linux.x64-${ORACLE_IC_VERSION_FULL}.zip"; \
+      B_SDK="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-sdk-linux.x64-${ORACLE_IC_VERSION_FULL}.zip";; \
     *) echo "ERROR: Unsupported arch ${TARGETARCH}, cannot install Oracle Instant Client"; exit 1;; \
   esac; \
   wget -q "$B_BASIC" -O basic.zip; unzip basic.zip; rm basic.zip; \
