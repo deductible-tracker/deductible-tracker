@@ -8,7 +8,7 @@ default-run = "deductible-tracker"
 axum = "0.7"
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.4", features = ["limit"] }
+tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
 opendal = { version = "0.51", features = ["services-s3"] }
 serde = { version = "1.0", features = ["derive"] }
