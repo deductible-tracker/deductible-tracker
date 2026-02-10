@@ -35,14 +35,14 @@ ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
 ENV OCI_LIB_DIR=/opt/oracle/instantclient
 ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
 
-# Copy manifest first and build dummy to cache dependencies
+# Copy manifest first and fetch dependencies to cache them
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir -p src && echo 'fn main() { println!("dummy"); }' > src/main.rs
 
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/app/target \
-    cargo build --release
+    cargo fetch
+
 
 # Copy full source and build the real binaries
 COPY . .
