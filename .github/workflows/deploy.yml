@@ -132,15 +132,28 @@ jobs:
               printf "%s" "$WALLET_ZIP_BASE64" | base64 -d | sudo tee /tmp/wallet.zip >/dev/null
               sudo unzip -o /tmp/wallet.zip -d "$WALLET_DIR" >/dev/null
               sudo rm -f /tmp/wallet.zip
-              # Fix sqlnet.ora WALLET_LOCATION to point to /app/wallet (container path)
-              if [ -f "$WALLET_DIR/sqlnet.ora" ]; then
-                sudo sed -i 's|DIRECTORY="[^"]*"|DIRECTORY="/app/wallet"|g' "$WALLET_DIR/sqlnet.ora"
+              
+              # If the zip contains a single top-level dir (e.g., Wallet_deductibledb), flatten it
+              TOP_DIR_COUNT=$(sudo find "$WALLET_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+              if [ "$TOP_DIR_COUNT" -eq 1 ]; then
+                TOP_DIR=$(sudo find "$WALLET_DIR" -mindepth 1 -maxdepth 1 -type d | head -n1)
+                sudo sh -c "cd \"$TOP_DIR\" && cp -a . \"$WALLET_DIR\"/"
+                sudo rm -rf "$TOP_DIR"
               fi
+
+              # Fix sqlnet.ora WALLET_LOCATION to point to /app/wallet (container path)
+              SQLNET_PATH=$(sudo find "$WALLET_DIR" -maxdepth 2 -name sqlnet.ora | head -n1 || true)
+              if [ -n "$SQLNET_PATH" ]; then
+                sudo sed -i 's|DIRECTORY="[^"]*"|DIRECTORY="/app/wallet"|g' "$SQLNET_PATH"
+              fi
+
               # Ensure wallet is readable by the app inside the container (appuser)
               sudo find "$WALLET_DIR" -type d -exec chmod 755 {} \;
               sudo find "$WALLET_DIR" -type f -exec chmod 644 {} \;
               sudo chown -R opc:opc "$WALLET_DIR"
+              echo "Wallet contents:"
               sudo ls -l "$WALLET_DIR"
+              sudo find "$WALLET_DIR" -maxdepth 1 -type f -ls
             fi
 
             # 2c. Wait for DB to be reachable (parse DB_CONNECT_STRING and test TCP)
