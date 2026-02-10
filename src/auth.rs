@@ -122,13 +122,11 @@ pub async fn login(Path(provider): Path<String>) -> impl IntoResponse {
         Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
     };
 
-    let client = BasicClient::new(
-        ClientId::new(cfg.client_id),
-        Some(ClientSecret::new(cfg.client_secret)),
-        AuthUrl::new(cfg.auth_url).unwrap(),
-        Some(TokenUrl::new(cfg.token_url).unwrap())
-    )
-    .set_redirect_uri(RedirectUrl::new(cfg.redirect_url).unwrap());
+    let client = BasicClient::new(ClientId::new(cfg.client_id))
+        .set_client_secret(ClientSecret::new(cfg.client_secret))
+        .set_auth_uri(AuthUrl::new(cfg.auth_url).unwrap())
+        .set_token_uri(TokenUrl::new(cfg.token_url).unwrap())
+        .set_redirect_uri(RedirectUrl::new(cfg.redirect_url).unwrap());
 
     let state = match create_state_token(&provider) {
         Ok(s) => s,
@@ -157,19 +155,21 @@ pub async fn callback(
         return (StatusCode::UNAUTHORIZED, "Invalid state").into_response();
     }
 
-    let client = BasicClient::new(
-        ClientId::new(cfg.client_id),
-        Some(ClientSecret::new(cfg.client_secret)),
-        AuthUrl::new(cfg.auth_url).unwrap(),
-        Some(TokenUrl::new(cfg.token_url).unwrap())
-    )
-    .set_redirect_uri(RedirectUrl::new(cfg.redirect_url).unwrap());
+    let client = BasicClient::new(ClientId::new(cfg.client_id))
+        .set_client_secret(ClientSecret::new(cfg.client_secret))
+        .set_auth_uri(AuthUrl::new(cfg.auth_url).unwrap())
+        .set_token_uri(TokenUrl::new(cfg.token_url).unwrap())
+        .set_redirect_uri(RedirectUrl::new(cfg.redirect_url).unwrap());
+
+    let http_client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("failed to build reqwest client");
 
     let token_result = client
         .exchange_code(AuthorizationCode::new(params.code.clone()))
-        .request_async(oauth2::reqwest::async_http_client)
+        .request_async(&http_client)
         .await;
-
     let token_result = match token_result {
         Ok(t) => t,
         Err(e) => {

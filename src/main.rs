@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/dev/login", post(auth::dev_login))
         .fallback_service(ServeDir::new("static"))
         .layer(cors)
-        .layer(GovernorLayer { config: governor_config })
+        .layer(GovernorLayer::new(governor_config))
         .layer(TraceLayer::new_for_http())
         .layer(SetResponseHeaderLayer::overriding(
             header::X_CONTENT_TYPE_OPTIONS,
