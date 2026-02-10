@@ -12,7 +12,7 @@ pub async fn init_pool() -> anyhow::Result<DbPool> {
     let conn_str = env::var("DB_CONNECT_STRING").expect("DB_CONNECT_STRING must be set");
     
     eprintln!("[DB] Initializing Oracle connection pool");
-    eprintln!("[DB] Username: {}", username);
+    eprintln!("[DB] Using configured database user");
     eprintln!("[DB] Connect string length: {} chars", conn_str.len());
     
     if let Ok(tns_admin) = env::var("TNS_ADMIN") {
