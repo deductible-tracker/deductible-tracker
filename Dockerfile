@@ -28,7 +28,8 @@ RUN set -eux; \
   esac; \
   wget -q "$B_BASIC" -O basic.zip; unzip basic.zip; rm basic.zip; \
   wget -q "$B_SDK" -O sdk.zip; unzip sdk.zip; rm sdk.zip; \
-  mv instantclient_19_19 instantclient || true
+  mv instantclient_19_19 instantclient; \
+  test -d instantclient
 
 ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
 ENV OCI_LIB_DIR=/opt/oracle/instantclient
