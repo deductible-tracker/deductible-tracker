@@ -15,8 +15,8 @@ pub async fn init_pool() -> anyhow::Result<DbPool> {
     eprintln!("[DB] Using configured database user");
     eprintln!("[DB] Connect string length: {} chars", conn_str.len());
     
-    if let Ok(tns_admin) = env::var("TNS_ADMIN") {
-        eprintln!("[DB] TNS_ADMIN: {}", tns_admin);
+    if env::var("TNS_ADMIN").is_ok() {
+        eprintln!("[DB] TNS_ADMIN is set");
     }
     if let Ok(wallet_dir) = env::var("MY_WALLET_DIRECTORY") {
         eprintln!("[DB] MY_WALLET_DIRECTORY: {}", wallet_dir);
