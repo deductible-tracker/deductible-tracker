@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+use std::future::Future;
 use axum::{
     extract::{Path, State, Query, Json, FromRequestParts},
     response::{Redirect, IntoResponse},
@@ -69,46 +69,47 @@ pub struct AuthenticatedUser {
     pub provider: String,
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AuthenticatedUser
 where
-    S: Send + Sync,
+    S: Send + Sync + 'static,
 {
     type Rejection = (StatusCode, String);
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let token = extract_token(parts)
-            .ok_or((StatusCode::UNAUTHORIZED, "Missing auth token".to_string()))?;
-        let secret = env::var("JWT_SECRET").map_err(|_| {
-            tracing::error!("JWT_SECRET not set");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Server configuration error".to_string())
-        })?;
-        
-        let mut validation = Validation::default();
-        validation.validate_exp = true;
-        if let Ok(issuer) = env::var("JWT_ISSUER") {
-            validation.set_issuer(&[issuer.as_str()]);
-        }
-        if let Ok(audience) = env::var("JWT_AUDIENCE") {
-            validation.set_audience(&[audience.as_str()]);
-        }
+    fn from_request_parts(parts: &mut Parts, _state: &S) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        async move {
+            let token = extract_token(parts)
+                .ok_or((StatusCode::UNAUTHORIZED, "Missing auth token".to_string()))?;
+            let secret = env::var("JWT_SECRET").map_err(|_| {
+                tracing::error!("JWT_SECRET not set");
+                (StatusCode::INTERNAL_SERVER_ERROR, "Server configuration error".to_string())
+            })?;
+            
+            let mut validation = Validation::default();
+            validation.validate_exp = true;
+            if let Ok(issuer) = env::var("JWT_ISSUER") {
+                validation.set_issuer(&[issuer.as_str()]);
+            }
+            if let Ok(audience) = env::var("JWT_AUDIENCE") {
+                validation.set_audience(&[audience.as_str()]);
+            }
 
-        let token_data = decode::<Claims>(
-            &token,
-            &DecodingKey::from_secret(secret.as_ref()),
-            &validation,
-        )
-        .map_err(|e| {
-            tracing::error!("Token error: {}", e);
-            (StatusCode::UNAUTHORIZED, "Invalid token".to_string())
-        })?;
+            let token_data = decode::<Claims>(
+                &token,
+                &DecodingKey::from_secret(secret.as_ref()),
+                &validation,
+            )
+            .map_err(|e| {
+                tracing::error!("Token error: {}", e);
+                (StatusCode::UNAUTHORIZED, "Invalid token".to_string())
+            })?;
 
-        Ok(AuthenticatedUser {
-            id: token_data.claims.sub,
-            email: token_data.claims.email,
-            name: token_data.claims.name,
-            provider: token_data.claims.provider,
-        })
+            Ok(AuthenticatedUser {
+                id: token_data.claims.sub,
+                email: token_data.claims.email,
+                name: token_data.claims.name,
+                provider: token_data.claims.provider,
+            })
+        }
     }
 }
 
