@@ -17,12 +17,22 @@ fn main() -> anyhow::Result<()> {
     // Debug: Check TNS_ADMIN and wallet directory
     if let Ok(tns_admin) = env::var("TNS_ADMIN") {
         println!("TNS_ADMIN: {}", tns_admin);
-        if let Ok(entries) = fs::read_dir(&tns_admin) {
-            println!("Wallet files:");
-            for entry in entries.flatten() {
-                println!("  - {}", entry.path().display());
+        match fs::read_dir(&tns_admin) {
+            Ok(entries) => {
+                println!("Wallet files:");
+                for entry in entries.flatten() {
+                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    println!("  - {} ({} bytes)", entry.path().display(), size);
+                }
+            }
+            Err(e) => {
+                println!("ERROR: Cannot read wallet directory '{}': {}", tns_admin, e);
+                println!("  This is likely an SELinux or permissions issue.");
+                println!("  Ensure the volume mount uses ':z' for SELinux relabeling.");
             }
         }
+    } else {
+        println!("WARNING: TNS_ADMIN is not set — Oracle Net cannot find wallet/sqlnet.ora");
     }
 
     println!("Connecting to database (60s timeout)...");

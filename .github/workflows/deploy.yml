@@ -119,6 +119,7 @@ jobs:
               echo "OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY"
               echo "JWT_SECRET=$JWT_SECRET"
               echo "DEV_PASSWORD=$DEV_PASSWORD"
+              echo "LD_LIBRARY_PATH=/opt/oracle/instantclient"
             } | sudo tee /home/opc/app.env > /dev/null
 
             sudo chmod 600 /home/opc/app.env
@@ -230,7 +231,8 @@ jobs:
             # 5. Run DB migrations (run container as transient job)
             WALLET_VOLUME=""
             if [ -d "$WALLET_DIR" ]; then
-              WALLET_VOLUME="-v ${WALLET_DIR}:/app/wallet:ro"
+              # :z relabels files with correct SELinux context so the container can read them
+              WALLET_VOLUME="-v ${WALLET_DIR}:/app/wallet:ro,z"
             fi
 
             # 5a. Open OS-level firewall for HTTP/HTTPS (OCI security list alone is not enough)
@@ -244,6 +246,40 @@ jobs:
             echo "Running database migrations..."
             # Use --network=host so the container shares the host's network namespace
             # and can reach the ADB private endpoint via the VCN's DNS resolver.
+
+            # 5b. Pre-flight diagnostics: verify wallet is readable inside container
+            echo "=== Pre-flight diagnostics ==="
+            sudo docker run --rm \
+              --network=host \
+              --env-file /home/opc/app.env \
+              $WALLET_VOLUME \
+              "$IMAGE_REF" sh -c '
+                echo "--- Wallet directory ---"
+                ls -la /app/wallet/ 2>&1 || echo "FAIL: cannot list /app/wallet"
+                echo "--- Critical wallet files ---"
+                for f in cwallet.sso sqlnet.ora tnsnames.ora; do
+                  if [ -r "/app/wallet/$f" ]; then
+                    echo "OK: $f ($(wc -c < /app/wallet/$f) bytes)"
+                  else
+                    echo "MISSING/UNREADABLE: $f"
+                  fi
+                done
+                echo "--- sqlnet.ora contents ---"
+                cat /app/wallet/sqlnet.ora 2>&1 || echo "FAIL: cannot read sqlnet.ora"
+                echo "--- Environment ---"
+                echo "TNS_ADMIN=$TNS_ADMIN"
+                echo "MY_WALLET_DIRECTORY=$MY_WALLET_DIRECTORY"
+                echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+                echo "--- resolv.conf ---"
+                cat /etc/resolv.conf 2>&1
+                echo "--- DNS test ---"
+                getent hosts adb.us-chicago-1.oraclecloud.com 2>&1 || echo "DNS resolution failed"
+                echo "--- Library check ---"
+                ls /opt/oracle/instantclient/libclntsh.so* 2>&1 || echo "libclntsh not found"
+                ls /usr/lib64/libnsl* 2>&1 || echo "libnsl not found"
+                echo "=== End diagnostics ==="
+              ' || echo "Diagnostic container failed (non-fatal)"
+
             if ! sudo docker run --rm \
               --network=host \
               --env-file /home/opc/app.env \
@@ -293,4 +329,12 @@ jobs:
               sudo docker run -d --name caddy --restart unless-stopped --network host \
                 -v /home/opc/Caddyfile:/etc/caddy/Caddyfile \
                 -v caddy_data:/data -v caddy_config:/config docker.io/library/caddy:2
+              sleep 3
+              if sudo docker ps | grep -q caddy; then
+                echo "✓ Caddy is running"
+                sudo docker logs caddy 2>&1 | tail -10
+              else
+                echo "✗ Caddy failed to start:"
+                sudo docker logs caddy 2>&1 | tail -20
+              fi
             fi

@@ -68,8 +68,12 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 FROM oraclelinux:9-slim AS runtime
 WORKDIR /app
 
-# Minimal runtime deps (libnsl required by IC 19.x for Oracle Net)
-RUN microdnf install -y libaio libnsl openssl && microdnf clean all
+# Minimal runtime deps
+# - libaio: async I/O required by Oracle OCI
+# - libnsl: Oracle Net; OL 9 ships libnsl.so.3 (libnsl2) but IC 19 links against libnsl.so.1
+# - openssl: TLS support
+RUN microdnf install -y libaio libnsl openssl && microdnf clean all && \
+    ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1 2>/dev/null || true
 
 # Copy Oracle Instant Client from builder
 COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
