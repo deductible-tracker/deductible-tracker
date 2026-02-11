@@ -63,11 +63,13 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     cp /app/target/release/migrate /app/migrate
 
 # Stage 2: Runtime
-FROM oraclelinux:10-slim AS runtime
+# Use OL 9 – Oracle Instant Client 19.x is certified on OL 9;
+# OL 10's newer glibc/TLS stack causes silent TCPS connection failures.
+FROM oraclelinux:9-slim AS runtime
 WORKDIR /app
 
-# Minimal runtime deps
-RUN microdnf install -y libaio openssl && microdnf clean all
+# Minimal runtime deps (libnsl required by IC 19.x for Oracle Net)
+RUN microdnf install -y libaio libnsl openssl && microdnf clean all
 
 # Copy Oracle Instant Client from builder
 COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
