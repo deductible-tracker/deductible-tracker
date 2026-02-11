@@ -327,8 +327,9 @@ jobs:
               sudo chmod 644 /home/opc/Caddyfile
               sudo chown opc:opc /home/opc/Caddyfile
               # Use --network host so Caddy can reach the app on localhost:8080
+              # :z relabels the file for SELinux so Caddy's container process can read it
               sudo docker run -d --name caddy --restart unless-stopped --network host \
-                -v /home/opc/Caddyfile:/etc/caddy/Caddyfile \
+                -v /home/opc/Caddyfile:/etc/caddy/Caddyfile:z \
                 -v caddy_data:/data -v caddy_config:/config docker.io/library/caddy:2
               sleep 3
               if sudo docker ps | grep -q caddy; then
