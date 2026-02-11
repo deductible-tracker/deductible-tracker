@@ -324,6 +324,7 @@ jobs:
               # remove existing caddy container if present
               sudo docker rm -f caddy || true
               sudo bash -lc "printf '%s\n' \"${SITE_DOMAIN} {\" '  reverse_proxy localhost:8080' '}' > /home/opc/Caddyfile"
+              sudo chmod 644 /home/opc/Caddyfile
               sudo chown opc:opc /home/opc/Caddyfile
               # Use --network host so Caddy can reach the app on localhost:8080
               sudo docker run -d --name caddy --restart unless-stopped --network host \

@@ -131,8 +131,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/receipts/upload", post(routes::receipts::generate_upload_url))
         .route("/api/me", get(auth::me))
         // Auth Routes
-        .route("/auth/login/:provider", get(auth::login))
-        .route("/auth/callback/:provider", get(auth::callback))
+        .route("/auth/login/{provider}", get(auth::login))
+        .route("/auth/callback/{provider}", get(auth::callback))
         .route("/auth/logout", post(auth::logout))
         // Dev only login
         .route("/auth/dev/login", post(auth::dev_login))
