@@ -65,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # Stage 2: Runtime
 # Use OL 9 – Oracle Instant Client 19.x is certified on OL 9;
 # OL 10's newer glibc/TLS stack causes silent TCPS connection failures.
-FROM oraclelinux:9-slim AS runtime
+FROM oraclelinux:10-slim AS runtime
 WORKDIR /app
 
 # Minimal runtime deps
