@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+@source "../index.html";
+@source "../js/**/*.js";
+
+@theme {
+  --font-sans: "Roboto", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    color: rgb(15 23 42);
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  .dt-panel {
+    border-radius: 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: #fff;
+  }
+
+  .dt-panel-muted {
+    border-radius: 0.75rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+  }
+
+  .dt-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    background: rgb(79 70 229);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #fff;
+    transition: background-color .15s ease;
+  }
+
+  .dt-btn-primary:hover {
+    background: rgb(67 56 202);
+  }
+
+  .dt-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(226 232 240);
+    background: #fff;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgb(51 65 85);
+    transition: background-color .15s ease;
+  }
+
+  .dt-btn-secondary:hover {
+    background: rgb(248 250 252);
+  }
+
+  .dt-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(254 205 211);
+    background: rgb(255 241 242);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgb(190 24 93);
+    transition: background-color .15s ease;
+  }
+
+  .dt-btn-danger:hover {
+    background: rgb(255 228 230);
+  }
+
+  .dt-input {
+    margin-top: 0.25rem;
+    display: block;
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(226 232 240);
+    background: #fff;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: rgb(15 23 42);
+  }
+
+  .dt-input::placeholder {
+    color: rgb(148 163 184);
+  }
+
+  .dt-input:focus {
+    outline: none;
+    border-color: rgb(99 102 241);
+    box-shadow: 0 0 0 3px rgb(224 231 255);
+  }
+
+  .dt-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgb(51 65 85);
+  }
+
+  .dt-modal-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: rgb(15 23 42 / 40%);
+    padding: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .dt-modal-wrap {
+      padding: 2rem;
+    }
+  }
+
+  .dt-modal {
+    width: 100%;
+    max-width: 42rem;
+    border-radius: 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: #fff;
+    padding: 1.25rem;
+    box-shadow: 0 20px 35px -18px rgb(15 23 42 / 45%);
+  }
+
+  @media (min-width: 640px) {
+    .dt-modal {
+      padding: 1.5rem;
+    }
+  }
+}

@@ -5,6 +5,7 @@ FROM rust:1.93.0-slim-bookworm AS builder
 WORKDIR /app
 
 ARG TARGETARCH
+ARG ENABLE_OCR=0
 
 # Oracle Instant Client configuration (centralized for maintainability)
 ARG ORACLE_IC_BASE_URL="https://download.oracle.com/otn_software/linux/instantclient"
@@ -15,6 +16,13 @@ ARG ORACLE_IC_VERSION_FULL="19.19.0.0.0dbru"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+
+# Optional OCR build dependencies (only installed when ENABLE_OCR=1)
+RUN if [ "${ENABLE_OCR}" = "1" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends \ 
+      libleptonica-dev libtesseract-dev tesseract-ocr \ 
+    && rm -rf /var/lib/apt/lists/*; \
+  fi
 
 ENV CARGO_TARGET_DIR=/app/target
 ENV RUSTFLAGS=""
@@ -58,7 +66,11 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/app/target \
-    cargo build --release --bins && \
+    if [ "${ENABLE_OCR}" = "1" ]; then \
+      cargo build --release --bins --features ocr; \
+    else \
+      cargo build --release --bins; \
+    fi && \
     cp /app/target/release/deductible-tracker /app/deductible-tracker && \
     cp /app/target/release/migrate /app/migrate
 
@@ -74,6 +86,16 @@ WORKDIR /app
 # - openssl: TLS support
 RUN microdnf install -y libaio libnsl openssl && microdnf clean all && \
     ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1 2>/dev/null || true
+
+# Optional OCR runtime libs (only installed when ENABLE_OCR=1)
+ARG ENABLE_OCR=0
+RUN if [ "${ENABLE_OCR}" = "1" ]; then \
+      # Try installing tesseract & leptonica via microdnf. These packages may
+      # require EPEL or additional repos on some Oracle Linux installs. If your
+      # environment doesn't provide them, consider building a Debian-based
+      # runtime image or providing the libs another way.
+      microdnf install -y tesseract leptonica && microdnf clean all || true; \
+    fi
 
 # Copy Oracle Instant Client from builder
 COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient

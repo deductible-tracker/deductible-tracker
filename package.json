@@ -1,0 +1,12 @@
+{
+  "name": "deductible-tracker",
+  "private": true,
+  "scripts": {
+    "tailwind:build": "tailwindcss -i ./static/css/input.css -o ./static/assets/tailwind.css --minify",
+    "tailwind:watch": "tailwindcss -i ./static/css/input.css -o ./static/assets/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.0",
+    "tailwindcss": "^4.2.0"
+  }
+}

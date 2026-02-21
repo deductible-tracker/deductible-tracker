@@ -12,6 +12,9 @@
 .vscode/
 .idea/
 
+# Node
+node_modules/
+
 # Database Wallets
 Wallet_deductibledb/
 
