@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Stage 1: Build (with BuildKit cache mounts)
-FROM rust:1.93.0-slim-bookworm AS builder
+FROM rust:1.93.1-slim-bookworm AS builder
 WORKDIR /app
 
 ARG TARGETARCH
