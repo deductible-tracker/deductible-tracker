@@ -13,9 +13,10 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
 ## Architecture
 
 - **Backend**: Rust (Axum on OCI Ampere)
-- **Database**: Oracle Autonomous Database (ATP)
+- **Database (prod)**: Oracle Autonomous Database (ATP)
+- **Database (local dev)**: SQLite (`dev.db` by default)
 - **Storage**: OCI Object Storage (S3-Compatible API)
-- **Frontend**: Vanilla JS (ES Modules) + TailwindCSS
+- **Frontend**: Vanilla JS (ES Modules) + TailwindCSS + Dexie (IndexedDB)
 
 ## Frontend Asset Optimization
 
@@ -36,14 +37,20 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
 1. **Environment Variables**:
    Create a `.env` file with:
    ```bash
-   DB_USER=...
-   DB_PASSWORD=...
-   DB_CONNECT_STRING=...
+   RUST_ENV=development
+   SQLITE_DB_PATH=dev.db
    OCI_ACCESS_KEY_ID=...
    OCI_SECRET_ACCESS_KEY=...
    OBJECT_STORAGE_ENDPOINT=...
    OBJECT_STORAGE_BUCKET=...
    JWT_SECRET=...
+   ```
+
+   For production (`RUST_ENV=production`), set Oracle credentials:
+   ```bash
+   DB_USER=...
+   DB_PASSWORD=...
+   DB_CONNECT_STRING=...
    ```
 
 2. **Start Local Server**:
@@ -85,11 +92,36 @@ npm run tailwind:build
    ```
 
 3. **Environment Variables**:
-   Set `DYNAMODB_TABLE` and `S3_BUCKET` in your Lambda configuration.
+    Set production runtime variables for Oracle + object storage, including:
+    `RUST_ENV=production`, `DB_USER`, `DB_PASSWORD`, `DB_CONNECT_STRING`,
+    `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OCI_REGION`,
+    `OCI_ACCESS_KEY_ID`, `OCI_SECRET_ACCESS_KEY`, `JWT_SECRET`, and `ALLOWED_ORIGINS`.
 
 ## Project Structure
 
-- `src/main.rs`: API Router & Entry point.
-- `src/db/`: DynamoDB Models.
-- `src/routes/`: Business logic.
-- `static/`: Frontend assets (PWA).
+- `src/main.rs`: server entry point and module wiring.
+- `src/main_sections/`: HTTP/server organization by concern.
+   - `bootstrap/`: startup, state, router bootstrap.
+   - `http/`: middleware, handlers for index/fallback/cache policy.
+   - `assets/`: fingerprint/minification helper pipeline.
+- `src/auth.rs`: auth module root and include wiring.
+- `src/auth_sections/`: auth organization by concern.
+   - `flow/`: OAuth login/callback orchestration.
+   - `profile/`: dev login/logout/me/profile update handlers.
+   - `support/`: token/provider helpers and shared auth utilities.
+- `src/db/core.rs`: DB facade root and include wiring.
+- `src/db/core_sections/`: DB organization by domain.
+   - `bootstrap/`: pool/runtime init and shared setup.
+   - `donations/`: donation/receipt operations and valuations.
+   - `charities/`: charity CRUD and receipt OCR metadata updates.
+- `src/routes/`: API route handlers.
+- `src/db/oracle/` and `src/db/sqlite/`: backend-specific persistence.
+- `static/`: frontend assets (PWA).
+
+## Docker Notes
+
+- `Dockerfile` builds both `deductible-tracker` and `migrate` binaries and ships
+   them in an Oracle Linux 9 runtime image.
+- `docker-compose.yml` expects a `.env` file with the production/runtime env vars.
+- For Oracle wallet usage, mount `Wallet_deductibledb` and set `TNS_ADMIN` to the
+   mounted path inside the container.

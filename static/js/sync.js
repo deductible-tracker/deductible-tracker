@@ -1,17 +1,7 @@
 import db from './db.js';
+import { getCurrentUserId } from './services/current-user.js';
 
 const API_BASE = '/api';
-
-function getCurrentUserId() {
-    try {
-        const raw = localStorage.getItem('current_user');
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        return parsed && parsed.id ? parsed.id : null;
-    } catch (e) {
-        return null;
-    }
-}
 
 export const Sync = {
     async pushChanges() {

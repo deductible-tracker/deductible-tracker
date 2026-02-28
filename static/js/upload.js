@@ -1,4 +1,5 @@
 import db from './db.js';
+import { getCurrentUserId } from './services/current-user.js';
 
 function getToastHost() {
     let host = document.getElementById('toast-host');
@@ -17,25 +18,25 @@ function showToast(message, type = 'info') {
 
     const palette = {
         success: {
-            badge: 'bg-emerald-100 text-emerald-700',
+            badge: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
             title: 'Success',
-            titleColor: 'text-emerald-700'
+            titleColor: 'text-emerald-700 dark:text-emerald-300'
         },
         error: {
-            badge: 'bg-rose-100 text-rose-700',
+            badge: 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300',
             title: 'Upload failed',
-            titleColor: 'text-rose-700'
+            titleColor: 'text-rose-700 dark:text-rose-300'
         },
         info: {
-            badge: 'bg-slate-100 text-slate-700',
+            badge: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
             title: 'Notice',
-            titleColor: 'text-slate-700'
+            titleColor: 'text-slate-700 dark:text-slate-300'
         }
     };
 
     const style = palette[type] || palette.info;
 
-    toast.className = 'pointer-events-auto rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition duration-300';
+    toast.className = 'pointer-events-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-sm transition duration-300';
     toast.innerHTML = `
         <div class="flex items-start gap-3">
             <span class="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${style.badge}">
@@ -43,9 +44,9 @@ function showToast(message, type = 'info') {
             </span>
             <div class="min-w-0 flex-1">
                 <p class="text-sm font-semibold ${style.titleColor}">${style.title}</p>
-                <p class="mt-0.5 text-sm text-slate-600 wrap-break-word">${message}</p>
+                <p class="mt-0.5 text-sm text-slate-600 dark:text-slate-300 wrap-break-word">${message}</p>
             </div>
-            <button type="button" class="toast-close text-slate-400 hover:text-slate-600" aria-label="Dismiss">✕</button>
+            <button type="button" class="toast-close text-slate-400 hover:text-slate-600 dark:text-slate-300" aria-label="Dismiss">✕</button>
         </div>
     `;
 
@@ -57,17 +58,6 @@ function showToast(message, type = 'info') {
     toast.querySelector('.toast-close')?.addEventListener('click', dismiss);
     host.appendChild(toast);
     setTimeout(dismiss, 4200);
-}
-
-function getCurrentUserId() {
-    try {
-        const raw = localStorage.getItem('current_user');
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        return parsed && parsed.id ? parsed.id : null;
-    } catch (e) {
-        return null;
-    }
 }
 
 async function chooseDonationForUpload() {

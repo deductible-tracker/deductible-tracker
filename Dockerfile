@@ -14,13 +14,13 @@ ARG ORACLE_IC_VERSION_FULL="19.19.0.0.0dbru"
 
 # Install build dependencies in a single layer and clean up
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates \
+  pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates libsqlite3-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Optional OCR build dependencies (only installed when ENABLE_OCR=1)
 RUN if [ "${ENABLE_OCR}" = "1" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends \ 
-      libleptonica-dev libtesseract-dev tesseract-ocr \ 
+    apt-get update && apt-get install -y --no-install-recommends \
+      libleptonica-dev libtesseract-dev tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*; \
   fi
 
@@ -67,9 +67,9 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/app/target \
     if [ "${ENABLE_OCR}" = "1" ]; then \
-      cargo build --release --bins --features ocr; \
+      CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release --bins --features ocr -j1; \
     else \
-      cargo build --release --bins; \
+      CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release --bins -j1; \
     fi && \
     cp /app/target/release/deductible-tracker /app/deductible-tracker && \
     cp /app/target/release/migrate /app/migrate
@@ -84,7 +84,7 @@ WORKDIR /app
 # - libaio: async I/O required by Oracle OCI
 # - libnsl: Oracle Net; OL 9 ships libnsl.so.3 (libnsl2) but IC 19 links against libnsl.so.1
 # - openssl: TLS support
-RUN microdnf install -y libaio libnsl openssl && microdnf clean all && \
+RUN microdnf install -y libaio libnsl openssl sqlite-libs && microdnf clean all && \
     ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1 2>/dev/null || true
 
 # Optional OCR runtime libs (only installed when ENABLE_OCR=1)
@@ -100,6 +100,8 @@ RUN if [ "${ENABLE_OCR}" = "1" ]; then \
 # Copy Oracle Instant Client from builder
 COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
 ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
+ENV RUST_ENV=production
+ENV TNS_ADMIN=/app/wallet
 
 # Copy binaries and assets
 COPY --from=builder /app/deductible-tracker /app/deductible-tracker

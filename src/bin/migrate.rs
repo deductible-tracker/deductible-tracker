@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::Path;
+use deductible_tracker::db::RuntimeMode;
 
 fn main() -> anyhow::Result<()> {
     // Load .env if it exists
@@ -8,9 +9,9 @@ fn main() -> anyhow::Result<()> {
 
     println!("Starting database migration...");
 
-    let env_mode = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
+    let runtime_mode = RuntimeMode::from_env()?;
 
-    if env_mode == "production" {
+    if runtime_mode == RuntimeMode::Production {
         // Oracle path (existing behavior)
         use r2d2_oracle::OracleConnectionManager;
         use r2d2::Pool;
@@ -69,11 +70,17 @@ fn main() -> anyhow::Result<()> {
                 Ok(_) => println!("Success."),
                 Err(e) => {
                     let err_msg = e.to_string();
-                    if err_msg.contains("ORA-00955") {
+                    if err_msg.contains("ORA-00955")
+                        || err_msg.contains("ORA-02275")
+                        || err_msg.contains("ORA-02298")
+                    {
                         println!("Skipping (Table/Object already exists).");
                     } else {
                         eprintln!("Error executing statement: {}", e);
-                        if !err_msg.contains("ORA-00955") {
+                        if !err_msg.contains("ORA-00955")
+                            && !err_msg.contains("ORA-02275")
+                            && !err_msg.contains("ORA-02298")
+                        {
                             return Err(anyhow::anyhow!("Migration failed: {}", e));
                         }
                     }
@@ -89,7 +96,9 @@ fn main() -> anyhow::Result<()> {
         use r2d2_sqlite::SqliteConnectionManager;
         use r2d2::Pool as R2Pool;
 
-        let db_path = env::var("DEV_SQLITE_PATH").unwrap_or_else(|_| "dev.db".to_string());
+        let db_path = env::var("SQLITE_DB_PATH")
+            .or_else(|_| env::var("DEV_SQLITE_PATH"))
+            .unwrap_or_else(|_| "dev.db".to_string());
         println!("Initializing SQLite DB at {}", db_path);
         let manager = SqliteConnectionManager::file(&db_path);
         let pool = R2Pool::builder().max_size(1).build(manager).map_err(|e| anyhow::anyhow!("Failed to create SQLite pool: {}", e))?;
@@ -100,8 +109,6 @@ fn main() -> anyhow::Result<()> {
                 id TEXT PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE,
                 name TEXT,
-                phone TEXT,
-                tax_id TEXT,
                 filing_status TEXT,
                 agi REAL,
                 marginal_tax_rate REAL,
@@ -221,8 +228,6 @@ fn main() -> anyhow::Result<()> {
 
         let _ = conn.execute_batch("ALTER TABLE donations ADD COLUMN donation_category TEXT;");
         let _ = conn.execute_batch("ALTER TABLE donations ADD COLUMN donation_amount REAL;");
-        let _ = conn.execute_batch("ALTER TABLE users ADD COLUMN phone TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE users ADD COLUMN tax_id TEXT;");
         let _ = conn.execute_batch("ALTER TABLE users ADD COLUMN filing_status TEXT;");
         let _ = conn.execute_batch("ALTER TABLE users ADD COLUMN agi REAL;");
         let _ = conn.execute_batch("ALTER TABLE users ADD COLUMN marginal_tax_rate REAL;");

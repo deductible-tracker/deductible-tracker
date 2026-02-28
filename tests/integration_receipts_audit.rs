@@ -1,5 +1,6 @@
 use deductible_tracker::db;
 use uuid::Uuid;
+use deductible_tracker::db::models::{NewCharity, NewDonation, NewReceipt};
 
 #[tokio::test]
 async fn receipt_ocr_and_audit_flow() {
@@ -14,44 +15,53 @@ async fn receipt_ocr_and_audit_flow() {
 
     let charity_id = format!("test-charity-{}", Uuid::new_v4());
     let charity_name = format!("Test Charity {}", Uuid::new_v4());
-    db::create_charity(
-        &pool,
-        &charity_id,
-        &user_id,
-        &charity_name,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        &None,
-        now,
-    )
+    let charity = NewCharity {
+        id: charity_id.clone(),
+        user_id: user_id.clone(),
+        name: charity_name,
+        ein: None,
+        category: None,
+        status: None,
+        classification: None,
+        nonprofit_type: None,
+        deductibility: None,
+        street: None,
+        city: None,
+        state: None,
+        zip: None,
+        created_at: now,
+    };
+    db::create_charity(&pool, &charity)
     .await
     .expect("create_charity");
 
     let donation_id = format!("test-donation-{}", Uuid::new_v4());
     let donation_date = chrono::NaiveDate::from_ymd_opt(2026, 2, 18).expect("valid date");
-    db::add_donation(
-        &pool,
-        &donation_id,
-        &user_id,
-        2026,
-        donation_date,
-        &Some("money".to_string()),
-        &charity_id,
-        &Some(123.45),
-        &Some("integration test".to_string()),
-        now,
-    )
+    let donation = NewDonation {
+        id: donation_id.clone(),
+        user_id: user_id.clone(),
+        year: 2026,
+        date: donation_date,
+        category: Some("money".to_string()),
+        charity_id: charity_id.clone(),
+        amount: Some(123.45),
+        notes: Some("integration test".to_string()),
+        created_at: now,
+    };
+    db::add_donation(&pool, &donation)
     .await
     .expect("add_donation");
 
-    let _ = db::add_receipt(&pool, &receipt_id, &donation_id, &key, &Some("sample.png".to_string()), &Some("image/png".to_string()), &Some(123i64), now).await.expect("add_receipt");
+    let receipt = NewReceipt {
+        id: receipt_id.clone(),
+        donation_id: donation_id.clone(),
+        key,
+        file_name: Some("sample.png".to_string()),
+        content_type: Some("image/png".to_string()),
+        size: Some(123i64),
+        created_at: now,
+    };
+    db::add_receipt(&pool, &receipt).await.expect("add_receipt");
 
     // Persist OCR results
     let ocr_text = Some("Sample OCR text".to_string());
@@ -76,5 +86,5 @@ async fn receipt_ocr_and_audit_flow() {
     db::log_audit(&pool, &audit_id, &user_id, "test_action", "receipts", &Some(receipt_id.clone()), &details).await.expect("log_audit");
 
     let logs = db::list_audit_logs(&pool, &user_id, None).await.expect("list_audit_logs");
-    assert!(logs.len() >= 1, "expected at least one audit log");
+    assert!(!logs.is_empty(), "expected at least one audit log");
 }

@@ -1,14 +1,13 @@
-import db from './db.js';
+import { apiJson } from './services/http.js';
 
 export async function importCSV(csvString) {
-    const res = await fetch('/api/donations/import', {
+    const { res, data } = await apiJson('/api/donations/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ csv: csvString })
     });
     if (!res.ok) throw new Error('Import failed');
-    return await res.json();
+    return data;
 }
 
 // Basic file picker for CSV import

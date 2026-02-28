@@ -1,12 +1,13 @@
+import { apiJson } from './services/http.js';
+
 export async function suggestValuations(query) {
-    const res = await fetch('/api/valuations/suggest', {
+    const { res, data } = await apiJson('/api/valuations/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ query })
     });
     if (!res.ok) throw new Error('Valuation suggest failed');
-    return await res.json();
+    return data;
 }
 
 // Expose for quick console usage

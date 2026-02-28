@@ -16,7 +16,7 @@ cargo run --bin migrate
 RUST_ENV=development cargo run
 ```
 
-By default the code will create `dev.db` in the repo root unless you set `DEV_SQLITE_PATH`.
+By default the code will create `dev.db` in the repo root unless you set `SQLITE_DB_PATH` (or the legacy `DEV_SQLITE_PATH`).
 
 ## Required environment variables (overview)
 

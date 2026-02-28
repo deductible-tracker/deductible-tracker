@@ -29,14 +29,14 @@ fn csv_escape(s: &str) -> String {
 }
 
 fn txf_escape_line(s: &str) -> String {
-    s.replace('^', " ").replace('\r', " ").replace('\n', " ")
+    s.replace(['^', '\r', '\n'], " ")
 }
 
 pub async fn list_available_years(
     State(state): State<AppState>,
     user: AuthenticatedUser,
 ) -> impl IntoResponse {
-    match db::list_donations(&state.db, &user.id, None).await {
+    match db::donations::list_donations(&state.db, &user.id, None).await {
         Ok(list) => {
             let mut year_set: BTreeSet<i32> = BTreeSet::new();
             for d in list {
@@ -55,7 +55,7 @@ pub async fn export_csv(
     user: AuthenticatedUser,
     Query(params): Query<ExportParams>,
 ) -> impl IntoResponse {
-    match db::list_donations(&state.db, &user.id, params.year).await {
+    match db::donations::list_donations(&state.db, &user.id, params.year).await {
         Ok(list) => {
             let mut w = String::new();
             w.push_str("id,date,category,amount,charity_name,charity_id,notes\n");
@@ -90,7 +90,7 @@ pub async fn export_tax_txf(
     user: AuthenticatedUser,
     Query(params): Query<ExportParams>,
 ) -> impl IntoResponse {
-    match db::list_donations(&state.db, &user.id, params.year).await {
+    match db::donations::list_donations(&state.db, &user.id, params.year).await {
         Ok(list) => {
             let mut out = String::new();
             out.push_str("V042\n");
@@ -145,7 +145,7 @@ pub async fn export_audit_csv(
     Query(params): Query<AuditExportParams>,
 ) -> impl IntoResponse {
     let since_dt = params.since.as_ref().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.with_timezone(&chrono::Utc));
-    match db::list_audit_logs(&state.db, &user.id, since_dt).await {
+    match db::audit::list_audit_logs(&state.db, &user.id, since_dt).await {
         Ok(list) => {
             let mut w = String::new();
             w.push_str("id,user_id,action,table_name,record_id,details,created_at\n");

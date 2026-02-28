@@ -3,8 +3,6 @@ CREATE TABLE users (
     id VARCHAR2(255) PRIMARY KEY,
     email VARCHAR2(255) NOT NULL UNIQUE,
     name VARCHAR2(255),
-    phone VARCHAR2(64),
-    tax_id VARCHAR2(64),
     filing_status VARCHAR2(32),
     agi NUMBER(14,2),
     marginal_tax_rate NUMBER(6,4),
@@ -56,16 +54,16 @@ CREATE TABLE charities (
 
 CREATE INDEX idx_charities_user ON charities(user_id);
 CREATE UNIQUE INDEX idx_charities_user_name ON charities(user_id, LOWER(name));
-ALTER TABLE donations ADD CONSTRAINT fk_donations_charity FOREIGN KEY (charity_id) REFERENCES charities(id);
+ALTER TABLE donations ADD CONSTRAINT fk_donations_charity FOREIGN KEY (charity_id) REFERENCES charities(id) ENABLE NOVALIDATE;
 
 -- Receipts Table
 CREATE TABLE receipts (
     id VARCHAR2(255) PRIMARY KEY,
     donation_id VARCHAR2(255) NOT NULL,
-    key VARCHAR2(1024) NOT NULL,
+    receipt_key VARCHAR2(1024) NOT NULL,
     file_name VARCHAR2(1024),
     content_type VARCHAR2(255),
-    size NUMBER,
+    receipt_size NUMBER,
     ocr_text CLOB,
     ocr_date DATE,
     ocr_amount NUMBER,
@@ -76,7 +74,7 @@ CREATE TABLE receipts (
 );
 
 CREATE INDEX idx_receipts_donation ON receipts(donation_id);
-CREATE INDEX idx_receipts_donation_key ON receipts(donation_id, key);
+CREATE INDEX idx_receipts_donation_key ON receipts(donation_id, receipt_key);
 
 -- OCR extraction/table for receipts (fields embedded in receipts above)
 

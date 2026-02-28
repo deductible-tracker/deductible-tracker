@@ -14,6 +14,7 @@ use crate::auth::AuthenticatedUser;
 use crate::db;
 use crate::ocr;
 use serde::Serialize;
+use crate::db::models::NewReceipt;
 
 #[derive(Deserialize)]
 pub struct UploadRequest {
@@ -132,16 +133,17 @@ pub async fn confirm_receipt(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
 
-    if let Err(e) = db::add_receipt(
-        &state.db,
-        &id,
-        &req.donation_id,
-        &req.key,
-        &req.file_name,
-        &req.content_type,
-        &req.size,
-        now,
-    ).await {
+    let new_receipt = NewReceipt {
+        id: id.clone(),
+        donation_id: req.donation_id.clone(),
+        key: req.key.clone(),
+        file_name: req.file_name.clone(),
+        content_type: req.content_type.clone(),
+        size: req.size,
+        created_at: now,
+    };
+
+    if let Err(e) = db::receipts::add_receipt(&state.db, &new_receipt).await {
         tracing::error!("DB Error adding receipt: {}", e);
         return (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response();
     }
@@ -159,7 +161,7 @@ pub async fn list_receipts(
     user: AuthenticatedUser,
     Query(params): Query<ListReceiptsParams>,
 ) -> impl IntoResponse {
-    match db::list_receipts(&state.db, &user.id, params.donation_id.clone()).await {
+    match db::receipts::list_receipts(&state.db, &user.id, params.donation_id.clone()).await {
         Ok(list) => AxumJson(serde_json::json!({ "receipts": list })).into_response(),
         Err(e) => {
             tracing::error!("DB Error listing receipts: {}", e);
@@ -179,26 +181,26 @@ pub async fn ocr_receipt(
     Json(req): Json<OcrRequest>
 ) -> impl IntoResponse {
     // Fetch receipt
-    match crate::db::get_receipt(&state.db, &user.id, &req.id).await {
+    match crate::db::receipts::get_receipt(&state.db, &user.id, &req.id).await {
         Ok(Some(receipt)) => {
             // Run local OCR using Tesseract (leptess). Requires tesseract installed on the host.
             match ocr::run_ocr(&state, &receipt.key).await {
                 Ok((text, date_opt, amt_opt)) => {
                     let ocr_status = Some("done".to_string());
-                    if let Err(e) = crate::db::set_receipt_ocr(&state.db, &receipt.id, &Some(text.clone()), &date_opt, &amt_opt, &ocr_status).await {
+                    if let Err(e) = crate::db::receipts::set_receipt_ocr(&state.db, &receipt.id, &Some(text.clone()), &date_opt, &amt_opt, &ocr_status).await {
                         tracing::error!("Failed to set OCR: {}", e);
                         return (StatusCode::INTERNAL_SERVER_ERROR, "OCR Error").into_response();
                     }
                     // Also log audit
                     let audit_id = Uuid::new_v4().to_string();
                     let details = Some(format!("OCR run for receipt {}: date={:?} amount={:?}", receipt.id, date_opt, amt_opt));
-                    let _ = crate::db::log_audit(&state.db, &audit_id, &user.id, "ocr", "receipts", &Some(receipt.id.clone()), &details).await;
+                    let _ = crate::db::audit::log_audit(&state.db, &audit_id, &user.id, "ocr", "receipts", &Some(receipt.id.clone()), &details).await;
 
                     (StatusCode::OK, AxumJson(serde_json::json!({ "status": "ocr_completed", "id": receipt.id }))).into_response()
                 }
                 Err(e) => {
                     tracing::error!("OCR run failed: {}", e);
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "OCR Failure").into_response();
+                    (StatusCode::INTERNAL_SERVER_ERROR, "OCR Failure").into_response()
                 }
             }
         }
