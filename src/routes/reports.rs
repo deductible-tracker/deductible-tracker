@@ -20,11 +20,18 @@ pub struct YearsResponse {
 }
 
 fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
-        let escaped = s.replace('"', "\"\"");
+    let mut normalized = s.to_string();
+    if let Some(first) = normalized.chars().next() {
+        if matches!(first, '=' | '+' | '-' | '@') {
+            normalized.insert(0, '\'');
+        }
+    }
+
+    if normalized.contains(',') || normalized.contains('"') || normalized.contains('\n') {
+        let escaped = normalized.replace('"', "\"\"");
         format!("\"{}\"", escaped)
     } else {
-        s.to_string()
+        normalized
     }
 }
 

@@ -48,6 +48,8 @@ Database variables (production / Oracle):
 Other useful variables:
 
 - `ALLOWED_ORIGINS` — comma-separated origins for CORS (required in production).
+- `RATE_LIMIT_PER_SECOND` / `RATE_LIMIT_BURST` — global request throttling controls.
+- `AUTH_RATE_LIMIT_PER_SECOND` / `AUTH_RATE_LIMIT_BURST` — stricter throttling for `/auth/*` routes.
 - `RUST_LOG` — logging configuration string (e.g. `info`).
 - `PROPUBLICA_API_BASE_URL` — optional override for ProPublica endpoint base (defaults to `https://projects.propublica.org/nonprofits/api/v2`).
 

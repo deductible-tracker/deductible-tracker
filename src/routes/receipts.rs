@@ -16,6 +16,17 @@ use crate::ocr;
 use serde::Serialize;
 use crate::db::models::NewReceipt;
 
+const MAX_RECEIPT_SIZE_BYTES: i64 = 10 * 1024 * 1024;
+
+fn allowed_ext_for_content_type(content_type: &str) -> Option<&'static str> {
+    match content_type {
+        "image/jpeg" => Some("jpg"),
+        "image/png" => Some("png"),
+        "application/pdf" => Some("pdf"),
+        _ => None,
+    }
+}
+
 #[derive(Deserialize)]
 pub struct UploadRequest {
     file_type: String, // e.g., "image/jpeg"
@@ -29,11 +40,9 @@ pub async fn generate_upload_url(
 ) -> impl IntoResponse {
     let user_id = user.id;
 
-    let ext = match req.file_type.as_str() {
-        "image/jpeg" => "jpg",
-        "image/png" => "png",
-        "application/pdf" => "pdf",
-        _ => return (StatusCode::BAD_REQUEST, "Unsupported file type").into_response(),
+    let ext = match allowed_ext_for_content_type(req.file_type.as_str()) {
+        Some(ext) => ext,
+        None => return (StatusCode::BAD_REQUEST, "Unsupported file type").into_response(),
     };
 
     let now = chrono::Utc::now();
@@ -121,6 +130,24 @@ pub async fn confirm_receipt(
         return (StatusCode::FORBIDDEN, "Forbidden").into_response();
     }
 
+    if let Some(content_type) = req.content_type.as_deref() {
+        let Some(expected_ext) = allowed_ext_for_content_type(content_type) else {
+            return (StatusCode::BAD_REQUEST, "Unsupported content type").into_response();
+        };
+
+        if let Some(actual_ext) = req.key.rsplit('.').next() {
+            if actual_ext != expected_ext {
+                return (StatusCode::BAD_REQUEST, "File extension/content type mismatch").into_response();
+            }
+        }
+    }
+
+    if let Some(size) = req.size {
+        if size <= 0 || size > MAX_RECEIPT_SIZE_BYTES {
+            return (StatusCode::BAD_REQUEST, "Invalid or oversized receipt").into_response();
+        }
+    }
+
     match db::user_owns_donation(&state.db, &user.id, &req.donation_id).await {
         Ok(true) => {}
         Ok(false) => return (StatusCode::FORBIDDEN, "Donation not found for user").into_response(),
@@ -183,6 +210,17 @@ pub async fn ocr_receipt(
     // Fetch receipt
     match crate::db::receipts::get_receipt(&state.db, &user.id, &req.id).await {
         Ok(Some(receipt)) => {
+            if let Some(content_type) = receipt.content_type.as_deref() {
+                if allowed_ext_for_content_type(content_type).is_none() {
+                    return (StatusCode::BAD_REQUEST, "Unsupported content type").into_response();
+                }
+            }
+            if let Some(size) = receipt.size {
+                if size <= 0 || size > MAX_RECEIPT_SIZE_BYTES {
+                    return (StatusCode::BAD_REQUEST, "Invalid or oversized receipt").into_response();
+                }
+            }
+
             // Run local OCR using Tesseract (leptess). Requires tesseract installed on the host.
             match ocr::run_ocr(&state, &receipt.key).await {
                 Ok((text, date_opt, amt_opt)) => {

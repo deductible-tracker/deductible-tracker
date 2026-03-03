@@ -1,6 +1,10 @@
 import db from './db.js';
 import { Sync } from './sync.js';
 import { apiJson } from './services/http.js';
+import {
+    captureAppShellTemplate as captureAppShellTemplateFromElement,
+    restoreAppShellIfMissingRouteContent,
+} from './services/app-shell.js';
 import { formatCurrency, formatFigureText, calculateDonationFigures } from './services/donation-figures.js';
 import {
     createDonationOnServer,
@@ -43,12 +47,24 @@ const routes = {
 let AUTHENTICATED = false;
 // Route to return to after successful login
 let RETURN_TO = null;
+let APP_SHELL_TEMPLATE = '';
 const CHARITY_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 // Cached auth check to avoid spamming /api/me (rate-limited by governor)
 let lastAuthCheckAt = 0;
 let lastAuthResult = false;
 let authCheckInFlight = null;
 let lastUserFetchAt = 0;
+
+function captureAppShellTemplate() {
+    if (APP_SHELL_TEMPLATE) return;
+    const app = document.getElementById('app');
+    APP_SHELL_TEMPLATE = captureAppShellTemplateFromElement(app);
+}
+
+function restoreAppShellIfNeeded() {
+    const app = document.getElementById('app');
+    restoreAppShellIfMissingRouteContent(app, APP_SHELL_TEMPLATE);
+}
 
 function getProfileStorageKey() {
     const userId = getCurrentUserId();
@@ -317,6 +333,7 @@ async function renderLogin() {
                     await clearUserCaches();
                 }
                 AUTHENTICATED = true;
+                restoreAppShellIfNeeded();
                 document.getElementById('nav-container').classList.remove('hidden', 'sm:hidden');
                 document.getElementById('auth-actions').classList.remove('hidden');
 
@@ -534,6 +551,7 @@ async function updateSyncStatus() {
 // --- Init ---
 async function init() {
     console.log('App initializing...');
+    captureAppShellTemplate();
 
     try {
         await db.open();

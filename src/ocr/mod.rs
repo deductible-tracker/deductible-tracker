@@ -11,6 +11,30 @@ mod real {
     use chrono::NaiveDate;
     use regex::Regex;
 
+    const MAX_OCR_BYTES: usize = 10 * 1024 * 1024;
+
+    fn detect_receipt_type(bytes: &[u8]) -> Option<&'static str> {
+        if bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+            return Some("image/jpeg");
+        }
+        if bytes.len() >= 8
+            && bytes[0] == 0x89
+            && bytes[1] == b'P'
+            && bytes[2] == b'N'
+            && bytes[3] == b'G'
+            && bytes[4] == 0x0D
+            && bytes[5] == 0x0A
+            && bytes[6] == 0x1A
+            && bytes[7] == 0x0A
+        {
+            return Some("image/png");
+        }
+        if bytes.starts_with(b"%PDF-") {
+            return Some("application/pdf");
+        }
+        None
+    }
+
     pub async fn run_ocr(state: &AppState, key: &str) -> anyhow::Result<(String, Option<NaiveDate>, Option<i64>)> {
         // Presign read URL from storage
         let presigned = state.storage.presign_read(key, std::time::Duration::from_secs(300)).await.map_err(|e| anyhow!("presign read: {}", e))?;
@@ -22,6 +46,14 @@ mod real {
             return Err(anyhow!("failed to download object: {}", resp.status()));
         }
         let bytes = resp.bytes().await.map_err(|e| anyhow!("reading bytes: {}", e))?;
+
+        if bytes.is_empty() || bytes.len() > MAX_OCR_BYTES {
+            return Err(anyhow!("receipt size is invalid for OCR"));
+        }
+
+        if detect_receipt_type(bytes.as_ref()).is_none() {
+            return Err(anyhow!("unsupported receipt file type for OCR"));
+        }
 
         // write to temp file
         let mut tmp = NamedTempFile::new().map_err(|e| anyhow!("tmpfile: {}", e))?;

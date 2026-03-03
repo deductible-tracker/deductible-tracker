@@ -56,7 +56,7 @@ pub async fn dev_login(
     }
 }
 
-pub async fn logout() -> impl IntoResponse {
+pub async fn logout(headers: HeaderMap) -> impl IntoResponse {
     // Emit Set-Cookie headers that clear the auth cookie. Some browsers are picky
     // about SameSite/Secure attributes when clearing cookies, so send variants
     // that cover common cases.
@@ -72,6 +72,11 @@ pub async fn logout() -> impl IntoResponse {
     }
 
     let mut response = (StatusCode::OK, "OK").into_response();
+
+    if let Some(token) = extract_token_from_headers(&headers) {
+        let _ = revoke_token_str(&token);
+    }
+
     if let Ok(header_value) = HeaderValue::from_str(&cookie_strict) {
         response.headers_mut().append(header::SET_COOKIE, header_value);
     }
@@ -206,6 +211,7 @@ fn create_jwt(user: &UserProfile) -> anyhow::Result<String> {
         provider: user.provider.clone(),
         name: user.name.clone(),
         exp: expiration as usize,
+        jti: uuid::Uuid::new_v4().to_string(),
         iss: issuer,
         aud: audience,
     };

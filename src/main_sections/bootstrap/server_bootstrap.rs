@@ -107,16 +107,34 @@ async fn main() -> anyhow::Result<()> {
                 env::var("RATE_LIMIT_PER_SECOND")
                     .ok()
                     .and_then(|v| v.parse::<u64>().ok())
-                    .unwrap_or(1200),
+                    .unwrap_or(150),
             )
             .burst_size(
                 env::var("RATE_LIMIT_BURST")
                     .ok()
                     .and_then(|v| v.parse::<u32>().ok())
-                    .unwrap_or(2400),
+                    .unwrap_or(300),
             )
             .finish()
             .expect("governor config"),
+    );
+
+    let auth_governor_config = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(
+                env::var("AUTH_RATE_LIMIT_PER_SECOND")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(5),
+            )
+            .burst_size(
+                env::var("AUTH_RATE_LIMIT_BURST")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(20),
+            )
+            .finish()
+            .expect("auth governor config"),
     );
 
     // CORS configuration (no permissive mode)
@@ -180,6 +198,13 @@ async fn main() -> anyhow::Result<()> {
             .allow_credentials(true)
     };
 
+    let auth_router = Router::new()
+        .route("/auth/login/{provider}", get(auth::login))
+        .route("/auth/callback/{provider}", get(auth::callback))
+        .route("/auth/logout", post(auth::logout))
+        .route("/auth/dev/login", post(auth::dev_login))
+        .layer(GovernorLayer::new(auth_governor_config));
+
     // Router Setup
     let app = Router::new()
         .route("/", get(serve_index))
@@ -206,12 +231,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/reports/audit", get(routes::reports::export_audit_csv))
         .route("/api/tax/marginal-rate", get(routes::tax::marginal_rate))
         .route("/api/me", get(auth::me).put(auth::update_me))
-        // Auth Routes
-        .route("/auth/login/{provider}", get(auth::login))
-        .route("/auth/callback/{provider}", get(auth::callback))
-        .route("/auth/logout", post(auth::logout))
-        // Dev only login
-        .route("/auth/dev/login", post(auth::dev_login))
+        .merge(auth_router)
         .route("/sw.js", get(serve_service_worker))
         .nest_service("/assets", ServeDir::new("static/assets"))
         .nest_service("/vendor", ServeDir::new("static/vendor"))
@@ -238,7 +258,7 @@ async fn main() -> anyhow::Result<()> {
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
-            HeaderValue::from_static("default-src 'self'; script-src 'self'; script-src-elem 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self';"),
+            HeaderValue::from_static("default-src 'self'; script-src 'self'; script-src-elem 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self';"),
         ))
         .with_state(state);
 

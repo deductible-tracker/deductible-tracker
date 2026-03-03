@@ -11,6 +11,27 @@ fn build_auth_cookie(token: &str) -> String {
     cookie
 }
 
+fn build_oauth_state_cookie(state_token: &str) -> String {
+    let secure = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+    let mut cookie = format!(
+        "oauth_state={}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600",
+        state_token
+    );
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
+fn clear_oauth_state_cookie() -> String {
+    let secure = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+    let mut cookie = "oauth_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".to_string();
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
 // `logout()` now emits explicit Set-Cookie headers to clear the auth cookie,
 // so the older helper `clear_auth_cookie` is no longer needed.
 

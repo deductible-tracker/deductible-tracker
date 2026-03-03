@@ -16,12 +16,15 @@ use jsonwebtoken::{encode, decode, EncodingKey, DecodingKey, Header, Validation}
 use chrono::{Utc, Duration};
 use serde_json::Value;
 use std::sync::OnceLock;
+use std::sync::Mutex;
+use std::collections::HashMap;
 
 const AUTH_COOKIE_NAME: &str = "auth_token";
 static JWT_SECRET: OnceLock<String> = OnceLock::new();
 static JWT_ISSUER: OnceLock<Option<String>> = OnceLock::new();
 static JWT_AUDIENCE: OnceLock<Option<String>> = OnceLock::new();
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static REVOKED_JTIS: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
 
 #[derive(Deserialize)]
 pub struct AuthCallback {
@@ -67,6 +70,7 @@ pub struct UpdateMeRequest {
 struct Claims {
     sub: String,
     exp: usize,
+    jti: String,
     email: String,
     provider: String,
     name: String,
@@ -106,6 +110,19 @@ where
 
 use axum::http::HeaderMap;
 
+fn extract_cookie_by_name(headers: &HeaderMap, cookie_name: &str) -> Option<String> {
+    let cookie_header = headers.get(header::COOKIE).and_then(|h| h.to_str().ok())?;
+    for cookie in cookie_header.split(';') {
+        let cookie = cookie.trim();
+        if let Some((k, v)) = cookie.split_once('=') {
+            if k == cookie_name {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
 // Extract token directly from headers (used by middleware)
 pub fn extract_token_from_headers(headers: &HeaderMap) -> Option<String> {
     if let Some(auth_header) = headers.get(axum::http::header::AUTHORIZATION).and_then(|h| h.to_str().ok()) {
@@ -114,17 +131,7 @@ pub fn extract_token_from_headers(headers: &HeaderMap) -> Option<String> {
         }
     }
 
-    if let Some(cookie_header) = headers.get(header::COOKIE).and_then(|h| h.to_str().ok()) {
-        for cookie in cookie_header.split(';') {
-            let cookie = cookie.trim();
-            if let Some((k, v)) = cookie.split_once('=') {
-                if k == AUTH_COOKIE_NAME {
-                    return Some(v.to_string());
-                }
-            }
-        }
-    }
-    None
+    extract_cookie_by_name(headers, AUTH_COOKIE_NAME)
 }
 
 // Validate a token string and return AuthenticatedUser (used by extractor & middleware)
@@ -153,12 +160,61 @@ pub fn validate_token_str(token: &str) -> Result<AuthenticatedUser, (StatusCode,
         (StatusCode::UNAUTHORIZED, "Invalid token".to_string())
     })?;
 
+    if is_token_revoked(&token_data.claims.jti, token_data.claims.exp) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid token".to_string()));
+    }
+
     Ok(AuthenticatedUser {
         id: token_data.claims.sub,
         email: token_data.claims.email,
         name: token_data.claims.name,
         provider: token_data.claims.provider,
     })
+}
+
+pub fn revoke_token_str(token: &str) -> Result<(), ()> {
+    let secret = jwt_secret().map_err(|_| ())?;
+
+    let mut validation = Validation::default();
+    validation.validate_exp = false;
+    if let Some(issuer) = jwt_issuer() {
+        validation.set_issuer(&[issuer.as_str()]);
+    }
+    if let Some(audience) = jwt_audience() {
+        validation.set_audience(&[audience.as_str()]);
+    }
+
+    let token_data = decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    ).map_err(|_| ())?;
+
+    let now_ts = Utc::now().timestamp();
+    let now = if now_ts > 0 { now_ts as usize } else { 0 };
+    let revocations = revoked_jtis();
+    let mut guard = revocations.lock().map_err(|_| ())?;
+    guard.retain(|_, exp| *exp > now);
+    guard.insert(token_data.claims.jti, token_data.claims.exp);
+    Ok(())
+}
+
+fn revoked_jtis() -> &'static Mutex<HashMap<String, usize>> {
+    REVOKED_JTIS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn is_token_revoked(jti: &str, exp: usize) -> bool {
+    let now_ts = Utc::now().timestamp();
+    let now = if now_ts > 0 { now_ts as usize } else { 0 };
+    let revocations = revoked_jtis();
+    if let Ok(mut guard) = revocations.lock() {
+        guard.retain(|_, expires_at| *expires_at > now);
+        if exp <= now {
+            return true;
+        }
+        return guard.contains_key(jti);
+    }
+    false
 }
 
 pub async fn login(Path(provider): Path<String>) -> impl IntoResponse {
@@ -193,17 +249,24 @@ pub async fn login(Path(provider): Path<String>) -> impl IntoResponse {
         Ok(s) => s,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
+    let state_for_cookie = state.clone();
 
     let (authorize_url, _csrf_state) = client
         .authorize_url(|| oauth2::CsrfToken::new(state))
         .url();
 
-    Redirect::to(authorize_url.as_str()).into_response()
+    let mut response = Redirect::to(authorize_url.as_str()).into_response();
+    let state_cookie = build_oauth_state_cookie(&state_for_cookie);
+    if let Ok(header_value) = HeaderValue::from_str(&state_cookie) {
+        response.headers_mut().append(header::SET_COOKIE, header_value);
+    }
+    response
 }
 
 pub async fn callback(
     Path(provider): Path<String>,
     Query(params): Query<AuthCallback>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let cfg = match load_provider_config(&provider) {
@@ -211,9 +274,25 @@ pub async fn callback(
         Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
     };
 
+    let state_cookie = extract_cookie_by_name(&headers, "oauth_state");
+    if state_cookie.as_deref() != Some(params.state.as_str()) {
+        tracing::warn!("OAuth state cookie mismatch or missing");
+        let mut response = (StatusCode::UNAUTHORIZED, "Invalid state").into_response();
+        let clear_state_cookie = clear_oauth_state_cookie();
+        if let Ok(header_value) = HeaderValue::from_str(&clear_state_cookie) {
+            response.headers_mut().append(header::SET_COOKIE, header_value);
+        }
+        return response;
+    }
+
     if let Err(e) = validate_state_token(&params.state, &provider) {
         tracing::warn!("OAuth state invalid: {}", e);
-        return (StatusCode::UNAUTHORIZED, "Invalid state").into_response();
+        let mut response = (StatusCode::UNAUTHORIZED, "Invalid state").into_response();
+        let clear_state_cookie = clear_oauth_state_cookie();
+        if let Ok(header_value) = HeaderValue::from_str(&clear_state_cookie) {
+            response.headers_mut().append(header::SET_COOKIE, header_value);
+        }
+        return response;
     }
 
     let auth_url = match AuthUrl::new(cfg.auth_url.clone()) {
@@ -298,6 +377,10 @@ pub async fn callback(
     let mut response = Redirect::to("/").into_response();
     if let Ok(header_value) = HeaderValue::from_str(&cookie) {
         response.headers_mut().insert(header::SET_COOKIE, header_value);
+    }
+    let clear_state_cookie = clear_oauth_state_cookie();
+    if let Ok(header_value) = HeaderValue::from_str(&clear_state_cookie) {
+        response.headers_mut().append(header::SET_COOKIE, header_value);
     }
     response
 }
