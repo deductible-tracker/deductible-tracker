@@ -84,6 +84,7 @@ jobs:
           OCI_ACCESS_KEY_ID: ${{ secrets.OCI_ACCESS_KEY_ID }}
           OCI_SECRET_ACCESS_KEY: ${{ secrets.OCI_SECRET_ACCESS_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
           WALLET_ZIP_BASE64: ${{ secrets.WALLET_ZIP_BASE64 }}
           SITE_DOMAIN: ${{ secrets.SITE_DOMAIN }}
         with:
@@ -92,7 +93,7 @@ jobs:
           username: opc
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           timeout: 60s
-          envs: GITHUB_TOKEN,DB_USER,DB_PASSWORD,DB_CONNECT_STRING,OBJECT_STORAGE_ENDPOINT,OBJECT_STORAGE_BUCKET,OCI_REGION,OCI_ACCESS_KEY_ID,OCI_SECRET_ACCESS_KEY,JWT_SECRET,WALLET_ZIP_BASE64,SITE_DOMAIN
+          envs: GITHUB_TOKEN,DB_USER,DB_PASSWORD,DB_CONNECT_STRING,OBJECT_STORAGE_ENDPOINT,OBJECT_STORAGE_BUCKET,OCI_REGION,OCI_ACCESS_KEY_ID,OCI_SECRET_ACCESS_KEY,JWT_SECRET,ALLOWED_ORIGINS,WALLET_ZIP_BASE64,SITE_DOMAIN
           script: |
             set -euo pipefail
             umask 077
@@ -117,6 +118,7 @@ jobs:
               echo "OCI_ACCESS_KEY_ID=$OCI_ACCESS_KEY_ID"
               echo "OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY"
               echo "JWT_SECRET=$JWT_SECRET"
+              echo "ALLOWED_ORIGINS=$ALLOWED_ORIGINS"
               echo "LD_LIBRARY_PATH=/opt/oracle/instantclient"
             } | sudo tee /home/opc/app.env > /dev/null
 

@@ -123,8 +123,11 @@ struct CreatedResponse {
 pub async fn confirm_receipt(
     State(state): State<AppState>,
     user: AuthenticatedUser,
-    Json(req): Json<ConfirmReceiptRequest>
+    Json(mut req): Json<ConfirmReceiptRequest>
 ) -> impl IntoResponse {
+    req.donation_id = req.donation_id.trim().to_string();
+    req.key = req.key.trim().to_string();
+
     let user_prefix = format!("receipts/{}/", user.id);
     if !req.key.starts_with(&user_prefix) {
         return (StatusCode::FORBIDDEN, "Forbidden").into_response();

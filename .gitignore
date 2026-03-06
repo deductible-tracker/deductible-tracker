@@ -4,6 +4,7 @@
 # Environment variables
 .env
 .env.*
+dev.db
 
 # OS files
 .DS_Store
