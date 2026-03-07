@@ -17,7 +17,7 @@ pub async fn log_revision(
             let p = p.clone();
             task::spawn_blocking(move || -> anyhow::Result<()> {
                 let conn = p.get()?;
-                let sql = "INSERT INTO audit_revisions (id, user_id, table_name, record_id, operation, old_values, new_values, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7,:8)";
+                let sql = "INSERT INTO audit_revisions (id, user_id, table_name, record_id, operation, old_values, new_values, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7, TO_TIMESTAMP_TZ(:8, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'))";
                 conn.execute(
                     sql,
                     &[&id, &user_id_cloned, &table_name, &record_id, &operation, &old_values_cloned, &new_values_cloned, &created_at],
@@ -256,8 +256,9 @@ pub async fn create_charity(pool: &DbPool, input: &crate::db::models::NewCharity
             let insert_created_at = created_at_str.clone();
             task::spawn_blocking(move || -> anyhow::Result<()> {
                 let conn = p.get()?;
-                let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14)";
-                conn.execute(sql, &[&insert_input.id, &insert_input.user_id, &insert_input.name, &insert_input.ein, &insert_input.category, &insert_input.status, &insert_input.classification, &insert_input.nonprofit_type, &insert_input.deductibility, &insert_input.street, &insert_input.city, &insert_input.state, &insert_input.zip, &insert_created_at])?;
+                let trunc_name = insert_input.name.chars().take(255).collect::<String>();
+                let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, TO_TIMESTAMP_TZ(:14, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'))";
+                conn.execute(sql, &[&insert_input.id, &insert_input.user_id, &trunc_name, &insert_input.ein, &insert_input.category, &insert_input.status, &insert_input.classification, &insert_input.nonprofit_type, &insert_input.deductibility, &insert_input.street, &insert_input.city, &insert_input.state, &insert_input.zip, &insert_created_at])?;
                 let _ = conn.commit();
                 Ok(())
             }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;

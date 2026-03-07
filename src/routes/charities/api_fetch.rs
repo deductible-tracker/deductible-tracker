@@ -102,12 +102,13 @@ pub(super) async fn search_charities_by_query(query: &str) -> Result<Vec<Charity
         return Err(SearchError::Upstream);
     }
 
-    let data: ProPublicaResponse = resp
-        .json()
-        .await
-        .unwrap_or(ProPublicaResponse {
-            organizations: vec![],
-        });
+    let data: ProPublicaResponse = match resp.json().await {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::error!("Failed to parse ProPublica search response: {}", e);
+            return Err(SearchError::Upstream);
+        }
+    };
 
     Ok(data
         .organizations

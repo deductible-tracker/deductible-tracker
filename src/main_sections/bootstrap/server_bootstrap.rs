@@ -259,7 +259,7 @@ async fn main() -> anyhow::Result<()> {
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
-            HeaderValue::from_static("default-src 'self'; script-src 'self' https://accounts.google.com; script-src-elem 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; connect-src 'self' https://accounts.google.com https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; frame-src https://accounts.google.com;"),
+            HeaderValue::from_static("default-src 'self'; script-src 'self' https://accounts.google.com; script-src-elem 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; connect-src 'self' https://accounts.google.com https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; frame-src https://accounts.google.com; frame-ancestors 'self' https://accounts.google.com;"),
         ))
         .with_state(state);
 

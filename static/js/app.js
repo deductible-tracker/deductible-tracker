@@ -233,6 +233,14 @@ async function navigate(path, options = {}) {
         window.history.pushState({}, '', target);
     }
     updateHomeSummaryVisibility(target);
+
+    // Toggle nav visibility on mobile based on route
+    if (target.includes('/new') || target.includes('/edit') || target.includes('/receipts/')) {
+        document.body.classList.add('hide-nav-on-mobile');
+    } else {
+        document.body.classList.remove('hide-nav-on-mobile');
+    }
+
     let handler;
     if (routes[target]) {
         handler = routes[target];
@@ -276,18 +284,6 @@ function updateActiveLink(path) {
 // --- Views ---
 
 async function renderLogin() {
-    // Check if traditional dev login is allowed
-    let allowDevLogin = false;
-    try {
-        const res = await fetch('/api/me');
-        // We can't easily check env vars from JS without a dedicated endpoint or injecting into HTML.
-        // However, we can infer it or just try to check a 'config' if we had one.
-        // For now, let's assume we want to check if the server-side ALLOW_DEV_LOGIN is true.
-        // As a workaround, we'll look for a specific meta tag or just handle it via CSS if we prefer.
-        // But the best way is to let the server tell us. 
-        // Let's check if we can get this info from the INITIAL server response or just keep it dynamic.
-    } catch(e) {}
-
     const app = document.getElementById('app');
     app.innerHTML = `
         <div class="mx-auto grid min-h-full max-w-6xl items-center gap-8 py-8 sm:py-12 lg:grid-cols-2">

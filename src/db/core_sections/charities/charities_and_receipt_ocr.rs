@@ -267,7 +267,7 @@ pub async fn log_audit(
             let p = p.clone();
             task::spawn_blocking(move || -> anyhow::Result<()> {
                 let conn = p.get()?;
-                let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7)";
+                let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (:1,:2,:3,:4,:5,:6, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'))";
                 conn.execute(sql, &[&id, &user_id, &action, &table_name, &record_id_cloned, &details_cloned, &created_at])?;
                 let _ = conn.commit();
                 Ok(())

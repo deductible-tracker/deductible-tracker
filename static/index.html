@@ -11,39 +11,49 @@
     <script src="/vendor/lucide.min.js"></script>
 </head>
 <body class="font-sans bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100 h-screen flex flex-col antialiased">
+    <style>
+        @media (max-width: 1023px) {
+            body.hide-nav-on-mobile header {
+                display: none;
+            }
+            body.hide-nav-on-mobile main {
+                padding-top: 0;
+            }
+        }
+    </style>
     <header class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 dark:border-slate-700/80 dark:bg-slate-900/90 backdrop-blur">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div class="flex h-16 items-center justify-between gap-3">
                 <div class="flex min-w-0 items-center gap-2 sm:gap-3">
-                    <button id="mobile-menu-button" aria-label="Toggle navigation menu" aria-controls="mobile-menu" aria-expanded="false" class="sm:hidden inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">
+                    <button id="mobile-menu-button" aria-label="Toggle navigation menu" aria-controls="mobile-menu" aria-expanded="false" class="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                     </button>
-                    <div class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white dark:bg-indigo-500">
+                    <div id="nav-logo" class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white dark:bg-indigo-500">
                         <i data-lucide="calculator" class="h-5 w-5"></i>
                     </div>
-                    <span class="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-lg">Deductible Tracker</span>
-                    <nav id="nav-container" class="ml-3 hidden items-center gap-1 sm:flex sm:ml-5">
-                        <a href="#" data-route="/" class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Home</a>
-                        <a href="#" data-route="/donations" class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Donations</a>
-                        <a href="#" data-route="/charities" class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Charities</a>
-                        <a href="#" data-route="/reports" class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Reports</a>
-                        <a href="#" data-route="/personal" class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Personal</a>
+                    <span id="nav-title" class="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-lg">Deductible Tracker</span>
+                    <nav id="nav-container" class="ml-3 hidden items-center gap-1 lg:flex lg:ml-5">
+                        <a href="#" data-route="/" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Home</a>
+                        <a href="#" data-route="/donations" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Donations</a>
+                        <a href="#" data-route="/charities" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Charities</a>
+                        <a href="#" data-route="/reports" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Reports</a>
+                        <a href="#" data-route="/personal" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Personal</a>
                     </nav>
                 </div>
                 <div class="flex items-center gap-2 sm:gap-3">
-                    <div id="sync-status" class="hidden items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 sm:flex">
+                    <div id="sync-status" class="hidden items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 lg:flex">
                         <i data-lucide="loader" class="mr-1 h-4 w-4 animate-spin"></i>
                         Initializing...
                     </div>
                     <div id="auth-actions" class="flex items-center gap-2">
-                        <button id="btn-add-donation" class="hidden sm:inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600">Add Donation</button>
-                        <button id="btn-logout" class="hidden sm:inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">Logout</button>
+                        <button id="btn-add-donation" class="hidden lg:inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600">Add Donation</button>
+                        <button id="btn-logout" class="hidden lg:inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">Logout</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 sm:hidden" role="navigation" aria-label="Mobile navigation">
+        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 lg:hidden" role="navigation" aria-label="Mobile navigation">
             <div class="space-y-1 px-3 py-3">
                 <div class="pb-2">
                     <button id="btn-add-donation-mobile" class="w-full inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600">Add donation</button>
