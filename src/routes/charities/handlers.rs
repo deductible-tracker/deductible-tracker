@@ -238,21 +238,6 @@ pub async fn create_charity(
         });
     }
 
-    if resolved_city
-        .as_ref()
-        .map(|value| value.trim().is_empty())
-        .unwrap_or(true)
-    {
-        return (StatusCode::BAD_REQUEST, "City required").into_response();
-    }
-    if resolved_state
-        .as_ref()
-        .map(|value| value.trim().is_empty())
-        .unwrap_or(true)
-    {
-        return (StatusCode::BAD_REQUEST, "State required").into_response();
-    }
-
     match crate::db::charities::find_charity_by_name_or_ein(
         &state.db,
         &user.id,

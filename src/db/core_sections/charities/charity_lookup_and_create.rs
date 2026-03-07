@@ -17,7 +17,7 @@ pub async fn log_revision(
             let p = p.clone();
             task::spawn_blocking(move || -> anyhow::Result<()> {
                 let conn = p.get()?;
-                let sql = "INSERT INTO audit_revisions (id, user_id, table_name, record_id, operation, old_values, new_values, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7, TO_TIMESTAMP_TZ(:8, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'))";
+                let sql = "INSERT INTO audit_revisions (id, user_id, table_name, record_id, operation, old_values, new_values, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7, TO_TIMESTAMP_TZ(:8, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
                 conn.execute(
                     sql,
                     &[&id, &user_id_cloned, &table_name, &record_id, &operation, &old_values_cloned, &new_values_cloned, &created_at],
@@ -159,9 +159,9 @@ pub async fn find_charity_by_name_or_ein(
                         .unwrap_or_else(chrono::Utc::now)
                 };
                 let sql = if ein_cloned.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
-                    "SELECT id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE user_id = :1 AND (ein = :2 OR LOWER(name) = LOWER(:3))"
+                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND (ein = :2 OR LOWER(name) = LOWER(:3))"
                 } else {
-                    "SELECT id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE user_id = :1 AND LOWER(name) = LOWER(:2)"
+                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND LOWER(name) = LOWER(:2)"
                 };
                 let rows = if let Some(ein_val) = ein_cloned {
                     conn.query(sql, &[&user_id, &ein_val, &name])?
@@ -174,17 +174,17 @@ pub async fn find_charity_by_name_or_ein(
                         user_id: row.get(1).unwrap_or_default(),
                         name: row.get(2).unwrap_or_default(),
                         ein: row.get(3).ok(),
-                        category: row.get(4).ok(),
-                        status: row.get(5).ok(),
-                        classification: row.get(6).ok(),
-                        nonprofit_type: row.get(7).ok(),
-                        deductibility: row.get(8).ok(),
-                        street: row.get(9).ok(),
-                        city: row.get(10).ok(),
-                        state: row.get(11).ok(),
-                        zip: row.get(12).ok(),
-                            created_at: parse_utc(row.get(13).ok()),
-                            updated_at: parse_utc(row.get(14).ok()),
+                        created_at: parse_utc(row.get(4).ok()),
+                        updated_at: parse_utc(row.get(5).ok()),
+                        nonprofit_type: row.get(6).ok(),
+                        deductibility: row.get(7).ok(),
+                        street: row.get(8).ok(),
+                        city: row.get(9).ok(),
+                        state: row.get(10).ok(),
+                        zip: row.get(11).ok(),
+                        category: row.get(12).ok(),
+                        status: row.get(13).ok(),
+                        classification: row.get(14).ok(),
                     }));
                 }
                 Ok(None)
@@ -199,9 +199,9 @@ pub async fn find_charity_by_name_or_ein(
             let row = task::spawn_blocking(move || -> anyhow::Result<Option<crate::db::models::Charity>> {
                 let conn = p.get()?;
                 let sql = if ein_cloned.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
-                    "SELECT id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE user_id = ?1 AND (ein = ?2 OR lower(name) = lower(?3))"
+                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = ?1 AND (ein = ?2 OR lower(name) = lower(?3))"
                 } else {
-                    "SELECT id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE user_id = ?1 AND lower(name) = lower(?2)"
+                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = ?1 AND lower(name) = lower(?2)"
                 };
                 let mut stmt = conn.prepare(sql)?;
                 let mut rows_iter = if let Some(ein_val) = ein_cloned {
@@ -210,8 +210,8 @@ pub async fn find_charity_by_name_or_ein(
                     stmt.query(params![user_id, name])?
                 };
                 if let Some(row) = rows_iter.next()? {
-                    let created_at_str: Option<String> = row.get(13)?;
-                    let updated_at_str: Option<String> = row.get(14)?;
+                    let created_at_str: Option<String> = row.get(4)?;
+                    let updated_at_str: Option<String> = row.get(5)?;
                     let created_at = created_at_str
                         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -225,17 +225,17 @@ pub async fn find_charity_by_name_or_ein(
                         user_id: row.get(1)?,
                         name: row.get(2)?,
                         ein: row.get(3).ok(),
-                        category: row.get(4).ok(),
-                        status: row.get(5).ok(),
-                        classification: row.get(6).ok(),
-                        nonprofit_type: row.get(7).ok(),
-                        deductibility: row.get(8).ok(),
-                        street: row.get(9).ok(),
-                        city: row.get(10).ok(),
-                        state: row.get(11).ok(),
-                        zip: row.get(12).ok(),
                         created_at,
                         updated_at,
+                        nonprofit_type: row.get(6).ok(),
+                        deductibility: row.get(7).ok(),
+                        street: row.get(8).ok(),
+                        city: row.get(9).ok(),
+                        state: row.get(10).ok(),
+                        zip: row.get(11).ok(),
+                        category: row.get(12).ok(),
+                        status: row.get(13).ok(),
+                        classification: row.get(14).ok(),
                     }));
                 }
                 Ok(None)
@@ -257,7 +257,8 @@ pub async fn create_charity(pool: &DbPool, input: &crate::db::models::NewCharity
             task::spawn_blocking(move || -> anyhow::Result<()> {
                 let conn = p.get()?;
                 let trunc_name = insert_input.name.chars().take(255).collect::<String>();
-                let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, TO_TIMESTAMP_TZ(:14, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'))";
+                // Modified to use a more robust format for TIMESTAMP WITH TIME ZONE
+                let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, TO_TIMESTAMP_TZ(:14, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
                 conn.execute(sql, &[&insert_input.id, &insert_input.user_id, &trunc_name, &insert_input.ein, &insert_input.category, &insert_input.status, &insert_input.classification, &insert_input.nonprofit_type, &insert_input.deductibility, &insert_input.street, &insert_input.city, &insert_input.state, &insert_input.zip, &insert_created_at])?;
                 let _ = conn.commit();
                 Ok(())

@@ -11,7 +11,7 @@ pub async fn list_charities(pool: &DbPool, user_id: &str) -> anyhow::Result<Vec<
                         .map(|dt| dt.with_timezone(&chrono::Utc))
                         .unwrap_or_else(chrono::Utc::now)
                 };
-                let sql = "SELECT id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE user_id = :1";
+                let sql = "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1";
                 let rows = conn.query(sql, &[&user_id])?;
                 let mut out = Vec::new();
                 for row in rows.flatten() {
@@ -20,17 +20,17 @@ pub async fn list_charities(pool: &DbPool, user_id: &str) -> anyhow::Result<Vec<
                         user_id: row.get(1).unwrap_or_default(),
                         name: row.get(2).unwrap_or_default(),
                         ein: row.get(3).ok(),
-                        category: row.get(4).ok(),
-                        status: row.get(5).ok(),
-                        classification: row.get(6).ok(),
-                        nonprofit_type: row.get(7).ok(),
-                        deductibility: row.get(8).ok(),
-                        street: row.get(9).ok(),
-                        city: row.get(10).ok(),
-                        state: row.get(11).ok(),
-                        zip: row.get(12).ok(),
-                        created_at: parse_utc(row.get(13).ok()),
-                        updated_at: parse_utc(row.get(14).ok()),
+                        created_at: parse_utc(row.get(4).ok()),
+                        updated_at: parse_utc(row.get(5).ok()),
+                        nonprofit_type: row.get(6).ok(),
+                        deductibility: row.get(7).ok(),
+                        street: row.get(8).ok(),
+                        city: row.get(9).ok(),
+                        state: row.get(10).ok(),
+                        zip: row.get(11).ok(),
+                        category: row.get(12).ok(),
+                        status: row.get(13).ok(),
+                        classification: row.get(14).ok(),
                     };
                     out.push(c);
                 }
@@ -43,11 +43,11 @@ pub async fn list_charities(pool: &DbPool, user_id: &str) -> anyhow::Result<Vec<
             let user_id = user_id.to_string();
             let rows = task::spawn_blocking(move || -> anyhow::Result<Vec<crate::db::models::Charity>> {
                 let conn = p.get()?;
-                let sql = "SELECT id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE user_id = ?1";
+                let sql = "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = ?1";
                 let mut stmt = conn.prepare(sql)?;
                 let rows_iter = stmt.query_map(params![user_id], |row| {
-                    let created_at_str: Option<String> = row.get(13)?;
-                    let updated_at_str: Option<String> = row.get(14)?;
+                    let created_at_str: Option<String> = row.get(4)?;
+                    let updated_at_str: Option<String> = row.get(5)?;
                     let created_at = created_at_str
                         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -61,17 +61,17 @@ pub async fn list_charities(pool: &DbPool, user_id: &str) -> anyhow::Result<Vec<
                         user_id: row.get(1)?,
                         name: row.get(2)?,
                         ein: row.get(3).ok(),
-                        category: row.get(4).ok(),
-                        status: row.get(5).ok(),
-                        classification: row.get(6).ok(),
-                        nonprofit_type: row.get(7).ok(),
-                        deductibility: row.get(8).ok(),
-                        street: row.get(9).ok(),
-                        city: row.get(10).ok(),
-                        state: row.get(11).ok(),
-                        zip: row.get(12).ok(),
                         created_at,
                         updated_at,
+                        nonprofit_type: row.get(6).ok(),
+                        deductibility: row.get(7).ok(),
+                        street: row.get(8).ok(),
+                        city: row.get(9).ok(),
+                        state: row.get(10).ok(),
+                        zip: row.get(11).ok(),
+                        category: row.get(12).ok(),
+                        status: row.get(13).ok(),
+                        classification: row.get(14).ok(),
                     })
                 })?;
                 let mut out = Vec::new();
@@ -267,7 +267,7 @@ pub async fn log_audit(
             let p = p.clone();
             task::spawn_blocking(move || -> anyhow::Result<()> {
                 let conn = p.get()?;
-                let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (:1,:2,:3,:4,:5,:6, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'))";
+                let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (:1,:2,:3,:4,:5,:6, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
                 conn.execute(sql, &[&id, &user_id, &action, &table_name, &record_id_cloned, &details_cloned, &created_at])?;
                 let _ = conn.commit();
                 Ok(())

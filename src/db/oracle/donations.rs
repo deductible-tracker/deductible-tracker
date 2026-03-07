@@ -17,7 +17,7 @@ pub(crate) async fn add_donation(
     let created_at = created_at.to_string();
     task::spawn_blocking(move || -> anyhow::Result<()> {
         let conn = p.get()?;
-        let sql = "INSERT INTO donations (id, user_id, donation_year, donation_date, donation_category, donation_amount, charity_id, notes, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6TZH:TZM'))";
+        let sql = "INSERT INTO donations (id, user_id, donation_year, donation_date, donation_category, donation_amount, charity_id, notes, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
         conn.execute(sql, &[&input.id, &input.user_id, &input.year, &input.date, &input.category, &input.amount, &input.charity_id, &input.notes, &created_at])?;
         let _ = conn.commit();
         Ok(())
