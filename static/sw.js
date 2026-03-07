@@ -30,7 +30,7 @@ self.addEventListener('fetch', event => {
 
     // Skip non-GET requests and API/auth calls (these must hit the network)
     if (event.request.method !== 'GET') return;
-    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/') || url.hostname === 'accounts.google.com') return;
 
     event.respondWith(
         caches.match(event.request).then(cached => {

@@ -100,6 +100,35 @@ pub(crate) async fn init_pool(
     Ok(Arc::new(DbPoolEnum::Oracle(pool)))
 }
 
+pub(crate) async fn get_user_profile_by_email(
+    pool: &Pool<OracleConnectionManager>,
+    email: &str,
+) -> anyhow::Result<Option<(String, UserProfileRow)>> {
+    let p = pool.clone();
+    let email = email.to_string();
+    let row = task::spawn_blocking(move || -> anyhow::Result<Option<(String, UserProfileRow)>> {
+        let conn = p.get()?;
+        let sql = "SELECT id, email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions FROM users WHERE email = :1";
+        let mut rows = conn.query(sql, &[&email])?;
+        if let Some(r) = rows.next().transpose()? {
+            let id: String = r.get(0).unwrap_or_default();
+            let email: String = r.get(1).unwrap_or_default();
+            let name: String = r.get(2).unwrap_or_default();
+            let provider: String = r.get(3).unwrap_or_else(|_| "local".to_string());
+            let filing_status: Option<String> = r.get(4).ok();
+            let agi: Option<f64> = r.get(5).ok();
+            let marginal_tax_rate: Option<f64> = r.get(6).ok();
+            let itemize_deductions_raw: Option<i64> = r.get(7).ok();
+            let itemize_deductions = itemize_deductions_raw.map(|v| v != 0);
+            return Ok(Some((id, (email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions))));
+        }
+        Ok(None)
+    })
+    .await
+    .map_err(|e| anyhow!("DB task join error: {}", e))??;
+    Ok(row)
+}
+
 pub(crate) async fn get_user_profile(
     pool: &Pool<OracleConnectionManager>,
     user_id: &str,

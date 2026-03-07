@@ -60,7 +60,7 @@ async fn health_check() -> &'static str {
 async fn require_auth(req: Request<Body>, next: Next) -> impl IntoResponse {
     // Guard only API endpoints here; non-API routes are SPA/document requests.
     let path = req.uri().path();
-    if req.method() == axum::http::Method::OPTIONS || !path.starts_with("/api/") {
+    if req.method() == axum::http::Method::OPTIONS || !path.starts_with("/api/") || path == "/api/config" {
         return next.run(req).await;
     }
 

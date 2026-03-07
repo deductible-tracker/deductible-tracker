@@ -88,6 +88,12 @@ async function checkAuthCached() {
             const res = await fetch('/api/me', { credentials: 'include' });
             // Treat 429 as "unknown" and keep the last known result
             if (res.status === 429) return lastAuthResult;
+            
+            // SILENCE logic: only console.error if it's NOT a 401 (which is expected if not logged in)
+            if (!res.ok && res.status !== 401) {
+                console.error('Auth check failed', res.status);
+            }
+
             lastAuthResult = res.ok;
             lastAuthCheckAt = Date.now();
             if (res.ok) {
@@ -270,6 +276,18 @@ function updateActiveLink(path) {
 // --- Views ---
 
 async function renderLogin() {
+    // Check if traditional dev login is allowed
+    let allowDevLogin = false;
+    try {
+        const res = await fetch('/api/me');
+        // We can't easily check env vars from JS without a dedicated endpoint or injecting into HTML.
+        // However, we can infer it or just try to check a 'config' if we had one.
+        // For now, let's assume we want to check if the server-side ALLOW_DEV_LOGIN is true.
+        // As a workaround, we'll look for a specific meta tag or just handle it via CSS if we prefer.
+        // But the best way is to let the server tell us. 
+        // Let's check if we can get this info from the INITIAL server response or just keep it dynamic.
+    } catch(e) {}
+
     const app = document.getElementById('app');
     app.innerHTML = `
         <div class="mx-auto grid min-h-full max-w-6xl items-center gap-8 py-8 sm:py-12 lg:grid-cols-2">
@@ -286,26 +304,88 @@ async function renderLogin() {
             </div>
             <div class="dt-panel p-6 sm:p-8">
                 <h2 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Sign in</h2>
-                <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Use your account credentials to continue.</p>
-                <form class="mt-6 space-y-4" id="login-form">
-                    <input type="hidden" name="remember" value="true" />
-                    <div>
-                        <label for="username" class="dt-label">Username</label>
-                        <input id="username" name="username" type="text" required class="dt-input" placeholder="Username" />
+                <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Continue with Google to access your account.</p>
+                
+                <div class="mt-8 flex flex-col items-center justify-center space-y-6">
+                    <div id="g_id_onload"
+                        data-client_id="586268761495-9v7kiugn4qspnqgais393lavtg5hs7vq.apps.googleusercontent.com"
+                        data-context="signin"
+                        data-ux_mode="redirect"
+                        data-login_uri="https://dd.joshkraemer.com/auth/callback/google"
+                        data-auto_prompt="false">
                     </div>
-                    <div>
-                        <label for="password" class="dt-label">Password</label>
-                        <input id="password" name="password" type="password" required class="dt-input" placeholder="Password" />
+
+                    <div class="g_id_signin"
+                        data-type="standard"
+                        data-shape="rectangular"
+                        data-theme="outline"
+                        data-text="signin_with"
+                        data-size="large"
+                        data-logo_alignment="left">
                     </div>
-                    <div class="pt-2">
-                        <button type="submit" class="dt-btn-primary w-full">
-                            Sign in
-                        </button>
+
+                    <div id="traditional-login-section" class="hidden w-full space-y-6">
+                        <div class="relative w-full">
+                            <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div class="w-full border-t border-slate-200 dark:border-slate-700"></div>
+                            </div>
+                            <div class="relative flex justify-center text-sm">
+                                <span class="bg-white px-2 text-slate-500 dark:bg-slate-800">Or use traditional login</span>
+                            </div>
+                        </div>
+
+                        <form class="w-full space-y-4" id="login-form">
+                            <div>
+                                <label for="username" class="dt-label">Username</label>
+                                <input id="username" name="username" type="text" required autocomplete="username" class="dt-input" placeholder="Username" />
+                            </div>
+                            <div>
+                                <label for="password" class="dt-label">Password</label>
+                                <input id="password" name="password" type="password" required autocomplete="current-password" class="dt-input" placeholder="Password" />
+                            </div>
+                            <div class="pt-2">
+                                <button type="submit" class="dt-btn-primary w-full">
+                                    Sign in
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     `;
+
+    // Fetch config to see if dev login is allowed
+    try {
+        const configRes = await fetch('/api/config');
+        if (configRes.ok) {
+            const config = await configRes.json();
+            if (config.allow_dev_login) {
+                document.getElementById('traditional-login-section').classList.remove('hidden');
+            }
+        }
+    } catch (e) {
+        console.warn('Could not fetch config', e);
+    }
+
+    // Localhost override if relevant or handled via data-login_uri logic
+    const gIdOnload = document.getElementById('g_id_onload');
+    if (gIdOnload && (location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+        gIdOnload.setAttribute('data-login_uri', `${location.origin}/auth/callback/google`);
+    }
+    // Re-initialize Google Identity Services if it loaded before the elements were added
+    if (window.google && google.accounts && google.accounts.id) {
+        google.accounts.id.initialize({
+            client_id: gIdOnload.getAttribute('data-client_id'),
+            callback: undefined, // Redirect mode
+            login_uri: gIdOnload.getAttribute('data-login_uri'),
+            ux_mode: 'redirect'
+        });
+        google.accounts.id.renderButton(
+            document.querySelector(".g_id_signin"),
+            { theme: "outline", size: "large" }
+        );
+    }
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
         e.preventDefault();

@@ -82,6 +82,16 @@ pub(crate) type UserProfileRow = (
     Option<bool>,
 );
 
+pub async fn get_user_profile_by_email(
+    pool: &DbPool,
+    email: &str,
+) -> anyhow::Result<Option<(String, UserProfileRow)>> {
+    match &**pool {
+        DbPoolEnum::Oracle(p) => crate::db::oracle::get_user_profile_by_email(p, email).await,
+        DbPoolEnum::Sqlite(p) => crate::db::sqlite::get_user_profile_by_email(p, email).await,
+    }
+}
+
 pub async fn get_user_profile(
     pool: &DbPool,
     user_id: &str,

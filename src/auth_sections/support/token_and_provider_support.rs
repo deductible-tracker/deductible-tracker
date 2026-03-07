@@ -101,13 +101,13 @@ fn validate_state_token(token: &str, provider: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-struct ProviderProfile {
-    id: String,
-    email: String,
-    name: String,
+pub struct ProviderProfile {
+    pub id: String,
+    pub email: String,
+    pub name: String,
 }
 
-async fn fetch_user_profile(userinfo_url: &str, access_token: &str) -> anyhow::Result<ProviderProfile> {
+pub async fn fetch_user_profile(userinfo_url: &str, access_token: &str) -> anyhow::Result<ProviderProfile> {
     let client = oauth_http_client()?;
     let resp = client
         .get(userinfo_url)

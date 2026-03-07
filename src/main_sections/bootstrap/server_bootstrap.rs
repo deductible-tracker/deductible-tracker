@@ -200,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
 
     let auth_router = Router::new()
         .route("/auth/login/{provider}", get(auth::login))
-        .route("/auth/callback/{provider}", get(auth::callback))
+        .route("/auth/callback/{provider}", get(auth::callback).post(auth::callback))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/dev/login", post(auth::dev_login))
         .layer(GovernorLayer::new(auth_governor_config));
@@ -231,6 +231,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/reports/audit", get(routes::reports::export_audit_csv))
         .route("/api/tax/marginal-rate", get(routes::tax::marginal_rate))
         .route("/api/me", get(auth::me).put(auth::update_me))
+        .route("/api/config", get(auth::get_config))
         .merge(auth_router)
         .route("/sw.js", get(serve_service_worker))
         .nest_service("/assets", ServeDir::new("static/assets"))
@@ -258,7 +259,7 @@ async fn main() -> anyhow::Result<()> {
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
-            HeaderValue::from_static("default-src 'self'; script-src 'self'; script-src-elem 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self';"),
+            HeaderValue::from_static("default-src 'self'; script-src 'self' https://accounts.google.com; script-src-elem 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; connect-src 'self' https://accounts.google.com https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; frame-src https://accounts.google.com;"),
         ))
         .with_state(state);
 

@@ -17,16 +17,35 @@ pub async fn dev_login(
     }
 
     if payload.username == dev_user && payload.password == dev_pass {
-        let user = UserProfile {
-            id: "dev-1".to_string(),
-            email: "dev@local".to_string(),
-            name: "Developer".to_string(),
-            filing_status: None,
-            agi: None,
-            marginal_tax_rate: None,
-            itemize_deductions: None,
-            provider: "local".to_string(),
+        let existing_user = crate::db::users::get_user_profile_by_email(&_state.db, "dev@local").await;
+
+        let user = match existing_user {
+            Ok(Some((id, row))) => {
+                UserProfile {
+                    id,
+                    email: row.0,
+                    name: row.1,
+                    provider: row.2,
+                    filing_status: row.3,
+                    agi: row.4,
+                    marginal_tax_rate: row.5,
+                    itemize_deductions: row.6,
+                }
+            },
+            _ => {
+                UserProfile {
+                    id: "dev-1".to_string(),
+                    email: "dev@local".to_string(),
+                    name: "Developer".to_string(),
+                    filing_status: None,
+                    agi: None,
+                    marginal_tax_rate: None,
+                    itemize_deductions: None,
+                    provider: "local".to_string(),
+                }
+            }
         };
+
         let _ = crate::db::users::upsert_user_profile(&_state.db, &crate::db::models::UserProfileUpsert {
             user_id: user.id.clone(),
             email: user.email.clone(),
@@ -142,6 +161,16 @@ pub async fn me(
             (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response()
         }
     }
+}
+
+pub async fn get_config() -> impl IntoResponse {
+    let allow_dev_login = std::env::var("ALLOW_DEV_LOGIN")
+        .map(|v| v.to_lowercase() == "true")
+        .unwrap_or(false);
+    
+    Json(serde_json::json!({
+        "allow_dev_login": allow_dev_login
+    }))
 }
 
 pub async fn update_me(
