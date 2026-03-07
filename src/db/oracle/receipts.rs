@@ -17,7 +17,7 @@ pub(crate) async fn add_receipt(
     let created_at = created_at.to_string();
     task::spawn_blocking(move || -> anyhow::Result<()> {
         let conn = p.get()?;
-        let sql = "INSERT INTO receipts (id, donation_id, receipt_key, file_name, content_type, receipt_size, ocr_text, ocr_date, ocr_amount, ocr_status, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11)";
+        let sql = "INSERT INTO receipts (id, donation_id, receipt_key, file_name, content_type, receipt_size, ocr_text, ocr_date, ocr_amount, ocr_status, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10, TO_TIMESTAMP_TZ(:11, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
         conn.execute(sql, &[&input.id, &input.donation_id, &input.key, &input.file_name, &input.content_type, &input.size, &Option::<String>::None, &Option::<String>::None, &Option::<i64>::None, &Option::<String>::None, &created_at])?;
         let _ = conn.commit();
         Ok(())
