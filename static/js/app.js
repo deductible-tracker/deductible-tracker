@@ -396,7 +396,7 @@ async function renderLogin() {
                 body: JSON.stringify({ username, password })
             });
 
-                if (res.ok) {
+            if (res.ok) {
                 let profile = null;
                 try {
                     const body = await res.json();
