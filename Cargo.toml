@@ -26,22 +26,16 @@ oauth2 = "5.0"
 dotenvy = "0.15"
 tower_governor = "0.8"
 csv = "1.1"
-leptess = { version = "0.5", optional = true }
+leptess = { version = "0.14", optional = true }
 tempfile = "3.6"
 regex = "1"
 blake3 = "1"
 minifier = "0.3"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-# oracle = "0.6" # Commented out until we confirm OCI lib availability or strategy. 
-# Using a feature flag or conditional compilation would be better but let's assume we can build it.
-# Actually, let's include it but we might face build errors in this environment if OCI isn't here.
-# For now, I will omit 'oracle' from the direct list and mock the DB interaction in this environment 
-# if I can't compile it, OR I will assume the user has the environment set up. 
-# given I am in a "cli" environment, I might break the build if I add it.
-# I will add it but be prepared to handle build failures.
-oracle = { version = "0.6", features = ["chrono"] }
+# Pin rust-oracle to the upstream revision that moved to odpic-sys 0.2.0,
+# which removes the legacy bindgen -> which -> failure build chain.
+oracle = { git = "https://github.com/kubo/rust-oracle.git", rev = "caf3c0d06b654e79192e88bbaf516e599982af05", features = ["chrono"] }
 r2d2 = "0.8"
-r2d2-oracle = "0.7"
 rand = "0.10"
 argon2 = "0.5" # For password hashing (dev mode)
 rusqlite = { version = "0.29", features = ["chrono"] }

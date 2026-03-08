@@ -62,7 +62,7 @@ mod real {
 
         // run tesseract via leptess
         let mut lt = LepTess::new(None, "eng").map_err(|e| anyhow!("tesseract init: {}", e))?;
-        lt.set_image(&path);
+        lt.set_image(&path).map_err(|e| anyhow!("tesseract set image: {}", e))?;
         let text = lt.get_utf8_text().map_err(|e| anyhow!("tesseract run: {}", e))?;
 
         // simple heuristics for date and amount

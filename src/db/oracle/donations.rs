@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use chrono::Utc;
 use r2d2::Pool;
-use r2d2_oracle::OracleConnectionManager;
 use tokio::task;
 
+use crate::db::oracle::OracleConnectionManager;
 use crate::db::models::Donation as DonationModel;
 use crate::db::models::NewDonation;
 

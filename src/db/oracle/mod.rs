@@ -1,6 +1,7 @@
 use anyhow::anyhow;
+use oracle::{ConnStatus, Connection, Connector, Error};
 use r2d2::Pool;
-use r2d2_oracle::OracleConnectionManager;
+use r2d2::ManageConnection;
 use std::env;
 use std::sync::Arc;
 use tokio::task;
@@ -10,6 +11,36 @@ use crate::db::models::UserProfileUpsert;
 
 pub(crate) mod donations;
 pub(crate) mod receipts;
+
+#[derive(Debug)]
+pub struct OracleConnectionManager {
+    connector: Connector,
+}
+
+impl OracleConnectionManager {
+    pub fn new(username: &str, password: &str, connect_string: &str) -> Self {
+        Self {
+            connector: Connector::new(username, password, connect_string),
+        }
+    }
+}
+
+impl ManageConnection for OracleConnectionManager {
+    type Connection = Connection;
+    type Error = Error;
+
+    fn connect(&self) -> Result<Self::Connection, Self::Error> {
+        self.connector.connect()
+    }
+
+    fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
+        conn.ping()
+    }
+
+    fn has_broken(&self, conn: &mut Self::Connection) -> bool {
+        !matches!(conn.status(), Ok(ConnStatus::Normal))
+    }
+}
 
 pub(crate) async fn init_pool(
     db_pool_max: u32,

@@ -1,11 +1,12 @@
 use r2d2::Pool;
-use r2d2_oracle::OracleConnectionManager;
 use std::env;
 use anyhow::anyhow;
 use std::sync::Arc;
 use tokio::task;
 use serde_json::json;
 use uuid::Uuid;
+
+use crate::db::oracle::OracleConnectionManager;
 
 // Add sqlite support for development environment
 use rusqlite::params;

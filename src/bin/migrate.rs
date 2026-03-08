@@ -13,8 +13,9 @@ fn main() -> anyhow::Result<()> {
 
     if runtime_mode == RuntimeMode::Production {
         // Oracle path (existing behavior)
-        use r2d2_oracle::OracleConnectionManager;
         use r2d2::Pool;
+
+        use deductible_tracker::db::oracle::OracleConnectionManager;
 
         let username = env::var("DB_USER").expect("DB_USER must be set");
         let password = env::var("DB_PASSWORD").expect("DB_PASSWORD must be set");
