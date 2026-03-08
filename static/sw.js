@@ -29,8 +29,14 @@ self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
     // Skip non-GET requests and API/auth calls (these must hit the network)
-    if (event.request.method !== 'GET') return;
-    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/') || url.hostname === 'accounts.google.com') return;
+    if (event.request.method !== 'GET') {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/') || url.hostname === 'accounts.google.com') {
+        event.respondWith(fetch(event.request));
+        return;
+    }
 
     event.respondWith(
         caches.match(event.request).then(cached => {
