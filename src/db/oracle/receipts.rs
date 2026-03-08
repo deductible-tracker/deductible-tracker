@@ -63,7 +63,7 @@ pub(crate) async fn list_receipts(
                 content_type: row.get(4).ok(),
                 size: row.get(5).ok(),
                 ocr_text: row.get(6).ok(),
-                ocr_date: None,
+                ocr_date: row.get(7).ok(),
                 ocr_amount: row.get(8).ok(),
                 ocr_status: row.get(9).ok(),
                 created_at: parse_utc(row.get(10).ok()),
