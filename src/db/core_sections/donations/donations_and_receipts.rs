@@ -204,11 +204,12 @@ pub async fn soft_delete_donation(pool: &DbPool, user_id: &str, donation_id: &st
                 let existing_notes: Option<String> = existing.get(5).ok();
                 let existing_deleted: i64 = existing.get(6).unwrap_or(0);
 
+                let sql = "UPDATE donations SET deleted = 1, updated_at = :1 WHERE id = :2 AND user_id = :3";
+                let _stmt = conn.execute(sql, &[&updated_at, &donation_id, &user_id])?;
+
                 // Cascade-delete associated receipts
                 conn.execute("DELETE FROM receipts WHERE donation_id = :1", &[&donation_id])?;
 
-                let sql = "UPDATE donations SET deleted = 1, updated_at = :1 WHERE id = :2 AND user_id = :3";
-                let _stmt = conn.execute(sql, &[&updated_at, &donation_id, &user_id])?;
                 let _ = conn.commit();
                 let mut cnt_rows = conn.query("SELECT COUNT(1) FROM donations WHERE id = :1 AND user_id = :2 AND deleted = 1", &[&donation_id, &user_id])?;
                 if let Some(r) = cnt_rows.next().transpose()? {
