@@ -356,6 +356,8 @@ pub async fn update_charity(
         return (StatusCode::BAD_REQUEST, "Name required").into_response();
     }
 
+    let name_owned = name.to_string();
+
     let normalized_ein = req
         .ein
         .as_ref()
@@ -375,7 +377,7 @@ pub async fn update_charity(
     let patch = CharityPatch {
         charity_id: charity_id.clone(),
         user_id: user.id.clone(),
-        name: name.to_string(),
+        name: name_owned.clone(),
         ein: normalized_ein.clone(),
         category: category.clone(),
         status: status.clone(),
@@ -394,7 +396,7 @@ pub async fn update_charity(
         Ok(true) => {
             let payload = CharityResponse {
                 id: charity_id,
-                name: name.to_string(),
+                name: name_owned,
                 ein: normalized_ein,
                 category,
                 status,
