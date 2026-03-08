@@ -103,7 +103,7 @@ pub(crate) async fn get_receipt(
                 content_type: r.get(4).ok(),
                 size: r.get(5).ok(),
                 ocr_text: r.get(6).ok(),
-                ocr_date: None,
+                ocr_date: r.get(7).ok(),
                 ocr_amount: r.get(8).ok(),
                 ocr_status: r.get(9).ok(),
                 created_at: parse_utc(r.get(10).ok()),
