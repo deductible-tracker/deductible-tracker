@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 
 # Stage 1: Build (with BuildKit cache mounts)
 FROM dhi.io/rust:1 AS builder
