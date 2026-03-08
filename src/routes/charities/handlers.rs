@@ -276,30 +276,8 @@ pub async fn create_charity(
 
     let id = Uuid::new_v4().to_string();
     let new_charity = NewCharity {
-        id: id.clone(),
+        id,
         user_id: user.id.clone(),
-        name: resolved_name.clone(),
-        ein: resolved_ein.clone(),
-        category: resolved_category.clone(),
-        status: resolved_status.clone(),
-        classification: resolved_classification.clone(),
-        nonprofit_type: resolved_nonprofit_type.clone(),
-        deductibility: resolved_deductibility.clone(),
-        street: resolved_street.clone(),
-        city: resolved_city.clone(),
-        state: resolved_state.clone(),
-        zip: resolved_zip.clone(),
-        created_at: chrono::Utc::now(),
-    };
-
-    if let Err(e) = crate::db::charities::create_charity(&state.db, &new_charity).await
-    {
-        tracing::error!("Charity create error: {}", e);
-        return (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response();
-    }
-
-    let payload = CharityResponse {
-        id: id.clone(),
         name: resolved_name,
         ein: resolved_ein,
         category: resolved_category,
@@ -311,6 +289,28 @@ pub async fn create_charity(
         city: resolved_city,
         state: resolved_state,
         zip: resolved_zip,
+        created_at: chrono::Utc::now(),
+    };
+
+    if let Err(e) = crate::db::charities::create_charity(&state.db, &new_charity).await
+    {
+        tracing::error!("Charity create error: {}", e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response();
+    }
+
+    let payload = CharityResponse {
+        id: new_charity.id.clone(),
+        name: new_charity.name.clone(),
+        ein: new_charity.ein.clone(),
+        category: new_charity.category.clone(),
+        status: new_charity.status.clone(),
+        classification: new_charity.classification.clone(),
+        nonprofit_type: new_charity.nonprofit_type.clone(),
+        deductibility: new_charity.deductibility.clone(),
+        street: new_charity.street.clone(),
+        city: new_charity.city.clone(),
+        state: new_charity.state.clone(),
+        zip: new_charity.zip.clone(),
     };
     (
         StatusCode::CREATED,
