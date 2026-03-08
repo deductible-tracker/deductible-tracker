@@ -287,7 +287,7 @@ async function renderLogin() {
     const app = document.getElementById('app');
     app.innerHTML = `
         <div class="mx-auto grid min-h-full max-w-6xl items-center gap-8 py-8 sm:py-12 lg:grid-cols-2">
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-linear-to-br from-indigo-50 to-white p-6 sm:p-10">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-indigo-50 to-white p-6 sm:p-10">
                 <p class="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-400">Deductible Tracker</p>
                 <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-4xl">A calmer way to track charitable giving</h1>
                 <p class="mt-4 max-w-xl text-sm text-slate-600 dark:text-slate-300 sm:text-base">Capture donations, keep receipts attached, and export polished yearly reports from one clean workspace.</p>
