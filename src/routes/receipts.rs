@@ -235,7 +235,19 @@ pub async fn ocr_receipt(
                     // Also log audit
                     let audit_id = Uuid::new_v4().to_string();
                     let details = Some(format!("OCR run for receipt {}: date={:?} amount={:?}", receipt.id, date_opt, amt_opt));
-                    let _ = crate::db::audit::log_audit(&state.db, &audit_id, &user.id, "ocr", "receipts", &Some(receipt.id.clone()), &details).await;
+                    if let Err(e) = crate::db::audit::log_audit(
+                        &state.db,
+                        &audit_id,
+                        &user.id,
+                        "ocr",
+                        "receipts",
+                        &Some(receipt.id.clone()),
+                        &details,
+                    )
+                    .await
+                    {
+                        tracing::error!("Failed to write audit log for OCR run (audit_id={}): {}", audit_id, e);
+                    }
 
                     (StatusCode::OK, AxumJson(serde_json::json!({ "status": "ocr_completed", "id": receipt.id }))).into_response()
                 }
