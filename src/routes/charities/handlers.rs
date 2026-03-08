@@ -228,14 +228,7 @@ pub async fn create_charity(
             resolved_zip = clean_opt_string(org.zip);
         }
     } else {
-        resolved_ein = resolved_ein.and_then(|ein| {
-            let normalized = normalize_ein(&ein);
-            if normalized.is_empty() {
-                None
-            } else {
-                Some(normalized)
-            }
-        });
+        // `resolved_ein` is already normalized earlier; no further processing needed here.
     }
 
     match crate::db::charities::find_charity_by_name_or_ein(
