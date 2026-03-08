@@ -6,8 +6,22 @@ pub(super) fn normalize_i64_ein(value: i64) -> String {
     format!("{:09}", value)
 }
 
+// Maximum allowed length for cleaned optional strings to avoid unbounded allocations.
+const MAX_CLEAN_STRING_LEN: usize = 1024;
+
 pub(super) fn clean_opt_string(value: Option<String>) -> Option<String> {
-    value.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    value.and_then(|s| {
+        if s.len() > MAX_CLEAN_STRING_LEN {
+            // Reject overly long input to bound allocation size.
+            return None;
+        }
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
 }
 
 pub(super) fn map_deductibility(code: Option<i64>) -> Option<String> {
