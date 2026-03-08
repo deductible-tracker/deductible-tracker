@@ -17,6 +17,7 @@ use serde::Serialize;
 use crate::db::models::NewReceipt;
 
 const MAX_RECEIPT_SIZE_BYTES: i64 = 10 * 1024 * 1024;
+const PRESIGN_EXPIRATION_SECS: u64 = 300;
 
 fn allowed_ext_for_content_type(content_type: &str) -> Option<&'static str> {
     match content_type {
@@ -51,7 +52,7 @@ pub async fn generate_upload_url(
     let key = format!("receipts/{}/{}/{}.{}", user_id, year, file_id, ext);
 
     let presigned_req = state.storage
-        .presign_write(&key, Duration::from_secs(300))
+        .presign_write(&key, Duration::from_secs(PRESIGN_EXPIRATION_SECS))
         .await;
 
     match presigned_req {
@@ -59,7 +60,7 @@ pub async fn generate_upload_url(
              let resp_data = json!({
                 "upload_url": req.uri().to_string(),
                 "key": key,
-                "expires_in": 300
+                "expires_in": PRESIGN_EXPIRATION_SECS
             });
             (StatusCode::OK, AxumJson(resp_data)).into_response()
         },
