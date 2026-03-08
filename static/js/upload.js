@@ -37,25 +37,45 @@ function showToast(message, type = 'info') {
     const style = palette[type] || palette.info;
 
     toast.className = 'pointer-events-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-sm transition duration-300';
-    toast.innerHTML = `
-        <div class="flex items-start gap-3">
-            <span class="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${style.badge}">
-                ${type === 'success' ? '✓' : type === 'error' ? '!' : 'i'}
-            </span>
-            <div class="min-w-0 flex-1">
-                <p class="text-sm font-semibold ${style.titleColor}">${style.title}</p>
-                <p class="mt-0.5 text-sm text-slate-600 dark:text-slate-300 wrap-break-word">${message}</p>
-            </div>
-            <button type="button" class="toast-close text-slate-400 hover:text-slate-600 dark:text-slate-300" aria-label="Dismiss">✕</button>
-        </div>
-    `;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex items-start gap-3';
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = `mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${style.badge}`;
+    iconSpan.textContent = type === 'success' ? '✓' : type === 'error' ? '!' : 'i';
+    wrapper.appendChild(iconSpan);
+
+    const textContainer = document.createElement('div');
+    textContainer.className = 'min-w-0 flex-1';
+
+    const titleP = document.createElement('p');
+    titleP.className = `text-sm font-semibold ${style.titleColor}`;
+    titleP.textContent = style.title;
+    textContainer.appendChild(titleP);
+
+    const messageP = document.createElement('p');
+    messageP.className = 'mt-0.5 text-sm text-slate-600 dark:text-slate-300 wrap-break-word';
+    messageP.textContent = message;
+    textContainer.appendChild(messageP);
+
+    wrapper.appendChild(textContainer);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'toast-close text-slate-400 hover:text-slate-600 dark:text-slate-300';
+    closeButton.setAttribute('aria-label', 'Dismiss');
+    closeButton.textContent = '✕';
+    wrapper.appendChild(closeButton);
+
+    toast.appendChild(wrapper);
 
     const dismiss = () => {
         toast.classList.add('opacity-0', 'translate-x-2');
         setTimeout(() => toast.remove(), 220);
     };
 
-    toast.querySelector('.toast-close')?.addEventListener('click', dismiss);
+    closeButton.addEventListener('click', dismiss);
     host.appendChild(toast);
     setTimeout(dismiss, 4200);
 }
