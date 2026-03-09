@@ -31,6 +31,7 @@ tempfile = "3.6"
 regex = "1"
 blake3 = "1"
 minifier = "0.3"
+openssl = { version = "0.10", features = ["vendored"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 # Pin rust-oracle to the upstream revision that moved to odpic-sys 0.2.0,
 # which removes the legacy bindgen -> which -> failure build chain.
@@ -38,8 +39,6 @@ oracle = { git = "https://github.com/kubo/rust-oracle.git", rev = "caf3c0d06b654
 r2d2 = "0.8"
 rand = "0.10"
 argon2 = "0.5" # For password hashing (dev mode)
-rusqlite = { version = "0.29", features = ["chrono"] }
-r2d2_sqlite = "0.22"
 
 [features]
 ocr = ["leptess"]

@@ -2,19 +2,14 @@ use r2d2::Pool;
 use std::env;
 use anyhow::anyhow;
 use std::sync::Arc;
-use tokio::task;
 use serde_json::json;
+use tokio::task;
 use uuid::Uuid;
 
 use crate::db::oracle::OracleConnectionManager;
 
-// Add sqlite support for development environment
-use rusqlite::params;
-use r2d2_sqlite::SqliteConnectionManager as R2SqliteManager;
-
 pub enum DbPoolEnum {
     Oracle(Pool<OracleConnectionManager>),
-    Sqlite(r2d2::Pool<R2SqliteManager>),
 }
 
 pub type DbPool = Arc<DbPoolEnum>;
@@ -38,11 +33,6 @@ impl RuntimeMode {
         }
     }
 
-    fn sqlite_path() -> String {
-        env::var("SQLITE_DB_PATH")
-            .or_else(|_| env::var("DEV_SQLITE_PATH"))
-            .unwrap_or_else(|_| "dev.db".to_string())
-    }
 }
 
 pub async fn init_pool() -> anyhow::Result<DbPool> {
@@ -60,14 +50,10 @@ pub async fn init_pool() -> anyhow::Result<DbPool> {
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(15);
 
-    if runtime_mode == RuntimeMode::Production {
-        crate::db::oracle::init_pool(db_pool_max, db_pool_min, db_pool_timeout_secs).await
-    } else {
-        crate::db::sqlite::init_pool(&RuntimeMode::sqlite_path(), db_pool_max, db_pool_min, db_pool_timeout_secs).await
-    }
+    crate::db::oracle::init_pool(runtime_mode, db_pool_max, db_pool_min, db_pool_timeout_secs).await
 }
 
-// High level helpers used by routes to avoid Oracle/SQLite API differences
+// High level helpers used by routes.
 use crate::db::models::{
     Donation as DonationModel, NewDonation, NewReceipt, RevisionLogEntry, UserProfileUpsert,
 };
@@ -89,7 +75,6 @@ pub async fn get_user_profile_by_email(
 ) -> anyhow::Result<Option<(String, UserProfileRow)>> {
     match &**pool {
         DbPoolEnum::Oracle(p) => crate::db::oracle::get_user_profile_by_email(p, email).await,
-        DbPoolEnum::Sqlite(p) => crate::db::sqlite::get_user_profile_by_email(p, email).await,
     }
 }
 
@@ -99,7 +84,6 @@ pub async fn get_user_profile(
 ) -> anyhow::Result<Option<UserProfileRow>> {
     match &**pool {
         DbPoolEnum::Oracle(p) => crate::db::oracle::get_user_profile(p, user_id).await,
-        DbPoolEnum::Sqlite(p) => crate::db::sqlite::get_user_profile(p, user_id).await,
     }
 }
 
@@ -109,7 +93,6 @@ pub async fn upsert_user_profile(
 ) -> anyhow::Result<()> {
     match &**pool {
         DbPoolEnum::Oracle(p) => crate::db::oracle::upsert_user_profile(p, input).await,
-        DbPoolEnum::Sqlite(p) => crate::db::sqlite::upsert_user_profile(p, input).await,
     }
 }
 
@@ -122,12 +105,7 @@ pub async fn add_donation(
     let date_str_for_audit = input.date.format("%Y-%m-%d").to_string();
 
     match &**pool {
-        DbPoolEnum::Oracle(p) => {
-            crate::db::oracle::donations::add_donation(p, &input, &created_at_str).await?
-        }
-        DbPoolEnum::Sqlite(p) => {
-            crate::db::sqlite::donations::add_donation(p, &input, &created_at_str).await?
-        }
+        DbPoolEnum::Oracle(p) => crate::db::oracle::donations::add_donation(p, &input, &created_at_str).await?,
     };
 
     let revision = RevisionLogEntry {
@@ -168,12 +146,7 @@ pub async fn add_receipt(
     let donation_owner = donation_owner_user_id(pool, &input.donation_id).await?;
 
     match &**pool {
-        DbPoolEnum::Oracle(p) => {
-            crate::db::oracle::receipts::add_receipt(p, &input, &created_at_str).await?
-        }
-        DbPoolEnum::Sqlite(p) => {
-            crate::db::sqlite::receipts::add_receipt(p, &input, &created_at_str).await?
-        }
+        DbPoolEnum::Oracle(p) => crate::db::oracle::receipts::add_receipt(p, &input, &created_at_str).await?,
     };
 
     let revision = RevisionLogEntry {

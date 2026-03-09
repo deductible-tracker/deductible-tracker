@@ -38,7 +38,7 @@ pub struct AppState {
     pub asset_entrypoints: AssetEntrypoints,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct AssetEntrypoints {
     pub app: String,
     pub upload: String,
@@ -53,6 +53,12 @@ async fn main() -> anyhow::Result<()> {
 
     run_tailwind_build_if_needed()?;
 
+    let asset_entrypoints = prepare_fingerprinted_assets()?;
+
+    if should_prepare_assets_only() {
+        return Ok(());
+    }
+
     // Ensure critical environment variables are set
     env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
@@ -66,8 +72,6 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Starting Deductible Tracker application...");
 
-    // Generate fingerprinted JS assets for long-lived browser caching.
-    let asset_entrypoints = prepare_fingerprinted_assets()?;
     let index_template = fs::read_to_string("static/index.html")?;
 
     // Database Setup
@@ -234,10 +238,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/config", get(auth::get_config))
         .merge(auth_router)
         .route("/sw.js", get(serve_service_worker))
-        .nest_service("/assets", ServeDir::new("static/assets"))
+        .nest_service("/assets", ServeDir::new("public/assets"))
         .nest_service("/vendor", ServeDir::new("static/vendor"))
         .nest_service("/js", ServeDir::new("static/js"))
         .nest_service("/css", ServeDir::new("static/css"))
+        .nest_service("/fonts", ServeDir::new("static/fonts"))
         .nest_service("/data", ServeDir::new("static/data"))
         .fallback(get(spa_fallback))
         .layer(from_fn(static_cache_control))

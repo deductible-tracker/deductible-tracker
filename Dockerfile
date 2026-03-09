@@ -1,90 +1,100 @@
 # syntax=docker/dockerfile:1
 
-# Stage 1: Build (with BuildKit cache mounts)
-FROM dhi.io/rust:1 AS builder
-WORKDIR /app
-
-ARG TARGETARCH
 ARG ENABLE_OCR=0
 
-# Oracle Instant Client configuration (centralized for maintainability)
-ARG ORACLE_IC_BASE_URL="https://download.oracle.com/otn_software/linux/instantclient"
-ARG ORACLE_IC_VERSION_PATH="1919000"
-ARG ORACLE_IC_VERSION_FULL="19.19.0.0.0dbru"
+FROM dhi.io/rust:1 AS rust-toolchain
 
-# Install build dependencies in a single layer and clean up
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  pkg-config libssl-dev libaio1 unzip wget build-essential ca-certificates libsqlite3-dev \
-  && rm -rf /var/lib/apt/lists/*
+# Stage 1: Build (with BuildKit cache mounts)
+FROM oraclelinux:9-slim AS builder
+WORKDIR /app
 
-# Optional OCR build dependencies (only installed when ENABLE_OCR=1)
-RUN if [ "${ENABLE_OCR}" = "1" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends \
-      libleptonica-dev libtesseract-dev tesseract-ocr \
-    && rm -rf /var/lib/apt/lists/*; \
-  fi
+ARG ENABLE_OCR
+RUN microdnf install -y \
+      oracle-instantclient-release-23ai-el9 \
+    && microdnf install -y \
+      gcc \
+      make \
+  nodejs \
+  npm \
+      perl \
+      git \
+      ca-certificates \
+      libaio \
+      libnsl \
+      oracle-instantclient-basic \
+      oracle-instantclient-devel \
+    && microdnf clean all
 
-ENV CARGO_TARGET_DIR=/app/target
+COPY --from=rust-toolchain /usr/local /usr/local
+
+ENV CARGO_HOME=/cargo
+ENV CARGO_TARGET_DIR=/app/target-ol9
 ENV RUSTFLAGS=""
-
-# Install Oracle Instant Client for the build target architecture
-RUN set -eux; \
-  mkdir -p /opt/oracle; cd /opt/oracle; \
-  case "${TARGETARCH:-amd64}" in \
-    arm64) \
-      B_BASIC="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-basic-linux.arm64-${ORACLE_IC_VERSION_FULL}.zip"; \
-      B_SDK="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-sdk-linux.arm64-${ORACLE_IC_VERSION_FULL}.zip";; \
-    amd64|x86_64) \
-      B_BASIC="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-basic-linux.x64-${ORACLE_IC_VERSION_FULL}.zip"; \
-      B_SDK="${ORACLE_IC_BASE_URL}/${ORACLE_IC_VERSION_PATH}/instantclient-sdk-linux.x64-${ORACLE_IC_VERSION_FULL}.zip";; \
-    *) echo "ERROR: Unsupported arch ${TARGETARCH}, cannot install Oracle Instant Client"; exit 1;; \
-  esac; \
-  wget -q "$B_BASIC" -O basic.zip; unzip basic.zip; rm basic.zip; \
-  wget -q "$B_SDK" -O sdk.zip; unzip sdk.zip; rm sdk.zip; \
-  mv instantclient_19_19 instantclient; \
-  test -d instantclient
-
-ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
-ENV OCI_LIB_DIR=/opt/oracle/instantclient
-ENV OCI_INC_DIR=/opt/oracle/instantclient/sdk/include
+ENV PATH=/usr/local/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/oracle/23/client64/lib
+ENV OCI_LIB_DIR=/usr/lib/oracle/23/client64/lib
+ENV OCI_INC_DIR=/usr/include/oracle/23/client64
 
 # Copy manifest first and fetch dependencies to cache them
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock package.json package-lock.json ./
 
 # Create a tiny dummy source file so cargo recognizes a target
 # (allows `cargo fetch` to run using only the manifest files)
 RUN mkdir -p src && echo 'fn main() { println!("__dummy__"); }' > src/main.rs
 
-RUN --mount=type=cache,target=/root/.cargo/registry \
-  --mount=type=cache,target=/root/.cargo/git \
-  --mount=type=cache,target=/app/target \
+RUN --mount=type=cache,target=/cargo/registry \
+  --mount=type=cache,target=/cargo/git \
+  --mount=type=cache,target=/app/target-ol9 \
   cargo fetch
+
+RUN set -eux; \
+    npm install --include=optional; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      aarch64|arm64) npm install --no-save @tailwindcss/oxide-linux-arm64-gnu ;; \
+      x86_64|amd64) npm install --no-save @tailwindcss/oxide-linux-x64-gnu ;; \
+      *) echo "Unsupported architecture for Tailwind native bindings: $arch" >&2; exit 1 ;; \
+    esac
 
 
 # Copy full source and build the real binaries
 COPY . .
-RUN --mount=type=cache,target=/root/.cargo/registry \
-    --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/app/target \
+RUN --mount=type=cache,target=/cargo/registry \
+    --mount=type=cache,target=/cargo/git \
+    --mount=type=cache,target=/app/target-ol9 \
     if [ "${ENABLE_OCR}" = "1" ]; then \
-      CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release --bins --features ocr -j1; \
-    else \
-      CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release --bins -j1; \
-    fi && \
-    cp /app/target/release/deductible-tracker /app/deductible-tracker && \
-    cp /app/target/release/migrate /app/migrate
+      echo "ERROR: ENABLE_OCR=1 is not supported in the minimal hardened builder without extra native OCR packages." >&2; \
+      exit 1; \
+    fi; \
+    CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release --bins -j1 && \
+    RUST_ENV=development PREPARE_ASSETS_ONLY=1 ./target-ol9/release/deductible-tracker && \
+    cp /app/target-ol9/release/deductible-tracker /app/deductible-tracker && \
+    cp /app/target-ol9/release/migrate /app/migrate
 
 # Stage 2: Runtime
-# Use OL 9 – Oracle Instant Client 19.x is certified on OL 9;
-# OL 10's newer glibc/TLS stack causes silent TCPS connection failures.
+# Use OL 9 with the Oracle Instant Client repository enabled via the release package.
 FROM oraclelinux:9-slim AS runtime
 WORKDIR /app
 
+RUN groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser appuser
+
 # Minimal runtime deps
 # - libaio: async I/O required by Oracle OCI
-# - libnsl: Oracle Net; OL 9 ships libnsl.so.3 (libnsl2) but IC 19 links against libnsl.so.1
+# - libnsl: Oracle Net; OL 9 ships libnsl.so.3 (libnsl2)
 # - openssl: TLS support
-RUN microdnf install -y libaio libnsl openssl sqlite-libs && microdnf clean all && \
+RUN microdnf install -y \
+      oracle-instantclient-release-23ai-el9 \
+    && microdnf install -y \
+      libaio \
+      libnsl \
+      openssl \
+      oracle-instantclient-basiclite \
+    && microdnf clean all && \
+    rm -f /usr/lib/oracle/23/client64/bin/adrci /usr/lib/oracle/23/client64/bin/genezi && \
+    rm -f /usr/lib/oracle/23/client64/lib/ojdbc8.jar /usr/lib/oracle/23/client64/lib/xstreams.jar && \
+    rm -f /usr/lib/oracle/23/client64/lib/libocci.so /usr/lib/oracle/23/client64/lib/libocci.so.10.1 /usr/lib/oracle/23/client64/lib/libocci.so.11.1 /usr/lib/oracle/23/client64/lib/libocci.so.12.1 /usr/lib/oracle/23/client64/lib/libocci.so.18.1 /usr/lib/oracle/23/client64/lib/libocci.so.19.1 /usr/lib/oracle/23/client64/lib/libocci.so.20.1 /usr/lib/oracle/23/client64/lib/libocci.so.21.1 /usr/lib/oracle/23/client64/lib/libocci.so.22.1 /usr/lib/oracle/23/client64/lib/libocci.so.23.1 && \
+    rm -f /usr/share/oracle/23/client64/doc/BASIC_LITE_LICENSE /usr/share/oracle/23/client64/doc/BASIC_LITE_README && \
+    rm -rf /usr/lib/oracle/23/client64/lib/network && \
     ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1 2>/dev/null || true
 
 # Optional OCR runtime libs (only installed when ENABLE_OCR=1)
@@ -97,20 +107,20 @@ RUN if [ "${ENABLE_OCR}" = "1" ]; then \
       microdnf install -y tesseract leptonica && microdnf clean all || true; \
     fi
 
-# Copy Oracle Instant Client from builder
-COPY --from=builder /opt/oracle/instantclient /opt/oracle/instantclient
-ENV LD_LIBRARY_PATH=/opt/oracle/instantclient
+ENV LD_LIBRARY_PATH=/usr/lib/oracle/23/client64/lib
+ENV OCI_LIB_DIR=/usr/lib/oracle/23/client64/lib
+ENV HOME=/home/appuser
 ENV RUST_ENV=production
 ENV TNS_ADMIN=/app/wallet
 
 # Copy binaries and assets
-COPY --from=builder /app/deductible-tracker /app/deductible-tracker
-COPY --from=builder /app/migrate /app/migrate
-COPY migrations /app/migrations
-COPY static /app/static
+COPY --from=builder --chown=appuser:appuser /app/deductible-tracker /app/deductible-tracker
+COPY --from=builder --chown=appuser:appuser /app/migrate /app/migrate
+COPY --chown=appuser:appuser migrations /app/migrations
+COPY --from=builder --chown=appuser:appuser /app/static /app/static
+COPY --from=builder --chown=appuser:appuser /app/public /app/public
+RUN rm -rf /app/static/assets
 
-# Create non-root user and set permissions
-RUN groupadd -r appuser && useradd -r -g appuser appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8080

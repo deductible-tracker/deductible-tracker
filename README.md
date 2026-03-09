@@ -14,13 +14,13 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
 
 - **Backend**: Rust (Axum on OCI Ampere)
 - **Database (prod)**: Oracle Autonomous Database (ATP)
-- **Database (local dev)**: SQLite (`dev.db` by default)
+- **Database (local dev)**: Oracle Database Free container
 - **Storage**: OCI Object Storage (S3-Compatible API)
 - **Frontend**: Vanilla JS (ES Modules) + TailwindCSS + Dexie (IndexedDB)
 
 ## Frontend Asset Optimization
 
-- Fingerprinted JavaScript and CSS assets under `static/assets/` are generated and minified automatically by the backend asset preparation pipeline at startup.
+- Fingerprinted JavaScript and CSS assets under `public/assets/` are generated and minified automatically during image builds.
 - `npm run tailwind:build` still performs Tailwind compilation with minification for `tailwind.css` before fingerprinting.
 
 ## Setup & Deployment
@@ -35,18 +35,16 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
 ### Local Development
 
 1. **Environment Variables**:
-   Create a `.env` file with:
+   Create a `.env` file from `.env.example` and adjust values as needed.
+
+   Minimal local example:
    ```bash
-   RUST_ENV=development
-   SQLITE_DB_PATH=dev.db
-   OCI_ACCESS_KEY_ID=...
-   OCI_SECRET_ACCESS_KEY=...
-   OBJECT_STORAGE_ENDPOINT=...
-   OBJECT_STORAGE_BUCKET=...
-   JWT_SECRET=...
+   cp .env.example .env
    ```
 
-   For production (`RUST_ENV=production`), set Oracle credentials:
+   The default local stack reads `ORACLE_PDB_USER`, `ORACLE_PWD`, and `ORACLE_PDB_CONNECT_STRING` for development. Host-side Rust commands also accept `DEV_ORACLE_USER`, `DEV_ORACLE_PASSWORD`, and `DEV_ORACLE_CONNECT_STRING` if you want explicit dev-only names.
+
+   For production (`RUST_ENV=production`), set Oracle credentials separately:
    ```bash
    DB_USER=...
    DB_PASSWORD=...
@@ -55,8 +53,13 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
 
 2. **Start Local Server**:
    ```bash
-   cargo run
+   colima start --vm-type=vz --mount-type=virtiofs --cpu 2 --memory 3
+   docker-compose up --build
    ```
+
+   This starts the local Oracle container, runs the migration service once, and then starts the app on port `8080`.
+
+   Rebuild the image with `docker-compose build` whenever you want refreshed Tailwind output and fingerprinted frontend assets.
 
 3. **Build Tailwind CSS**:
    ```bash
@@ -115,13 +118,18 @@ npm run tailwind:build
    - `donations/`: donation/receipt operations and valuations.
    - `charities/`: charity CRUD and receipt OCR metadata updates.
 - `src/routes/`: API route handlers.
-- `src/db/oracle/` and `src/db/sqlite/`: backend-specific persistence.
+- `src/db/oracle/`: Oracle-backed persistence used in both development and production.
 - `static/`: frontend assets (PWA).
 
 ## Docker Notes
 
 - `Dockerfile` builds both `deductible-tracker` and `migrate` binaries and ships
    them in an Oracle Linux 9 runtime image.
-- `docker-compose.yml` expects a `.env` file with the production/runtime env vars.
-- For Oracle wallet usage, mount `Wallet_deductibledb` and set `TNS_ADMIN` to the
-   mounted path inside the container.
+- `docker-compose.yml` is now the default local development stack: Oracle Free,
+   one-shot migrations, and the app.
+- `docker compose build` rebuilds Tailwind output and fingerprinted frontend assets into the image.
+- `docker compose up` starts the already-built image and does not regenerate frontend assets.
+- Copy `.env.example` to `.env` before running `docker compose up --build`.
+- The Compose app container overrides the Oracle connect string to use the
+   internal hostname `oracle-dev`, so the same `.env` can still use
+   `//localhost:1521/FREEPDB1` for host-side `cargo run` commands.

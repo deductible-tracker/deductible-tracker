@@ -38,48 +38,6 @@ pub async fn list_charities(pool: &DbPool, user_id: &str) -> anyhow::Result<Vec<
             }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
             Ok(rows)
         }
-        DbPoolEnum::Sqlite(p) => {
-            let p = p.clone();
-            let user_id = user_id.to_string();
-            let rows = task::spawn_blocking(move || -> anyhow::Result<Vec<crate::db::models::Charity>> {
-                let conn = p.get()?;
-                let sql = "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = ?1";
-                let mut stmt = conn.prepare(sql)?;
-                let rows_iter = stmt.query_map(params![user_id], |row| {
-                    let created_at_str: Option<String> = row.get(4)?;
-                    let updated_at_str: Option<String> = row.get(5)?;
-                    let created_at = created_at_str
-                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(chrono::Utc::now);
-                    let updated_at = updated_at_str
-                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(chrono::Utc::now);
-                    Ok(crate::db::models::Charity {
-                        id: row.get(0)?,
-                        user_id: row.get(1)?,
-                        name: row.get(2)?,
-                        ein: row.get(3).ok(),
-                        created_at,
-                        updated_at,
-                        nonprofit_type: row.get(6).ok(),
-                        deductibility: row.get(7).ok(),
-                        street: row.get(8).ok(),
-                        city: row.get(9).ok(),
-                        state: row.get(10).ok(),
-                        zip: row.get(11).ok(),
-                        category: row.get(12).ok(),
-                        status: row.get(13).ok(),
-                        classification: row.get(14).ok(),
-                    })
-                })?;
-                let mut out = Vec::new();
-                for r in rows_iter { out.push(r?); }
-                Ok(out)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(rows)
-        }
     }
 }
 
@@ -119,86 +77,13 @@ pub async fn set_receipt_ocr(
                 let existing_ocr_status: Option<String> = existing.get(8).ok();
                 let existing_created_at: Option<String> = existing.get(9).ok();
 
-                let sql = "UPDATE receipts SET ocr_text = :1, ocr_date = :2, ocr_amount = :3, ocr_status = :4 WHERE id = :5";
-                conn.execute(sql, &[&text, &o_date, &amt, &status, &receipt_id])?;
-                let _ = conn.commit();
-                let old_values = json!({
-                    "id": receipt_id,
-                    "donation_id": existing_donation_id,
-                    "key": existing_key,
-                    "file_name": existing_file_name,
-                    "content_type": existing_content_type,
-                    "size": existing_size,
-                    "ocr_text": existing_ocr_text,
-                    "ocr_date": existing_ocr_date,
-                    "ocr_amount": existing_ocr_amount,
-                    "ocr_status": existing_ocr_status,
-                    "created_at": existing_created_at
-                }).to_string();
-                let new_values = json!({
-                    "id": receipt_id,
-                    "donation_id": existing_donation_id,
-                    "key": existing_key,
-                    "file_name": existing_file_name,
-                    "content_type": existing_content_type,
-                    "size": existing_size,
-                    "ocr_text": text,
-                    "ocr_date": o_date,
-                    "ocr_amount": amt,
-                    "ocr_status": status,
-                    "created_at": existing_created_at
-                }).to_string();
-                Ok(Some((old_values, new_values)))
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            if let Some((old_values, new_values)) = revision_payload {
-                let revision = RevisionLogEntry {
-                    id: Uuid::new_v4().to_string(),
-                    user_id: user_for_revision,
-                    table_name: "receipts".to_string(),
-                    record_id: receipt_id_for_revision,
-                    operation: "update".to_string(),
-                    old_values: Some(old_values),
-                    new_values: Some(new_values),
-                };
-                log_revision(pool, &revision).await?;
-                Ok(true)
-            } else {
-                Ok(false)
-            }
-        }
-        DbPoolEnum::Sqlite(p) => {
-            let p = p.clone();
-            let receipt_id = receipt_id.to_string();
-            let receipt_id_for_revision = receipt_id.clone();
-            let text = ocr_text.clone();
-            let o_date = ocr_date.map(|d| d.format("%Y-%m-%d").to_string());
-            let amt = *ocr_amount;
-            let status = ocr_status.clone();
-            let revision_payload = task::spawn_blocking(move || -> anyhow::Result<Option<(String, String)>> {
-                let conn = p.get()?;
-                let mut stmt = conn.prepare("SELECT donation_id, key, file_name, content_type, size, ocr_text, ocr_date, ocr_amount, ocr_status, created_at FROM receipts WHERE id = ?1")?;
-                let mut rows = stmt.query(rusqlite::params![receipt_id])?;
-                let Some(existing) = rows.next()? else {
-                    return Ok(None);
-                };
-
-                let existing_donation_id: String = existing.get(0)?;
-                let existing_key: String = existing.get(1)?;
-                let existing_file_name: Option<String> = existing.get(2).ok();
-                let existing_content_type: Option<String> = existing.get(3).ok();
-                let existing_size: Option<i64> = existing.get(4).ok();
-                let existing_ocr_text: Option<String> = existing.get(5).ok();
-                let existing_ocr_date: Option<String> = existing.get(6).ok();
-                let existing_ocr_amount: Option<i64> = existing.get(7).ok();
-                let existing_ocr_status: Option<String> = existing.get(8).ok();
-                let existing_created_at: Option<String> = existing.get(9).ok();
-
-                let sql = "UPDATE receipts SET ocr_text = ?1, ocr_date = ?2, ocr_amount = ?3, ocr_status = ?4 WHERE id = ?5";
-                let rows = conn.execute(sql, rusqlite::params![text, o_date, amt, status, receipt_id])?;
-                if rows == 0 {
-                    return Ok(None);
+                let sql = "UPDATE receipts SET ocr_text = :1, ocr_date = :2, ocr_amount = :3, ocr_status = :4, updated_at = TO_TIMESTAMP_TZ(:5, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :6";
+                let updated_at_str = chrono::Utc::now().to_rfc3339();
+                if let Err(e) = conn.execute(sql, &[&text, &o_date, &amt, &status, &updated_at_str, &receipt_id]) {
+                    tracing::error!("Failed to update receipt OCR: {}. SQL: {}", e, sql);
+                    return Err(anyhow::anyhow!("Receipt OCR update failed: {}", e));
                 }
-
+                let _ = conn.commit();
                 let old_values = json!({
                     "id": receipt_id,
                     "donation_id": existing_donation_id,
@@ -270,16 +155,6 @@ pub async fn log_audit(
                 let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (:1,:2,:3,:4,:5,:6, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
                 conn.execute(sql, &[&id, &user_id, &action, &table_name, &record_id_cloned, &details_cloned, &created_at])?;
                 let _ = conn.commit();
-                Ok(())
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(())
-        }
-        DbPoolEnum::Sqlite(p) => {
-            let p = p.clone();
-            task::spawn_blocking(move || -> anyhow::Result<()> {
-                let conn = p.get()?;
-                let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)";
-                conn.execute(sql, rusqlite::params![id, user_id, action, table_name, record_id_cloned, details_cloned, created_at])?;
                 Ok(())
             }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
             Ok(())

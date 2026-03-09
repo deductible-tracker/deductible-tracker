@@ -1,20 +1,33 @@
 use anyhow::anyhow;
-use oracle::{ConnStatus, Connection, Connector, Error};
+use oracle::{ConnStatus, Connection, Connector, Error, InitParams};
 use r2d2::Pool;
 use r2d2::ManageConnection;
 use std::env;
 use std::sync::Arc;
 use tokio::task;
 
-use crate::db::core::{DbPool, DbPoolEnum, UserProfileRow};
+use crate::db::core::{DbPool, DbPoolEnum, RuntimeMode, UserProfileRow};
 use crate::db::models::UserProfileUpsert;
 
 pub(crate) mod donations;
 pub(crate) mod receipts;
 
+fn first_present_env(keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| env::var(key).ok().filter(|value| !value.is_empty()))
+}
+
 #[derive(Debug)]
 pub struct OracleConnectionManager {
     connector: Connector,
+}
+
+pub struct OracleConfig {
+    pub username: String,
+    pub password: String,
+    pub connect_string: String,
+    pub tns_admin: Option<String>,
+    pub client_lib_dir: Option<String>,
 }
 
 impl OracleConnectionManager {
@@ -42,26 +55,96 @@ impl ManageConnection for OracleConnectionManager {
     }
 }
 
+pub fn load_config(runtime_mode: RuntimeMode) -> anyhow::Result<OracleConfig> {
+    let (username, password, connect_string) = match runtime_mode {
+        RuntimeMode::Production => {
+            let username = env::var("DB_USER").map_err(|e| {
+                anyhow!(
+                    "Environment variable DB_USER must be set. Underlying error: {}",
+                    e
+                )
+            })?;
+            let password = env::var("DB_PASSWORD").map_err(|e| {
+                anyhow!(
+                    "Environment variable DB_PASSWORD must be set. Underlying error: {}",
+                    e
+                )
+            })?;
+            let connect_string = env::var("DB_CONNECT_STRING").map_err(|e| {
+                anyhow!(
+                    "Environment variable DB_CONNECT_STRING must be set. Underlying error: {}",
+                    e
+                )
+            })?;
+            (username, password, connect_string)
+        }
+        RuntimeMode::Development => (
+            first_present_env(&["DEV_ORACLE_USER", "ORACLE_PDB_USER"])
+                .unwrap_or_else(|| "pdbadmin".to_string()),
+            first_present_env(&["DEV_ORACLE_PASSWORD", "ORACLE_PWD"])
+                .unwrap_or_else(|| "ChangeMe123".to_string()),
+            first_present_env(&["DEV_ORACLE_CONNECT_STRING", "ORACLE_PDB_CONNECT_STRING"])
+                .unwrap_or_else(|| "//localhost:1521/FREEPDB1".to_string()),
+        ),
+    };
+
+    let tns_admin = match runtime_mode {
+        RuntimeMode::Production => env::var("TNS_ADMIN").ok(),
+        RuntimeMode::Development => None,
+    };
+
+    Ok(OracleConfig {
+        username,
+        password,
+        connect_string,
+        tns_admin,
+        client_lib_dir: env::var("OCI_LIB_DIR").ok(),
+    })
+}
+
+pub fn initialize_client(config: &OracleConfig) -> anyhow::Result<()> {
+    if InitParams::is_initialized() {
+        return Ok(());
+    }
+
+    let mut init_params = InitParams::new();
+    init_params
+        .load_error_url("https://oracle.github.io/odpi/doc/installation.html#macos")
+        .map_err(|e| anyhow!("Failed to configure Oracle client load error URL: {}", e))?;
+
+    if let Some(client_lib_dir) = config.client_lib_dir.clone() {
+        init_params
+            .oracle_client_lib_dir(client_lib_dir)
+            .map_err(|e| anyhow!("Failed to configure Oracle client library directory: {}", e))?;
+    }
+
+    if let Some(tns_admin) = config.tns_admin.clone() {
+        init_params
+            .oracle_client_config_dir(tns_admin)
+            .map_err(|e| anyhow!("Failed to configure Oracle client config directory: {}", e))?;
+    }
+
+    init_params
+        .init()
+        .map_err(|e| anyhow!("Failed to initialize Oracle client library: {}", e))?;
+
+    Ok(())
+}
+
 pub(crate) async fn init_pool(
+    runtime_mode: RuntimeMode,
     db_pool_max: u32,
     db_pool_min: u32,
     db_pool_timeout_secs: u64,
 ) -> anyhow::Result<DbPool> {
-    let username = env::var("DB_USER").map_err(|e| {
-        anyhow!("Environment variable DB_USER must be set to the Oracle database username. Underlying error: {}", e)
-    })?;
-    let password = env::var("DB_PASSWORD").map_err(|e| {
-        anyhow!("Environment variable DB_PASSWORD must be set to the Oracle database user's password. Underlying error: {}", e)
-    })?;
-    let conn_str = env::var("DB_CONNECT_STRING").map_err(|e| {
-        anyhow!("Environment variable DB_CONNECT_STRING must be set to the Oracle database connect string. Underlying error: {}", e)
-    })?;
+    let config = load_config(runtime_mode)?;
+    initialize_client(&config)?;
 
     eprintln!("[DB] Initializing Oracle connection pool");
     eprintln!("[DB] Using configured database user");
-    eprintln!("[DB] Connect string length: {} chars", conn_str.len());
+    eprintln!("[DB] Connect string length: {} chars", config.connect_string.len());
 
-    if let Ok(tns_admin) = env::var("TNS_ADMIN") {
+    if let Some(tns_admin) = config.tns_admin.clone() {
         eprintln!("[DB] TNS_ADMIN is set: {}", tns_admin);
         match std::fs::read_dir(&tns_admin) {
             Ok(entries) => {
@@ -80,7 +163,7 @@ pub(crate) async fn init_pool(
     }
 
     eprintln!("[DB] Creating connection manager...");
-    let manager = OracleConnectionManager::new(&username, &password, &conn_str);
+    let manager = OracleConnectionManager::new(&config.username, &config.password, &config.connect_string);
 
     eprintln!("[DB] Building pool...");
     let pool = Pool::builder()

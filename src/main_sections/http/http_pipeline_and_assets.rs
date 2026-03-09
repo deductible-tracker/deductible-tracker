@@ -27,6 +27,40 @@ fn run_tailwind_build_if_needed() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn should_prepare_assets_only() -> bool {
+    env::var("PREPARE_ASSETS_ONLY")
+        .map(|v| v.eq_ignore_ascii_case("1") || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn should_skip_asset_rebuild() -> bool {
+    env::var("SKIP_ASSET_REBUILD")
+        .map(|v| v.eq_ignore_ascii_case("1") || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn public_assets_root() -> PathBuf {
+    Path::new("public").join("assets")
+}
+
+fn asset_manifest_path() -> PathBuf {
+    public_assets_root().join(".asset-manifest.json")
+}
+
+fn load_asset_manifest() -> anyhow::Result<AssetEntrypoints> {
+    let manifest = fs::read_to_string(asset_manifest_path())?;
+    Ok(serde_json::from_str(&manifest)?)
+}
+
+fn write_asset_manifest(entrypoints: &AssetEntrypoints) -> anyhow::Result<()> {
+    let manifest_path = asset_manifest_path();
+    if let Some(parent) = manifest_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&manifest_path, serde_json::to_vec_pretty(entrypoints)?)?;
+    Ok(())
+}
+
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -141,12 +175,18 @@ async fn static_cache_control(req: Request<Body>, next: Next) -> impl IntoRespon
 }
 
 fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
+    if should_skip_asset_rebuild() {
+        return load_asset_manifest();
+    }
+
     let static_root = Path::new("static");
     let js_root = static_root.join("js");
-    let assets_root = static_root.join("assets");
+    let source_assets_root = static_root.join("assets");
+    let assets_root = public_assets_root();
 
     fs::create_dir_all(&assets_root)?;
     clear_generated_fingerprinted_assets(&assets_root)?;
+    copy_passthrough_assets(&source_assets_root, &assets_root)?;
 
     let mut app = "/assets/app.js".to_string();
     let mut upload = "/assets/upload.js".to_string();
@@ -272,11 +312,15 @@ fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
         css_rewrites.insert(original_path, hashed_path);
     }
 
-    Ok(AssetEntrypoints {
+    let entrypoints = AssetEntrypoints {
         app,
         upload,
         valuations,
         css_rewrites,
-    })
+    };
+
+    write_asset_manifest(&entrypoints)?;
+
+    Ok(entrypoints)
 }
 

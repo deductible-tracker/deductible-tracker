@@ -1,5 +1,5 @@
 // Service Worker for Deductible Tracker - offline asset caching
-const CACHE_NAME = 'dt-cache-v1';
+const CACHE_NAME = 'dt-cache-v2';
 
 // Core assets to pre-cache on install
 const PRECACHE_ASSETS = [
@@ -60,7 +60,8 @@ self.addEventListener('fetch', event => {
                 if (response.ok && (
                     url.pathname.startsWith('/assets/') ||
                     url.pathname.startsWith('/vendor/') ||
-                    url.pathname.startsWith('/css/')
+                    url.pathname.startsWith('/css/') ||
+                    url.pathname.startsWith('/fonts/')
                 )) {
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then(c => c.put(event.request, clone));

@@ -38,6 +38,36 @@ fn collect_css_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> anyhow:
     Ok(())
 }
 
+fn copy_passthrough_assets(source_root: &Path, dest_root: &Path) -> anyhow::Result<()> {
+    if !source_root.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(source_root)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let dest_path = dest_root.join(entry.file_name());
+
+        if source_path.is_dir() {
+            fs::create_dir_all(&dest_path)?;
+            copy_passthrough_assets(&source_path, &dest_path)?;
+            continue;
+        }
+
+        let ext = source_path.extension().and_then(|e| e.to_str());
+        if ext == Some("js") || ext == Some("css") {
+            continue;
+        }
+
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&source_path, &dest_path)?;
+    }
+
+    Ok(())
+}
+
 fn clear_generated_fingerprinted_assets(dir: &Path) -> anyhow::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -132,7 +162,7 @@ mod tests {
         std::env::set_var("RUST_ENV", "development");
         let pool = crate::db::init_pool().await.expect("init pool");
         match &*pool {
-            crate::db::DbPoolEnum::Sqlite(_) | crate::db::DbPoolEnum::Oracle(_) => {}
+            crate::db::DbPoolEnum::Oracle(_) => {}
         }
     }
 }

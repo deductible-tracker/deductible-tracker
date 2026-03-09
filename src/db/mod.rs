@@ -1,7 +1,6 @@
 pub mod core;
 pub mod models;
 pub mod oracle;
-pub mod sqlite;
 
 pub mod users;
 pub mod donations;

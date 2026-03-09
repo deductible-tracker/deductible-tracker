@@ -16,6 +16,9 @@ dev.db
 # Node
 node_modules/
 
+# Generated public assets
+public/assets/
+
 # Database Wallets
 Wallet_deductibledb/
 

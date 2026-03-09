@@ -2,25 +2,27 @@
 
 This file documents the minimum environment and commands to run the project locally for development.
 
-## Quick start (development using SQLite)
+## Quick start (development using local Oracle Free)
 
 1. Ensure you have Rust toolchain installed (recommended stable or nightly used by the project).
-2. Create a `.env` file or export environment variables shown below.
+2. Copy `.env.example` to `.env` and adjust any values you need.
 3. Start the app:
 
 ```bash
-# optional: run migrations binary if you want to apply SQL migrations explicitly
-cargo run --bin migrate
-
-# Start the web server (development uses SQLite by default)
-RUST_ENV=development cargo run
+colima start --vm-type=vz --mount-type=virtiofs --cpu 2 --memory 3
+cp .env.example .env
+docker compose up --build
 ```
 
-By default the code will create `dev.db` in the repo root unless you set `SQLITE_DB_PATH` (or the legacy `DEV_SQLITE_PATH`).
+This starts the local Oracle Free container, runs the migration job once, and then starts the web server on port `8080`.
+
+Use `docker compose build` whenever you want to regenerate Tailwind output and the fingerprinted frontend assets baked into the image.
+
+By default development reads `DEV_ORACLE_USER`, `DEV_ORACLE_PASSWORD`, and `DEV_ORACLE_CONNECT_STRING`. It also falls back to `ORACLE_PDB_USER`, `ORACLE_PWD`, and `ORACLE_PDB_CONNECT_STRING`, which lets the same `.env` work for both `docker compose up` and host-side `cargo run` commands.
 
 ## Required environment variables (overview)
 
-The app supports Oracle in production, but for local development the minimum variables are:
+The app uses Oracle in both development and production. For local development the minimum variables are:
 
 - `JWT_SECRET` — a string used to sign JWTs. Set to any random secret for local development.
 - `RUST_ENV` — set to `development` for local runs (use `production` in production).
@@ -41,7 +43,11 @@ Object storage variables (required by the server):
 - `OCI_ACCESS_KEY_ID` — access key (or AWS access key) for object storage.
 - `OCI_SECRET_ACCESS_KEY` — secret access key for object storage.
 
-Database variables (production / Oracle):
+Database variables (development / local Oracle Free):
+
+- `DEV_ORACLE_USER`, `DEV_ORACLE_PASSWORD`, `DEV_ORACLE_CONNECT_STRING` — used when `RUST_ENV=development`.
+
+Database variables (production / Oracle ATP):
 
 - `DB_USER`, `DB_PASSWORD`, `DB_CONNECT_STRING` — used when `RUST_ENV=production` to connect to Oracle.
 
@@ -59,12 +65,18 @@ If `ALLOW_DEV_LOGIN=true` and the server runs with `RUST_ENV=development`, you c
 
 ## Running with Docker Compose
 
-`docker-compose.yml` in the repo provides services for the app and migrations. Make sure to populate a `.env` file with the required variables before running `docker-compose up --build`.
+`docker-compose.yml` is the default local development stack. Make sure to populate a `.env` file before running `docker compose up --build`.
+
+### Docker Compose & local Oracle credentials
+
+- Populate the following variables in your local `.env` (examples in `.env.example`): `ORACLE_PDB`, `ORACLE_PWD`, `ORACLE_CHARACTERSET`, `ENABLE_ARCHIVELOG`, `ENABLE_FORCE_LOGGING`, `ORACLE_PDB_USER`, and `ORACLE_PDB_CONNECT_STRING`.
+- The Compose app and migration services automatically use the internal hostname `oracle-dev` to reach the database, so you do not need a separate Compose-specific connect string.
+- Do NOT commit your `.env` file; keep secrets out of version control. Use `.env.example` as the committed reference with placeholder values.
 
 ## Notes & troubleshooting
 
 - If you see errors about missing `OBJECT_STORAGE_*` envs when running locally, either set them to point at a local MinIO deployment or export placeholder values until you implement a local storage shim.
-- The development code creates necessary SQLite tables at startup (`init_pool`), so explicit migration steps are optional for local work.
+- Development uses the checked-in Oracle schema in `migrations/init.sql`; the default Compose stack runs the migration service automatically before the app starts.
 - To run a type-check / build quickly, use `cargo check`.
 
 ### OCR (Tesseract) setup (optional)
