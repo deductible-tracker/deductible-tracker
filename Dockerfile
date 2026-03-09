@@ -5,7 +5,7 @@ ARG ENABLE_OCR=0
 FROM dhi.io/rust:1 AS rust-toolchain
 
 # Stage 1: Build (with BuildKit cache mounts)
-FROM oraclelinux:9-slim AS builder
+FROM oraclelinux:10-slim AS builder
 WORKDIR /app
 
 ARG ENABLE_OCR
@@ -73,7 +73,7 @@ RUN --mount=type=cache,target=/cargo/registry \
 
 # Stage 2: Runtime
 # Use OL 9 with the Oracle Instant Client repository enabled via the release package.
-FROM oraclelinux:9-slim AS runtime
+FROM oraclelinux:10-slim AS runtime
 WORKDIR /app
 
 RUN groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser appuser
