@@ -7,6 +7,13 @@ use crate::db::oracle::OracleConnectionManager;
 use crate::db::models::Receipt;
 use crate::db::models::NewReceipt;
 
+fn parse_utc_or_now(value: Option<String>) -> chrono::DateTime<Utc> {
+    value
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now)
+}
+
 pub(crate) async fn add_receipt(
     pool: &Pool<OracleConnectionManager>,
     input: &NewReceipt,
@@ -86,12 +93,6 @@ pub(crate) async fn get_receipt(
     let receipt_id = receipt_id.to_string();
     let row = task::spawn_blocking(move || -> anyhow::Result<Option<Receipt>> {
         let conn = p.get()?;
-        let parse_utc = |value: Option<String>| {
-            value
-                .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(Utc::now)
-        };
         let sql = "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.id = :2";
         let mut rows = conn.query(sql, &[&user_id, &receipt_id])?;
         if let Some(r) = rows.next().transpose()? {
@@ -106,7 +107,7 @@ pub(crate) async fn get_receipt(
                 ocr_date: r.get(7).ok(),
                 ocr_amount: r.get(8).ok(),
                 ocr_status: r.get(9).ok(),
-                created_at: parse_utc(r.get(10).ok()),
+                created_at: parse_utc_or_now(r.get(10).ok()),
             }));
         }
         Ok(None)
