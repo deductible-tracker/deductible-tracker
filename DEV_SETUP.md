@@ -16,6 +16,8 @@ docker compose up --build
 
 This starts the local Oracle Free container, runs the migration job once, and then starts the web server on port `8080`.
 
+If the logs stop after Oracle prints `DATABASE IS READY TO USE!`, the next gate is the container healthcheck. The checked-in Compose file now probes the PDB from inside the container, so `migrate` and `app` should continue automatically once `FREEPDB1` is reachable.
+
 Use `docker compose build` whenever you want to regenerate Tailwind output and the fingerprinted frontend assets baked into the image.
 
 By default development reads `DEV_ORACLE_USER`, `DEV_ORACLE_PASSWORD`, and `DEV_ORACLE_CONNECT_STRING`. It also falls back to `ORACLE_PDB_USER`, `ORACLE_PWD`, and `ORACLE_PDB_CONNECT_STRING`, which lets the same `.env` work for both `docker compose up` and host-side `cargo run` commands.
@@ -78,6 +80,7 @@ If `ALLOW_DEV_LOGIN=true` and the server runs with `RUST_ENV=development`, you c
 - If you see errors about missing `OBJECT_STORAGE_*` envs when running locally, either set them to point at a local MinIO deployment or export placeholder values until you implement a local storage shim.
 - Development uses the checked-in Oracle schema in `migrations/init.sql`; the default Compose stack runs the migration service automatically before the app starts.
 - To run a type-check / build quickly, use `cargo check`.
+- To inspect the readiness gate directly, run `docker-compose ps` and `docker-compose logs -f oracle-dev`. `app` waits for `oracle-dev` to become healthy, not just for the database process to print its startup banner.
 
 ### OCR (Tesseract) setup (optional)
 

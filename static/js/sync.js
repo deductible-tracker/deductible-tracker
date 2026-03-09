@@ -1,5 +1,6 @@
 import db from './db.js';
 import { getCurrentUserId } from './services/current-user.js';
+import { apiJson } from './services/http.js';
 
 const API_BASE = '/api';
 
@@ -36,20 +37,17 @@ export const Sync = {
                                 notes: donation.notes || null,
                                 updated_at: donation.updated_at || null
                             };
-                            const res = await fetch(`${API_BASE}/donations`, {
+                            const { res } = await apiJson(`${API_BASE}/donations`, {
                                 method: 'POST',
                                 headers: { 
                                     'Content-Type': 'application/json'
                                 },
-                                credentials: 'include',
                                 body: JSON.stringify(payload)
                             });
                             if (res.ok) {
                                 success = true;
                             } else {
-                                let bodyText = '';
-                                try { bodyText = await res.text(); } catch (e) { /* ignore */ }
-                                console.warn('Donation sync failed', res.status, bodyText);
+                                console.warn('Donation sync failed', res.status);
                             }
                             if (res.status === 401) {
                                 console.warn('Unauthorized during sync. Stopping.');
@@ -60,33 +58,27 @@ export const Sync = {
                     if (task.action === 'update') {
                         const donation = await db.donations.get(task.item_id);
                         if (donation) {
-                            const res = await fetch(`${API_BASE}/donations/${task.item_id}`, {
+                            const { res } = await apiJson(`${API_BASE}/donations/${task.item_id}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
-                                credentials: 'include',
                                 body: JSON.stringify(donation)
                             });
                             if (res.ok) {
                                 success = true;
                             } else {
-                                let bodyText = '';
-                                try { bodyText = await res.text(); } catch (e) { /* ignore */ }
-                                console.warn('Donation update failed', res.status, bodyText);
+                                console.warn('Donation update failed', res.status);
                             }
                             if (res.status === 401) { console.warn('Unauthorized during sync. Stopping.'); return; }
                         }
                     }
                     if (task.action === 'delete') {
                         // call server delete so it can soft-delete and propagate
-                        const res = await fetch(`${API_BASE}/donations/${task.item_id}`, {
-                            method: 'DELETE',
-                            credentials: 'include'
+                        const { res } = await apiJson(`${API_BASE}/donations/${task.item_id}`, {
+                            method: 'DELETE'
                         });
                         if (res.ok) { success = true; }
                         else {
-                            let bodyText = '';
-                            try { bodyText = await res.text(); } catch (e) { /* ignore */ }
-                            console.warn('Donation delete failed', res.status, bodyText);
+                            console.warn('Donation delete failed', res.status);
                         }
                         if (res.status === 401) { console.warn('Unauthorized during sync. Stopping.'); return; }
                     }
@@ -99,10 +91,9 @@ export const Sync = {
                             console.warn('Skipping receipt sync without donation_id', receipt.id);
                             continue;
                         }
-                        const res = await fetch(`${API_BASE}/receipts/confirm`, {
+                        const { res, data } = await apiJson(`${API_BASE}/receipts/confirm`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include',
                             body: JSON.stringify({
                                 key: receipt.key,
                                 file_name: receipt.file_name,
@@ -113,16 +104,11 @@ export const Sync = {
                         });
                         if (res.ok) {
                             success = true;
-                            try {
-                                const body = await res.json();
-                                if (body && body.id) {
-                                    await db.receipts.update(receipt.id, { server_id: body.id });
-                                }
-                            } catch (e) { /* ignore */ }
+                            if (data && data.id) {
+                                await db.receipts.update(receipt.id, { server_id: data.id });
+                            }
                         } else {
-                            let bodyText = '';
-                            try { bodyText = await res.text(); } catch (e) { /* ignore */ }
-                            console.warn('Receipt sync failed', res.status, bodyText);
+                            console.warn('Receipt sync failed', res.status);
                         }
                         if (res.status === 401) {
                             console.warn('Unauthorized during sync. Stopping.');
@@ -156,13 +142,12 @@ export const Sync = {
         const lastSync = localStorage.getItem(lastKey);
         const url = lastSync ? `${API_BASE}/donations?since=${encodeURIComponent(lastSync)}` : `${API_BASE}/donations`;
         try {
-            const res = await fetch(url, { credentials: 'include' });
+            const { res, data } = await apiJson(url);
             if (!res.ok) {
                 if (res.status === 401) { console.warn('Unauthorized during pull'); return; }
                 console.warn('Pull failed', res.status);
                 return;
             }
-            const data = await res.json();
             if (data && Array.isArray(data.donations)) {
                 for (const remote of data.donations) {
                     try {

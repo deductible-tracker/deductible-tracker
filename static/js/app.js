@@ -140,9 +140,10 @@ async function refreshDonationsFromServer() {
         await db.donations.where('user_id').equals(userId).delete();
         await db.donations.bulkPut(donations);
     } catch (e) { /* ignore */ }
+    await refreshReceiptsFromServer(donations);
 }
 
-async function refreshReceiptsFromServer() {
+async function refreshReceiptsFromServer(donations = []) {
     const userId = getCurrentUserId();
     if (!userId) return;
     try {
@@ -158,8 +159,14 @@ async function refreshReceiptsFromServer() {
             uploaded_at: r.created_at || new Date().toISOString()
         }));
         try {
-            await db.receipts.clear();
-            await db.receipts.bulkPut(receipts);
+            await db.transaction('rw', db.receipts, async () => {
+                if (donations.length > 0) {
+                    await db.receipts.where('donation_id').anyOf(donations.map(d => d.id)).delete();
+                } else {
+                    await db.receipts.clear();
+                }
+                await db.receipts.bulkPut(receipts);
+            });
         } catch (e) { /* ignore */ }
     } catch (e) {
         console.error('Failed to refresh receipts', e);
@@ -389,19 +396,16 @@ async function renderLogin() {
         const password = e.target.password.value;
 
         try {
-            const res = await fetch('/auth/dev/login', {
+            const { res, data } = await apiJson('/auth/dev/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
 
             if (res.ok) {
                 let profile = null;
-                try {
-                    const body = await res.json();
-                    profile = body && body.user ? body.user : body;
-                } catch (e) { /* ignore */ }
+                profile = data && data.user ? data.user : data;
+                
                 const previousUserId = getCurrentUserId();
                 if (profile) setCurrentUser(profile);
                 const nextUserId = profile && profile.id ? profile.id : null;
@@ -419,7 +423,6 @@ async function renderLogin() {
                 } catch (e) { console.warn('Initial push changes failed', e); }
                 try { await refreshCharitiesCache(); } catch (e) { console.warn('Failed to refresh charities on login', e); }
                 try { await refreshDonationsFromServer(); } catch (e) { console.warn('Failed to refresh donations on login', e); }
-                try { await refreshReceiptsFromServer(); } catch (e) { console.warn('Failed to refresh receipts on login', e); }
 
                 await updateTotals();
 
@@ -492,7 +495,7 @@ function buildRouteDeps() {
 async function handleLogout() {
     try {
         // Invalidate server cookie/session
-        await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+        await apiJson('/auth/logout', { method: 'POST' });
     } catch (e) {
         console.warn('Logout request failed', e);
     }
@@ -805,7 +808,7 @@ async function init() {
             }
             try {
                 // Ensure server has valuation suggestions seeded (best-effort)
-                try { await fetch('/api/valuations/seed', { method: 'POST', credentials: 'include' }); } catch (e) { /* ignore */ }
+                try { await apiJson('/api/valuations/seed', { method: 'POST' }); } catch (e) { /* ignore */ }
                 await refreshCharitiesCache();
                 await refreshDonationsFromServer();
             } catch (e) { /* ignore */ }

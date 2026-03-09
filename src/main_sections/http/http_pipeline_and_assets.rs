@@ -98,6 +98,29 @@ async fn require_auth(req: Request<Body>, next: Next) -> impl IntoResponse {
         return next.run(req).await;
     }
 
+    // CSRF Protection for state-changing methods
+    if matches!(
+        req.method(),
+        &axum::http::Method::POST | &axum::http::Method::PUT | &axum::http::Method::DELETE | &axum::http::Method::PATCH
+    ) {
+        let headers = req.headers();
+        let csrf_token = headers.get("X-CSRF-Token").and_then(|h| h.to_str().ok());
+        let auth_token = auth::extract_token_from_headers(headers);
+
+        match (csrf_token, auth_token) {
+            (Some(csrf), Some(auth)) => {
+                if csrf != auth {
+                    tracing::warn!("CSRF token mismatch");
+                    return (StatusCode::FORBIDDEN, "CSRF token mismatch").into_response();
+                }
+            }
+            _ => {
+                tracing::warn!("Missing CSRF token or Auth token for state-changing request");
+                return (StatusCode::FORBIDDEN, "Missing CSRF token").into_response();
+            }
+        }
+    }
+
     // Check headers for token
     let headers: &HeaderMap = req.headers();
     if let Some(token) = auth::extract_token_from_headers(headers) {
@@ -147,6 +170,53 @@ async fn serve_service_worker() -> impl IntoResponse {
 async fn static_cache_control(req: Request<Body>, next: Next) -> impl IntoResponse {
     let path = req.uri().path().to_string();
     let mut response = next.run(req).await;
+
+    // Security Headers
+    let headers = response.headers_mut();
+    
+    // Strict-Transport-Security (HSTS)
+    if env::var("RUST_ENV").unwrap_or_default() == "production" {
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
+        );
+    }
+
+    // X-Content-Type-Options
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+
+    // X-Frame-Options
+    headers.insert(
+        header::X_FRAME_OPTIONS,
+        HeaderValue::from_static("DENY"),
+    );
+
+    // Content-Security-Policy (CSP)
+    // - Default to self
+    // - Allow scripts from self and trusted CDNs if any (none yet)
+    // - Connect to self and OAuth providers
+    // - Images from self and OCI object storage (presigned URLs)
+    let csp = "default-src 'self'; \
+               script-src 'self' 'unsafe-inline'; \
+               style-src 'self' 'unsafe-inline'; \
+               img-src 'self' data: https://*.objectstorage.us-ashburn-1.oraclecloud.com; \
+               connect-src 'self' https://accounts.google.com https://github.com; \
+               frame-ancestors 'none'; \
+               base-uri 'self'; \
+               form-action 'self';";
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_str(csp).unwrap(),
+    );
+
+    // Referrer-Policy
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
 
     // Fingerprinted assets can be cached for a year.
     if path.starts_with("/assets/")

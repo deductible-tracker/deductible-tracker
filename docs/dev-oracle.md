@@ -18,6 +18,8 @@ docker compose up --build
 
 This starts `oracle-dev`, waits for the database healthcheck, runs the `migrate` service once, and then starts the app.
 
+The healthcheck connects to `FREEPDB1` from inside the Oracle container with `sqlplus`, which avoids depending on host-side variable interpolation and catches the common case where the listener is up but the PDB service is not yet accepting connections.
+
 3. Wait for the container to become healthy (may take several minutes). Check logs:
 
 ```bash

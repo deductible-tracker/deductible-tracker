@@ -78,14 +78,18 @@ pub fn load_config(runtime_mode: RuntimeMode) -> anyhow::Result<OracleConfig> {
             })?;
             (username, password, connect_string)
         }
-        RuntimeMode::Development => (
-            first_present_env(&["DEV_ORACLE_USER", "ORACLE_PDB_USER"])
-                .unwrap_or_else(|| "pdbadmin".to_string()),
-            first_present_env(&["DEV_ORACLE_PASSWORD", "ORACLE_PWD"])
-                .unwrap_or_else(|| "ChangeMe123".to_string()),
-            first_present_env(&["DEV_ORACLE_CONNECT_STRING", "ORACLE_PDB_CONNECT_STRING"])
-                .unwrap_or_else(|| "//localhost:1521/FREEPDB1".to_string()),
-        ),
+        RuntimeMode::Development => {
+            let username = first_present_env(&["DEV_ORACLE_USER", "ORACLE_PDB_USER"]).ok_or_else(|| {
+                anyhow!("In development, set DEV_ORACLE_USER or ORACLE_PDB_USER environment variable")
+            })?;
+            let password = first_present_env(&["DEV_ORACLE_PASSWORD", "ORACLE_PWD"]).ok_or_else(|| {
+                anyhow!("In development, set DEV_ORACLE_PASSWORD or ORACLE_PWD environment variable")
+            })?;
+            let connect_string = first_present_env(&["DEV_ORACLE_CONNECT_STRING", "ORACLE_PDB_CONNECT_STRING"]).ok_or_else(|| {
+                anyhow!("In development, set DEV_ORACLE_CONNECT_STRING or ORACLE_PDB_CONNECT_STRING environment variable")
+            })?;
+            (username, password, connect_string)
+        },
     };
 
     let tns_admin = match runtime_mode {

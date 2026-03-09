@@ -59,7 +59,7 @@ async fn receipt_owner_user_id(pool: &DbPool, receipt_id: &str) -> anyhow::Resul
             let user_id = task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
                 let conn = p.get()?;
                 let mut rows = conn.query(
-                    "SELECT d.user_id FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE r.id = :1",
+                    "SELECT d.user_id FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE r.id = :1 AND d.deleted = 0",
                     &[&receipt_id],
                 )?;
                 if let Some(row) = rows.next().transpose()? {

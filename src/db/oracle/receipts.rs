@@ -50,9 +50,9 @@ pub(crate) async fn list_receipts(
                 .unwrap_or_else(Utc::now)
         };
         let sql = if donation_id.is_some() {
-            "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.donation_id = :2"
+            "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.donation_id = :2 AND d.deleted = 0"
         } else {
-            "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1"
+            "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND d.deleted = 0"
         };
         let rows_iter = if let Some(did) = donation_id {
             conn.query(sql, &[&user_id, &did])?

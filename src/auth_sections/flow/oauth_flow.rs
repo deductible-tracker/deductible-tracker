@@ -166,6 +166,10 @@ pub fn validate_token_str(token: &str) -> Result<AuthenticatedUser, (StatusCode,
         (StatusCode::UNAUTHORIZED, "Invalid token".to_string())
     })?;
 
+    if token_data.claims.exp < Utc::now().timestamp() as usize {
+        return Err((StatusCode::UNAUTHORIZED, "Token expired".to_string()));
+    }
+
     if is_token_revoked(&token_data.claims.jti, token_data.claims.exp) {
         return Err((StatusCode::UNAUTHORIZED, "Invalid token".to_string()));
     }
