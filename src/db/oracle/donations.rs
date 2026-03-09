@@ -7,6 +7,13 @@ use crate::db::oracle::OracleConnectionManager;
 use crate::db::models::Donation as DonationModel;
 use crate::db::models::NewDonation;
 
+fn parse_utc_from_opt_string(value: Option<String>) -> chrono::DateTime<Utc> {
+    value
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now)
+}
+
 pub(crate) async fn add_donation(
     pool: &Pool<OracleConnectionManager>,
     input: &NewDonation,
@@ -36,13 +43,12 @@ pub(crate) async fn list_donations(
     let user_id = user_id.to_string();
     let rows = task::spawn_blocking(move || -> anyhow::Result<Vec<DonationModel>> {
         let conn = p.get()?;
-        let parse_utc = |value: Option<String>| {
-            value
-                .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(Utc::now)
-        };
         let sql = if year.is_some() {
+            "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.donation_year = :2 AND d.deleted = 0"
+        } else {
+            "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.deleted = 0"
+        };
+        let rows = if let Some(y) = year {
             "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.donation_year = :2 AND d.deleted = 0"
         } else {
             "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.deleted = 0"
@@ -66,8 +72,8 @@ pub(crate) async fn list_donations(
                 charity_ein: row.get(8).ok(),
                 notes: row.get(9).ok(),
                 shared_with: None,
-                created_at: parse_utc(row.get(10).ok()),
-                updated_at: parse_utc(row.get(11).ok()),
+                created_at: parse_utc_from_opt_string(row.get(10).ok()),
+                updated_at: parse_utc_from_opt_string(row.get(11).ok()),
                 deleted: false,
             });
         }
