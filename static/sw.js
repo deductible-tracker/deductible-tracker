@@ -1,6 +1,40 @@
 // Service Worker for Deductible Tracker - offline asset caching
 const CACHE_NAME = 'dt-cache-v2';
 
+function createOfflineResponse() {
+    const offlineHtml = `
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <title>Offline</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 2rem; background: #0f172a; color: #e5e7eb; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+                .container { max-width: 28rem; text-align: center; }
+                h1 { font-size: 1.5rem; margin-bottom: 0.75rem; }
+                p { margin: 0.25rem 0; color: #9ca3af; }
+                small { display: block; margin-top: 1rem; color: #6b7280; }
+            </style>
+        </head>
+        <body>
+            <main class="container">
+                <h1>You’re offline</h1>
+                <p>We couldn’t reach the server. Some data may be unavailable until you’re back online.</p>
+                <p>Please check your internet connection and try again.</p>
+                <small>Deductible Tracker</small>
+            </main>
+        </body>
+        </html>
+    `;
+    return new Response(offlineHtml, {
+        status: 503,
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8'
+        }
+    });
+}
+
 // Core assets to pre-cache on install
 const PRECACHE_ASSETS = [
     '/',
@@ -50,7 +84,7 @@ self.addEventListener('fetch', event => {
                         }
                         return response;
                     })
-                    .catch(() => cached || new Response('Offline', { status: 503 }));
+                    .catch(() => cached || createOfflineResponse());
             }
 
             // Cache-first for static assets (JS, CSS, fonts, vendor)
@@ -68,7 +102,7 @@ self.addEventListener('fetch', event => {
                 }
                 return response;
             }).catch(() => {
-                return new Response('Offline', { status: 503 });
+                return createOfflineResponse();
             });
         })
     );
