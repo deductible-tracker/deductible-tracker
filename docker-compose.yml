@@ -1,0 +1,90 @@
+x-app-environment: &app-environment
+  RUST_ENV: development
+  RUST_LOG: ${RUST_LOG:-deductible_tracker=debug,tower_http=debug}
+  JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me}
+  OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://host.docker.internal:9000}
+  OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-deductible-tracker-dev}
+  OCI_REGION: ${OCI_REGION:-us-ashburn-1}
+  OCI_ACCESS_KEY_ID: ${OCI_ACCESS_KEY_ID:-local-dev-access-key}
+  OCI_SECRET_ACCESS_KEY: ${OCI_SECRET_ACCESS_KEY:-local-dev-secret-key}
+  OCI_LIB_DIR: /usr/lib/oracle/23/client64/lib
+  OCI_INC_DIR: /usr/include/oracle/23/client64
+  LD_LIBRARY_PATH: /usr/lib/oracle/23/client64/lib
+  ALLOW_DEV_LOGIN: ${ALLOW_DEV_LOGIN:-true}
+  DEV_USERNAME: ${DEV_USERNAME:-admin}
+  DEV_PASSWORD: ${DEV_PASSWORD:-password}
+  DEV_ORACLE_USER: ${ORACLE_PDB_USER:-pdbadmin}
+  DEV_ORACLE_PASSWORD: ${ORACLE_PWD:-ChangeMe123}
+  DEV_ORACLE_CONNECT_STRING: //oracle-dev:1521/${ORACLE_PDB:-FREEPDB1}
+  SKIP_TAILWIND_BUILD: "true"
+  SKIP_ASSET_REBUILD: "true"
+  ORACLE_PDB_USER: ${ORACLE_PDB_USER:-pdbadmin}
+  ORACLE_PWD: ${ORACLE_PWD:-ChangeMe123}
+  ORACLE_PDB_CONNECT_STRING: //oracle-dev:1521/${ORACLE_PDB:-FREEPDB1}
+
+services:
+  oracle-dev:
+    image: container-registry.oracle.com/database/free:latest-lite
+    container_name: oracle-dev
+    cap_add:
+      - SYS_NICE
+    shm_size: 1g
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    environment:
+      ORACLE_PDB: ${ORACLE_PDB:-FREEPDB1}
+      ORACLE_PDB_USER: ${ORACLE_PDB_USER:-pdbadmin}
+      ORACLE_PWD: ${ORACLE_PWD:-ChangeMe123}
+      ORACLE_CHARACTERSET: ${ORACLE_CHARACTERSET:-AL32UTF8}
+      ENABLE_ARCHIVELOG: ${ENABLE_ARCHIVELOG:-false}
+      ENABLE_FORCE_LOGGING: ${ENABLE_FORCE_LOGGING:-false}
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./scripts/oracle-dev-startup/01-grant-pdbadmin.sql:/opt/oracle/scripts/startup/01-grant-pdbadmin.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "printf \"whenever sqlerror exit 1;\\nselect 1 from dual;\\nexit;\\n\" | sqlplus -s -L ${ORACLE_PDB_USER:-pdbadmin}/${ORACLE_PWD:-ChangeMe123}@//localhost:1521/${ORACLE_PDB:-FREEPDB1} >/dev/null 2>&1 || exit 1"
+        ]
+      interval: 1m
+      timeout: 30s
+      retries: 10
+      start_period: 5m
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      oracle-dev:
+        condition: service_healthy
+    command: ./migrate
+    env_file:
+      - .env
+    environment: *app-environment
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      oracle-dev:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment: *app-environment
+    restart: unless-stopped
+
+volumes:
+  oracle-data:

@@ -1,0 +1,96 @@
+import { normalizeDonationCategory, parseAmount } from './donation-figures.js';
+
+export function isLikelyQualifiedCharity(charity) {
+    if (!charity) return false;
+    const deductibility = String(charity.deductibility || '').toLowerCase();
+    if (!deductibility) return true;
+    return deductibility.includes('deductible') || deductibility.includes('pc') || deductibility.includes('public charity');
+}
+
+export function normalizeFilingStatus(status) {
+    const normalized = String(status || 'single').toLowerCase();
+    if (normalized === 'married_joint' || normalized === 'married_separate' || normalized === 'head_household' || normalized === 'single') {
+        return normalized;
+    }
+    return 'single';
+}
+
+export async function calculateTaxEstimates(donations, charities, receipts, profile = {}) {
+    const filingStatus = normalizeFilingStatus(profile.filing_status);
+    const itemizeDeductions = !!profile.itemize_deductions;
+    const agi = Number.isFinite(profile.agi) && profile.agi > 0 ? Number(profile.agi) : null;
+    const marginalTaxRate = Number.isFinite(profile.marginal_tax_rate) && profile.marginal_tax_rate >= 0 && profile.marginal_tax_rate <= 1
+        ? Number(profile.marginal_tax_rate)
+        : 0.22;
+
+    const charitiesById = new Map((charities || []).map(c => [c.id, c]));
+    const receiptCountByDonation = new Map();
+    for (const receipt of receipts || []) {
+        const donationId = receipt && receipt.donation_id ? String(receipt.donation_id) : null;
+        if (!donationId) continue;
+        receiptCountByDonation.set(donationId, (receiptCountByDonation.get(donationId) || 0) + 1);
+    }
+
+    const years = new Map();
+    for (const donation of donations || []) {
+        const year = Number(donation.year) || (donation.date ? new Date(donation.date).getFullYear() : new Date().getFullYear());
+        if (!years.has(year)) years.set(year, { cash: [], nonCash: [] });
+
+        const amount = parseAmount(donation.amount);
+        if (amount === null || amount <= 0) continue;
+
+        const category = normalizeDonationCategory(donation.category);
+        const charity = donation.charity_id ? charitiesById.get(donation.charity_id) : null;
+        const qualified = isLikelyQualifiedCharity(charity);
+        if (!qualified) continue;
+
+        const receiptCount = receiptCountByDonation.get(donation.id) || 0;
+        const isMonetary = category === 'money' || category === 'mileage';
+        if (isMonetary && receiptCount < 1) continue;
+
+        const entry = { id: donation.id, amount, category };
+        if (isMonetary) {
+            years.get(year).cash.push(entry);
+        } else {
+            years.get(year).nonCash.push(entry);
+        }
+    }
+
+    const perDonation = new Map();
+    let totalEstimated = 0;
+
+    for (const [year, buckets] of years.entries()) {
+        const cashTotal = buckets.cash.reduce((sum, donation) => sum + donation.amount, 0);
+        const nonCashTotal = buckets.nonCash.reduce((sum, donation) => sum + donation.amount, 0);
+
+        let deductibleCash = 0;
+        let deductibleNonCash = 0;
+
+        if (itemizeDeductions) {
+            const cashCap = agi ? agi * 0.60 : Number.POSITIVE_INFINITY;
+            const nonCashCap = agi ? agi * 0.30 : Number.POSITIVE_INFINITY;
+            deductibleCash = Math.min(cashTotal, cashCap);
+            deductibleNonCash = Math.min(nonCashTotal, nonCashCap);
+        } else if (year >= 2026) {
+            const nonItemizerCashCap = filingStatus === 'married_joint' ? 2000 : 1000;
+            deductibleCash = Math.min(cashTotal, nonItemizerCashCap);
+            deductibleNonCash = 0;
+        }
+
+        const cashRatio = cashTotal > 0 ? deductibleCash / cashTotal : 0;
+        const nonCashRatio = nonCashTotal > 0 ? deductibleNonCash / nonCashTotal : 0;
+
+        for (const donation of buckets.cash) {
+            const estimated = donation.amount * cashRatio * marginalTaxRate;
+            perDonation.set(donation.id, estimated);
+            totalEstimated += estimated;
+        }
+        for (const donation of buckets.nonCash) {
+            const estimated = donation.amount * nonCashRatio * marginalTaxRate;
+            perDonation.set(donation.id, estimated);
+            totalEstimated += estimated;
+        }
+    }
+
+    return { totalEstimated, perDonation };
+}

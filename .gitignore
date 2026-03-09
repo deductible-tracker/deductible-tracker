@@ -1,0 +1,30 @@
+# Rust
+/target
+
+# Environment variables
+.env
+.env.*
+dev.db
+
+# OS files
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# Generated public assets
+public/assets/
+
+# Database Wallets
+Wallet_deductibledb/
+
+# Terraform
+terraform/
+
+# Local SSH keys for GitHub Actions (do NOT commit)
+github_action_key
+github_action_key.pub

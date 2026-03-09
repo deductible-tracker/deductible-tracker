@@ -1,0 +1,51 @@
+[package]
+name = "deductible-tracker"
+version = "0.1.0"
+edition = "2021"
+default-run = "deductible-tracker"
+
+[dependencies]
+axum = "0.8"
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
+opendal = { version = "0.55", features = ["services-s3"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.21", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
+# printpdf = "0.9" # Removed: pulls `azul-*` GUI/layout crates that fail to compile in CI
+base64 = "0.22"
+anyhow = "1.0"
+url = "2.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+oauth2 = "5.0"
+dotenvy = "0.15"
+tower_governor = "0.8"
+csv = "1.1"
+leptess = { version = "0.14", optional = true }
+tempfile = "3.6"
+regex = "1"
+blake3 = "1"
+minifier = "0.3"
+openssl = { version = "0.10", features = ["vendored"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+# Pin rust-oracle to the upstream revision that moved to odpic-sys 0.2.0,
+# which removes the legacy bindgen -> which -> failure build chain.
+oracle = { git = "https://github.com/kubo/rust-oracle.git", rev = "caf3c0d06b654e79192e88bbaf516e599982af05", features = ["chrono"] }
+r2d2 = "0.8"
+rand = "0.10"
+argon2 = "0.5" # For password hashing (dev mode)
+
+[features]
+ocr = ["leptess"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

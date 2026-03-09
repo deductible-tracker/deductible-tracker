@@ -1,0 +1,9 @@
+target/
+.git/
+.env
+.idea/
+.vscode/
+*.db
+terraform/
+Wallet_deductibledb/
+node_modules/
