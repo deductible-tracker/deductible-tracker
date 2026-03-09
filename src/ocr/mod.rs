@@ -84,8 +84,8 @@ mod real {
             }
         }
 
-        // amount patterns $12.34 or 12.34
-        let re_amt = Regex::new(r"\$?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})|[0-9]+\.[0-9]{2})").unwrap();
+        // amount patterns like $12.34, 12.34, $100, 1,234, or 5
+        let re_amt = Regex::new(r"\$?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)").unwrap();
         if let Some(cap) = re_amt.captures(&text) {
             let raw = &cap[1];
             let clean = raw.replace(",", "");
