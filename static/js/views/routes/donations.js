@@ -184,11 +184,23 @@ async function getReceiptDownloadUrlRoute(key, deps) {
 }
 
 function buildDonationFormHtmlRoute(
-  { title, desc, submitLabel, categoryPrefill = 'money', existing = null },
+  { title, desc, submitLabel, categoryPrefill = 'money', existing = null, valuationTree = [] },
   deps
 ) {
   const { escapeHtml } = deps;
   const d = existing || {};
+  const currentCategory = d.category || categoryPrefill;
+
+  let valuationOptions = '<option value="">-- Select Item --</option>';
+  valuationTree.forEach((cat) => {
+    valuationOptions += `<optgroup label="${escapeHtml(cat.name)}">`;
+    cat.items.forEach((item) => {
+      valuationOptions += `<option value="${escapeHtml(item.name)}" data-min="${item.min}" data-max="${item.max}">${escapeHtml(item.name)} (${item.min}-${item.max})</option>`;
+    });
+    valuationOptions += `</optgroup>`;
+  });
+  valuationOptions += '<option value="other">Other / Not Listed</option>';
+
   return `
         <div class="mx-auto max-w-3xl space-y-5">
             <div class="flex items-center justify-between">
@@ -208,12 +220,29 @@ function buildDonationFormHtmlRoute(
                         <div>
                             <label class="dt-label">Category</label>
                             <select id="donation-category" class="dt-input">
-                                <option value="items" ${(d.category || categoryPrefill) === 'items' ? 'selected' : ''}>Items</option>
-                                <option value="money" ${(d.category || categoryPrefill) === 'money' ? 'selected' : ''}>Money</option>
-                                <option value="mileage" ${(d.category || categoryPrefill) === 'mileage' ? 'selected' : ''}>Mileage</option>
+                                <option value="items" ${currentCategory === 'items' ? 'selected' : ''}>Items</option>
+                                <option value="money" ${currentCategory === 'money' ? 'selected' : ''}>Money</option>
+                                <option value="mileage" ${currentCategory === 'mileage' ? 'selected' : ''}>Mileage</option>
                             </select>
                         </div>
                     </div>
+
+                    <div id="valuation-fields" class="${currentCategory === 'items' ? '' : 'hidden'} space-y-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 p-4">
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label class="dt-label">Item Type</label>
+                                <select id="valuation-item-select" class="dt-input">
+                                    ${valuationOptions}
+                                </select>
+                            </div>
+                            <div id="brand-new-price-container" class="hidden">
+                                <label class="dt-label">Brand New Price ($)</label>
+                                <input id="brand-new-price" type="number" step="0.01" class="dt-input" placeholder="Price when new" />
+                            </div>
+                        </div>
+                        <p id="valuation-hint" class="text-xs text-slate-500 dark:text-slate-400 italic">Select an item to see suggested valuation ranges.</p>
+                    </div>
+
                     <div>
                         <label class="dt-label">Charity</label>
                         <input id="donation-charity-input" type="text" required placeholder="Search or type to add" class="dt-input" autocomplete="off" value="${escapeHtml(d._charityName || '')}" />
@@ -223,7 +252,7 @@ function buildDonationFormHtmlRoute(
                     </div>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
-                            <label class="dt-label">Amount</label>
+                            <label class="dt-label">Amount ($)</label>
                             <input id="donation-amount" type="number" step="0.01" class="dt-input" value="${d.amount != null ? escapeHtml(String(d.amount)) : ''}" />
                         </div>
                         <div>
@@ -250,6 +279,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
     createOrGetCharityOnServer,
     db,
     escapeHtml,
+    getValuationTree,
     isCharityCacheFresh,
     navigate,
     Sync,
@@ -262,6 +292,49 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
   const charityIdInput = document.getElementById('donation-charity-id');
   const charityEinInput = document.getElementById('donation-charity-ein');
   const suggestionsBox = document.getElementById('charity-suggestions');
+
+  const categorySelect = document.getElementById('donation-category');
+  const valuationFields = document.getElementById('valuation-fields');
+  const valuationSelect = document.getElementById('valuation-item-select');
+  const brandNewPriceContainer = document.getElementById('brand-new-price-container');
+  const brandNewPriceInput = document.getElementById('brand-new-price');
+  const amountInput = document.getElementById('donation-amount');
+  const valuationHint = document.getElementById('valuation-hint');
+
+  categorySelect?.addEventListener('change', () => {
+    if (categorySelect.value === 'items') {
+      valuationFields?.classList.remove('hidden');
+    } else {
+      valuationFields?.classList.add('hidden');
+    }
+  });
+
+  valuationSelect?.addEventListener('change', () => {
+    const val = valuationSelect.value;
+    if (val === 'other') {
+      brandNewPriceContainer?.classList.remove('hidden');
+      valuationHint.textContent = 'Valuation will be calculated at 30% of the brand new price.';
+    } else if (val) {
+      brandNewPriceContainer?.classList.add('hidden');
+      const opt = valuationSelect.options[valuationSelect.selectedIndex];
+      const min = opt.dataset.min;
+      const max = opt.dataset.max;
+      valuationHint.textContent = `Suggested value for "${val}": $${min} - $${max}. Please enter an amount within or near this range.`;
+      if (!amountInput.value) {
+        amountInput.value = min;
+      }
+    } else {
+      brandNewPriceContainer?.classList.add('hidden');
+      valuationHint.textContent = 'Select an item to see suggested valuation ranges.';
+    }
+  });
+
+  brandNewPriceInput?.addEventListener('input', () => {
+    const price = parseFloat(brandNewPriceInput.value) || 0;
+    if (price > 0) {
+      amountInput.value = (price * 0.3).toFixed(2);
+    }
+  });
 
   document
     .getElementById('btn-back-donations')
@@ -507,12 +580,19 @@ export async function renderDonationNewRoute(deps) {
   const root = document.getElementById('route-content') || document.getElementById('app');
   const userId = deps.getCurrentUserId();
   const charities = userId ? await deps.db.charities.where('user_id').equals(userId).toArray() : [];
+  let valuationTree = [];
+  try {
+    valuationTree = await deps.getValuationTree();
+  } catch (e) {
+    console.warn('Could not fetch valuation tree', e);
+  }
   root.innerHTML = buildDonationFormHtmlRoute(
     {
       title: 'New Donation',
       desc: 'Add a donation and optionally attach receipts.',
       submitLabel: 'Save Donation',
       categoryPrefill: 'money',
+      valuationTree,
     },
     deps
   );
@@ -528,6 +608,12 @@ export async function renderDonationEditRoute(donationId, deps) {
     await deps.navigate('/donations');
     return;
   }
+  let valuationTree = [];
+  try {
+    valuationTree = await deps.getValuationTree();
+  } catch (e) {
+    console.warn('Could not fetch valuation tree', e);
+  }
   const charityName = charities.find((c) => c.id === existing.charity_id)?.name || '';
   const root = document.getElementById('route-content') || document.getElementById('app');
   root.innerHTML = buildDonationFormHtmlRoute(
@@ -536,6 +622,7 @@ export async function renderDonationEditRoute(donationId, deps) {
       desc: 'Update the details for this donation.',
       submitLabel: 'Save Changes',
       existing: { ...existing, _charityName: charityName },
+      valuationTree,
     },
     deps
   );

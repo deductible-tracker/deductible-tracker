@@ -229,6 +229,7 @@ pub async fn run_app() -> anyhow::Result<()> {
         .route("/api/receipts", get(routes::receipts::list_receipts))
         .route("/api/valuations/suggest", post(routes::valuations::suggest))
         .route("/api/valuations/seed", post(routes::valuations::seed))
+        .route("/api/valuations/tree", get(routes::valuations::tree))
         .route("/api/reports/years", get(routes::reports::list_available_years))
         .route("/api/reports/export", get(routes::reports::export_csv))
         .route("/api/reports/export/txf", get(routes::reports::export_tax_txf))

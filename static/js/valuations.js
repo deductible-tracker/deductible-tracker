@@ -10,8 +10,15 @@ export async function suggestValuations(query) {
   return data;
 }
 
+export async function getValuationTree() {
+  const { res, data } = await apiJson('/api/valuations/tree');
+  if (!res.ok) throw new Error('Valuation tree fetch failed');
+  return data;
+}
+
 // Expose for quick console usage
 window.suggestValuations = suggestValuations;
+window.getValuationTree = getValuationTree;
 
 // Example helper to prompt and show suggestions
 export function promptSuggest() {

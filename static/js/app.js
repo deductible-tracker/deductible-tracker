@@ -42,6 +42,7 @@ import {
 } from './views/routes/charities.js';
 import { renderReportsRoute } from './views/routes/reports.js';
 import { renderPersonalInfoRoute } from './views/routes/personal.js';
+import { getValuationTree } from './valuations.js';
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker
@@ -568,6 +569,7 @@ function buildRouteDeps() {
     formatFigureText,
     getCurrentUser,
     getCurrentUserId,
+    getValuationTree,
     getUserCharityNameMap,
     getUserDonations,
     isCharityCacheFresh,

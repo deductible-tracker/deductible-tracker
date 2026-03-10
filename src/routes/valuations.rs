@@ -34,3 +34,15 @@ pub async fn seed(
         }
     }
 }
+
+pub async fn tree(
+    State(state): State<AppState>
+) -> impl IntoResponse {
+    match crate::db::valuations::list_valuation_tree(&state.db).await {
+        Ok(t) => AxumJson(t).into_response(),
+        Err(e) => {
+            tracing::error!("Valuation tree error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response()
+        }
+    }
+}

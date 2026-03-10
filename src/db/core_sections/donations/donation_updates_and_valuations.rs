@@ -107,23 +107,35 @@ pub async fn list_donations_since(pool: &DbPool, user_id: &str, since: chrono::D
     }
 }
 
-pub async fn suggest_valuations(pool: &DbPool, query: &str) -> anyhow::Result<Vec<ValSuggestion>> {
-    let q = format!("%{}%", query.to_lowercase());
+pub async fn list_valuation_tree(pool: &DbPool) -> anyhow::Result<serde_json::Value> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
             let p = p.clone();
-            let q = q.clone();
-            let rows = task::spawn_blocking(move || -> anyhow::Result<Vec<ValSuggestion>> {
+            let tree = task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
                 let conn = p.get()?;
-                let sql = "SELECT name, suggested_min, suggested_max FROM val_items WHERE LOWER(name) LIKE :1";
-                let mut out = Vec::new();
-                let rows_iter = conn.query(sql, &[&q])?;
-                for row in rows_iter.flatten() {
-                    out.push((row.get(0).unwrap_or_default(), row.get(1).ok(), row.get(2).ok()));
+                let mut categories = Vec::new();
+                let cat_rows = conn.query("SELECT id, name FROM val_categories ORDER BY name", &[])?;
+                for cat_row in cat_rows.flatten() {
+                    let cat_id: String = cat_row.get(0).unwrap_or_default();
+                    let cat_name: String = cat_row.get(1).unwrap_or_default();
+                    let mut items = Vec::new();
+                    let item_rows = conn.query("SELECT name, suggested_min, suggested_max FROM val_items WHERE category_id = :1 ORDER BY name", &[&cat_id])?;
+                    for item_row in item_rows.flatten() {
+                        items.push(json!({
+                            "name": item_row.get::<_, String>(0).unwrap_or_default(),
+                            "min": item_row.get::<_, Option<f64>>(1).ok(),
+                            "max": item_row.get::<_, Option<f64>>(2).ok(),
+                        }));
+                    }
+                    categories.push(json!({
+                        "id": cat_id,
+                        "name": cat_name,
+                        "items": items
+                    }));
                 }
-                Ok(out)
+                Ok(json!(categories))
             }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(rows)
+            Ok(tree)
         }
     }
 }
@@ -143,21 +155,98 @@ pub async fn seed_valuations(pool: &DbPool) -> anyhow::Result<()> {
                 }
                 // Insert categories
                 let cats = vec![
-                    ("cat_clothing", "Clothing"),
-                    ("cat_mens", "Men's Clothing"),
-                    ("cat_womens", "Women's Clothing"),
-                    ("cat_household", "Household Goods"),
+                    ("cat_appliances", "Appliances"),
+                    ("cat_childrens_clothing", "Children's Clothing"),
+                    ("cat_furniture", "Furniture"),
+                    ("cat_household_goods", "Household Goods"),
+                    ("cat_mens_clothing", "Men's Clothing"),
+                    ("cat_womens_clothing", "Women's Clothing"),
+                    ("cat_electronics", "Electronics & Computers"),
+                    ("cat_miscellaneous", "Miscellaneous"),
                 ];
                 for (id, name) in cats {
                     let _ = conn.execute("INSERT INTO val_categories (id, name) VALUES (:1, :2)", &[&id, &name]);
                 }
                 // Insert items
                 let items = vec![
-                    ("item_1", "cat_mens", "Shirt, Dress", 3i64, 6i64),
-                    ("item_2", "cat_mens", "Slacks", 5i64, 10i64),
-                    ("item_3", "cat_womens", "Dress, Casual", 6i64, 12i64),
-                    ("item_4", "cat_household", "Lamp, Floor", 10i64, 20i64),
-                    ("item_5", "cat_household", "Toaster", 4i64, 8i64),
+                    // Appliances
+                    ("app_ac", "cat_appliances", "Air Conditioner", 21, 93),
+                    ("app_dryer", "cat_appliances", "Dryer", 47, 93),
+                    ("app_stove_elec", "cat_appliances", "Electric Stove", 78, 156),
+                    ("app_freezer", "cat_appliances", "Freezer", 25, 100),
+                    ("app_stove_gas", "cat_appliances", "Gas Stove", 52, 130),
+                    ("app_heater", "cat_appliances", "Heater", 8, 23),
+                    ("app_microwave", "cat_appliances", "Microwave", 10, 50),
+                    ("app_refrigerator", "cat_appliances", "Refrigerator (Working)", 78, 259),
+                    ("app_washer", "cat_appliances", "Washing Machine", 41, 156),
+                    ("app_coffeemaker", "cat_appliances", "Coffee Maker", 4, 16),
+                    ("app_iron", "cat_appliances", "Iron", 3, 10),
+
+                    // Children's Clothing
+                    ("child_blouse", "cat_childrens_clothing", "Blouse", 2, 8),
+                    ("child_boots", "cat_childrens_clothing", "Boots", 3, 21),
+                    ("child_coat", "cat_childrens_clothing", "Coat", 5, 21),
+                    ("child_dress", "cat_childrens_clothing", "Dress", 2, 12),
+                    ("child_jacket", "cat_childrens_clothing", "Jacket", 3, 26),
+                    ("child_jeans", "cat_childrens_clothing", "Jeans", 4, 12),
+                    ("child_pants", "cat_childrens_clothing", "Pants", 3, 12),
+                    ("child_shirt", "cat_childrens_clothing", "Shirt", 2, 10),
+                    ("child_shoes", "cat_childrens_clothing", "Shoes", 3, 10),
+                    ("child_snowsuit", "cat_childrens_clothing", "Snowsuit", 4, 20),
+                    ("child_sweater", "cat_childrens_clothing", "Sweater", 2, 10),
+
+                    // Furniture
+                    ("furn_bed_full", "cat_furniture", "Bed (full, queen, king)", 52, 176),
+                    ("furn_bed_single", "cat_furniture", "Bed (single)", 36, 104),
+                    ("furn_chair_uph", "cat_furniture", "Chair (upholstered)", 26, 104),
+                    ("furn_chest", "cat_furniture", "Chest", 26, 99),
+                    ("furn_china", "cat_furniture", "China Cabinet", 89, 311),
+                    ("furn_coffee_table", "cat_furniture", "Coffee Table", 15, 100),
+                    ("furn_desk", "cat_furniture", "Desk", 26, 145),
+                    ("furn_dresser", "cat_furniture", "Dresser", 20, 104),
+                    ("furn_end_table", "cat_furniture", "End Table", 10, 75),
+                    ("furn_kitchen_set", "cat_furniture", "Kitchen Set", 35, 176),
+                    ("furn_sofa", "cat_furniture", "Sofa", 36, 395),
+
+                    // Household Goods
+                    ("house_blanket", "cat_household_goods", "Blanket", 3, 16),
+                    ("house_curtains", "cat_household_goods", "Curtains", 2, 12),
+                    ("house_lamp_floor", "cat_household_goods", "Lamp, Floor", 6, 52),
+                    ("house_lamp_table", "cat_household_goods", "Lamp, Table", 3, 20),
+                    ("house_pillow", "cat_household_goods", "Pillow", 2, 8),
+                    ("house_rug_area", "cat_household_goods", "Area Rug", 2, 93),
+                    ("house_sheets", "cat_household_goods", "Sheets", 2, 9),
+
+                    // Men's Clothing
+                    ("men_jacket", "cat_mens_clothing", "Jacket", 8, 45),
+                    ("men_suit", "cat_mens_clothing", "Suit (2pc)", 5, 96),
+                    ("men_shirt", "cat_mens_clothing", "Shirt", 3, 12),
+                    ("men_pants", "cat_mens_clothing", "Pants", 4, 23),
+                    ("men_shoes", "cat_mens_clothing", "Shoes", 3, 30),
+                    ("men_sweater", "cat_mens_clothing", "Sweater", 3, 12),
+
+                    // Women's Clothing
+                    ("women_suit", "cat_womens_clothing", "Suit (2pc)", 10, 96),
+                    ("women_blouse", "cat_womens_clothing", "Blouse", 3, 12),
+                    ("women_dress", "cat_womens_clothing", "Dress", 4, 28),
+                    ("women_pants", "cat_womens_clothing", "Pants", 4, 23),
+                    ("women_shoes", "cat_womens_clothing", "Shoes", 2, 30),
+                    ("women_sweater", "cat_womens_clothing", "Sweater", 4, 13),
+
+                    // Electronics & Computers
+                    ("elec_desktop", "cat_electronics", "Desktop Computer", 20, 415),
+                    ("elec_laptop", "cat_electronics", "Laptop", 25, 415),
+                    ("elec_monitor", "cat_electronics", "Monitor", 5, 51),
+                    ("elec_printer", "cat_electronics", "Printer", 1, 155),
+                    ("elec_tablet", "cat_electronics", "Tablet", 25, 150),
+                    ("elec_tv", "cat_electronics", "TV (Color Working)", 78, 233),
+
+                    // Miscellaneous
+                    ("misc_bicycle", "cat_miscellaneous", "Bicycle", 5, 83),
+                    ("misc_books_hard", "cat_miscellaneous", "Book (hardback)", 1, 3),
+                    ("misc_books_paper", "cat_miscellaneous", "Book (paperback)", 0.59, 2),
+                    ("misc_luggage", "cat_miscellaneous", "Luggage", 5, 16),
+                    ("misc_vacuum", "cat_miscellaneous", "Vacuum Cleaner", 5, 67),
                 ];
                 for (id, cat, name, low, high) in items {
                     let _ = conn.execute("INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES (:1,:2,:3,:4,:5)", &[&id, &cat, &name, &low, &high]);
