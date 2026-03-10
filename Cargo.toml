@@ -4,44 +4,81 @@ version = "0.1.0"
 edition = "2021"
 default-run = "deductible-tracker"
 
+[[bin]]
+name = "deductible-tracker"
+path = "src/main.rs"
+test = false
+required-features = ["server"]
+
+[[bin]]
+name = "migrate"
+path = "src/bin/migrate.rs"
+test = false
+
 [dependencies]
-axum = "0.8"
-async-trait = "0.1"
+# --- Always needed (db + tests) ---
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.5", features = ["limit"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
-opendal = { version = "0.55", features = ["services-s3"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.21", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
-# printpdf = "0.9" # Removed: pulls `azul-*` GUI/layout crates that fail to compile in CI
-base64 = "0.22"
 anyhow = "1.0"
-url = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-oauth2 = "5.0"
 dotenvy = "0.15"
-tower_governor = "0.8"
-csv = "1.1"
-leptess = { version = "0.14", optional = true }
-tempfile = "3.6"
-regex = "1"
-blake3 = "1"
-minifier = "0.3"
-openssl = { version = "0.10", features = ["vendored"] }
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 # Pin rust-oracle to the upstream revision that moved to odpic-sys 0.2.0,
 # which removes the legacy bindgen -> which -> failure build chain.
 oracle = { git = "https://github.com/kubo/rust-oracle.git", rev = "caf3c0d06b654e79192e88bbaf516e599982af05", features = ["chrono"] }
 r2d2 = "0.8"
-rand = "0.10"
-argon2 = "0.5" # For password hashing (dev mode)
+
+# --- Server-only (gated behind "server" feature) ---
+axum = { version = "0.8", optional = true }
+async-trait = { version = "0.1", optional = true }
+tower = { version = "0.5", features = ["limit"], optional = true }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"], optional = true }
+opendal = { version = "0.55", features = ["services-s3"], optional = true }
+jsonwebtoken = { version = "10.3", features = ["rust_crypto"], optional = true }
+# printpdf = "0.9" # Removed: pulls `azul-*` GUI/layout crates that fail to compile in CI
+base64 = { version = "0.22", optional = true }
+url = { version = "2.5", optional = true }
+oauth2 = { version = "5.0", optional = true }
+tower_governor = { version = "0.8", optional = true }
+csv = { version = "1.1", optional = true }
+leptess = { version = "0.14", optional = true }
+tempfile = { version = "3.6", optional = true }
+regex = { version = "1", optional = true }
+blake3 = { version = "1", optional = true }
+minifier = { version = "0.3", optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], optional = true }
+rand = { version = "0.10", optional = true }
+argon2 = { version = "0.5", optional = true }
 
 [features]
-ocr = ["leptess"]
+default = ["server"]
+server = [
+    "dep:axum",
+    "dep:async-trait",
+    "dep:tower",
+    "dep:tower-http",
+    "dep:opendal",
+    "dep:jsonwebtoken",
+    "dep:base64",
+    "dep:url",
+    "dep:oauth2",
+    "dep:tower_governor",
+    "dep:csv",
+    "dep:tempfile",
+    "dep:regex",
+    "dep:blake3",
+    "dep:minifier",
+    "dep:openssl",
+    "dep:reqwest",
+    "dep:rand",
+    "dep:argon2",
+]
+app-bin = ["server"]
+ocr = ["server", "dep:leptess"]
 
 [profile.release]
 opt-level = "z"

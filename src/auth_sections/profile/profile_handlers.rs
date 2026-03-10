@@ -167,9 +167,21 @@ pub async fn get_config() -> impl IntoResponse {
     let allow_dev_login = std::env::var("ALLOW_DEV_LOGIN")
         .map(|v| v.to_lowercase() == "true")
         .unwrap_or(false);
-    
+    // Determine whether Google OAuth is enabled (listed in OAUTH_PROVIDERS
+    // and has a client ID configured).
+    let oauth_providers = std::env::var("OAUTH_PROVIDERS").unwrap_or_default();
+    let providers: Vec<String> = oauth_providers
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let google_enabled = providers.contains(&"google".to_string()) && std::env::var("GOOGLE_CLIENT_ID").is_ok();
+    let google_client_id = std::env::var("GOOGLE_CLIENT_ID").ok();
+
     Json(serde_json::json!({
-        "allow_dev_login": allow_dev_login
+        "allow_dev_login": allow_dev_login,
+        "google_enabled": google_enabled,
+        "google_client_id": google_client_id
     }))
 }
 

@@ -30,5 +30,6 @@ Implementation steps (client-seeded)
 Estimated effort: small → moderate (1–2 days) depending on dataset cleanup and UX polish.
 
 Next steps I can take now:
+
 - Add the `tools/generate_valuation_json.js` script and modify `static/js/seed.js` to support lazy import, or
 - Implement a server-backed search endpoint for on-demand lookups.

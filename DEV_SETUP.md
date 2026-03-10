@@ -20,6 +20,34 @@ If the logs stop after Oracle prints `DATABASE IS READY TO USE!`, the next gate 
 
 Use `docker compose build` whenever you want to regenerate Tailwind output and the fingerprinted frontend assets baked into the image.
 
+### Faster frontend iteration with a dev override
+
+If you are changing files under `static/` and want to avoid a full image rebuild on every edit, use the checked-in dev override:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+What it changes:
+
+- The `app` service runs from the Dockerfile `builder` stage, so Node.js, npm, and `node_modules` are available inside the container.
+- `./static` is bind-mounted into `/app/static`, so changes to `index.html`, stylesheets, and frontend JavaScript are available to the container immediately.
+- On app startup, frontend assets can be rebuilt inside the container instead of only during image build.
+
+Useful toggles for local development:
+
+- `DEV_SKIP_TAILWIND_BUILD=false` (default): rebuild Tailwind at app startup. Set to `true` if you are not editing Tailwind input CSS and want faster restarts.
+- `DEV_SKIP_ASSET_REBUILD=false` (default): rebuild fingerprinted JS/CSS assets at app startup. Set to `true` if you are only changing HTML and want to keep the last generated asset manifest.
+
+Typical frontend workflow:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+docker-compose restart app
+```
+
+That restart is enough to pick up most `static/` changes without rebuilding the image again.
+
 By default development reads `DEV_ORACLE_USER`, `DEV_ORACLE_PASSWORD`, and `DEV_ORACLE_CONNECT_STRING`. It also falls back to `ORACLE_PDB_USER`, `ORACLE_PWD`, and `ORACLE_PDB_CONNECT_STRING`, which lets the same `.env` work for both `docker compose up` and host-side `cargo run` commands.
 
 ## Required environment variables (overview)
@@ -81,6 +109,7 @@ If `ALLOW_DEV_LOGIN=true` and the server runs with `RUST_ENV=development`, you c
 - Development uses the checked-in Oracle schema in `migrations/init.sql`; the default Compose stack runs the migration service automatically before the app starts.
 - To run a type-check / build quickly, use `cargo check`.
 - To inspect the readiness gate directly, run `docker-compose ps` and `docker-compose logs -f oracle-dev`. `app` waits for `oracle-dev` to become healthy, not just for the database process to print its startup banner.
+- The dev override is intended for local-only frontend work. The default `docker-compose.yml` remains the production-like path that serves prebuilt assets from the image.
 
 ### OCR (Tesseract) setup (optional)
 
@@ -108,6 +137,7 @@ RUST_ENV=development cargo run --features ocr
 ```
 
 Notes:
+
 - If you don't enable the `ocr` feature or you don't have Tesseract installed, the server will still build and run; calling the OCR endpoint will return an error indicating OCR is not enabled.
 - On Linux or other platforms, use your package manager to install `tesseract` and `leptonica`.
 
@@ -126,7 +156,3 @@ export OAUTH_PROVIDERS=GOOGLE
 export GOOGLE_CLIENT_ID=...
 export GOOGLE_CLIENT_SECRET=...
 ```
-
-If you want, I can add a small `scripts/` helper to validate required env vars at startup and produce a helpful error message listing missing keys.
-
-If you'd like, I can create a `.env.example` file with recommended local values and a small `docker-compose` snippet for MinIO.

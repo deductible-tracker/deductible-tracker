@@ -1,0 +1,8 @@
+version: 1
+analyze:
+  - language: javascript
+    paths:
+      - '.'
+  - language: rust
+    paths:
+      - '.'

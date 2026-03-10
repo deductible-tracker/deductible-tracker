@@ -1,4 +1,17 @@
 pub mod db;
 
-// Optionally re-export other modules if tests need them in future
+#[cfg(feature = "server")]
+mod routes;
+#[cfg(feature = "server")]
+mod auth;
+#[cfg(feature = "server")]
+mod ocr;
+
 pub use crate::db as db_mod;
+
+#[cfg(feature = "server")]
+include!("main_sections/bootstrap/server_bootstrap.rs");
+#[cfg(feature = "server")]
+include!("main_sections/http/http_pipeline_and_assets.rs");
+#[cfg(feature = "server")]
+include!("main_sections/assets/asset_helpers.rs");

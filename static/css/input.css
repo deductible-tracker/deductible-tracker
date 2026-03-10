@@ -1,10 +1,11 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @source "../index.html";
 @source "../js/**/*.js";
 
 @theme {
-  --font-sans: "Roboto", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-sans:
+    'Roboto', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
 
   --color-slate-50: #f9f9f9;
   --color-slate-100: #f3f3f3;
@@ -112,7 +113,7 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: #fff;
-    transition: background-color .15s ease;
+    transition: background-color 0.15s ease;
   }
 
   .dt-btn-primary:hover {
@@ -130,7 +131,7 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--color-slate-700);
-    transition: background-color .15s ease;
+    transition: background-color 0.15s ease;
   }
 
   .dt-btn-secondary:hover {
@@ -148,7 +149,7 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--color-rose-700);
-    transition: background-color .15s ease;
+    transition: background-color 0.15s ease;
   }
 
   .dt-btn-danger:hover {

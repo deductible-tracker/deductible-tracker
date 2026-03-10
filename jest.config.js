@@ -1,6 +1,6 @@
 export default {
-    testEnvironment: 'node',
-    roots: ['<rootDir>/static/js'],
-    testMatch: ['**/*.test.js'],
-    transform: {}
+  testEnvironment: 'node',
+  roots: ['<rootDir>/tests/js'],
+  testMatch: ['**/*.test.js'],
+  transform: {},
 };

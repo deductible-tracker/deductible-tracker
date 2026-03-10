@@ -1,20 +1,13 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[test]
 fn javascript_jest_suite_passes() {
-    let output = Command::new("npm")
+    let status = Command::new("npm")
         .args(["run", "test:js"])
-        .output()
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
         .expect("failed to execute npm; ensure Node.js and npm are installed");
 
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!(
-            "Jest tests failed.\nstatus: {:?}\nstdout:\n{}\nstderr:\n{}",
-            output.status.code(),
-            stdout,
-            stderr
-        );
-    }
+    assert!(status.success(), "Jest tests failed with status: {:?}", status.code());
 }

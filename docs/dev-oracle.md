@@ -54,6 +54,7 @@ RUST_ENV=development cargo run
 ```
 
 Notes:
+
 - The Oracle Free image requires notable disk and memory; only opt-in developers should run it locally.
 - CI should use an Oracle-backed integration stage if you want full SQL parity with development and production.
 - Oracle's published Free edition limits are up to `2` CPU threads, `2 GiB` of database RAM, and `12 GiB` of user data. Those are product limits, not a guarantee that a `2 GiB` Colima VM leaves enough headroom for Linux, Docker, and Oracle startup overhead.

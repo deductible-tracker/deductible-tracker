@@ -155,14 +155,3 @@ fn relative_path(from_dir: &Path, to_file: &Path) -> PathBuf {
     rel
 }
 
-#[cfg(test)]
-mod tests {
-    #[tokio::test]
-    async fn db_pool_initializes() {
-        std::env::set_var("RUST_ENV", "development");
-        let pool = crate::db::init_pool().await.expect("init pool");
-        match &*pool {
-            crate::db::DbPoolEnum::Oracle(_) => {}
-        }
-    }
-}

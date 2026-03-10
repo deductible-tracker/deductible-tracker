@@ -12,19 +12,76 @@ fn run_tailwind_build_if_needed() -> anyhow::Result<()> {
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let status = Command::new("bash")
-        .arg("-lc")
-        .arg("if [ -s \"$HOME/.nvm/nvm.sh\" ]; then source \"$HOME/.nvm/nvm.sh\" && nvm use 24.13.1 >/dev/null 2>&1 || true; fi; npm run tailwind:build")
-        .current_dir(&manifest_dir)
-        .status()?;
+    let prebuilt_tailwind = public_assets_root().join("tailwind.css");
 
-    if !status.success() {
-        anyhow::bail!(
-            "Tailwind build failed. Run `make tailwind-build` and ensure Node v24.13.1 is available."
+    if !manifest_dir.join("node_modules").exists() && prebuilt_tailwind.exists() {
+        tracing::info!(
+            "Skipping Tailwind build: using prebuilt CSS at {}",
+            prebuilt_tailwind.display()
         );
+        return Ok(());
     }
 
-    Ok(())
+    tracing::info!("Running Tailwind build...");
+    
+    // 1. Try local node_modules binary directly
+    let local_tailwind = manifest_dir.join("node_modules").join(".bin").join("tailwindcss");
+    if local_tailwind.exists() {
+        tracing::debug!("Found local tailwindcss at {}", local_tailwind.display());
+        let status = Command::new(&local_tailwind)
+            .args([
+                "-i", "./static/css/input.css",
+                "-o", "./public/assets/tailwind.css",
+                "--minify"
+            ])
+            .current_dir(&manifest_dir)
+            .status();
+
+        if let Ok(s) = status {
+            if s.success() {
+                tracing::info!("Tailwind build completed successfully via local binary");
+                return Ok(());
+            }
+        }
+    }
+
+    // 2. Fallback: Try npm run tailwind:build
+    let status = Command::new("npm")
+        .args(["run", "tailwind:build"])
+        .current_dir(&manifest_dir)
+        .status();
+
+    if let Ok(s) = status {
+        if s.success() {
+            tracing::info!("Tailwind build completed successfully via npm run");
+            return Ok(());
+        }
+    }
+
+    // 3. Last resort: Try via npx
+    let npx_status = Command::new("npx")
+        .args([
+            "tailwindcss",
+            "-i", "./static/css/input.css",
+            "-o", "./public/assets/tailwind.css",
+            "--minify"
+        ])
+        .current_dir(&manifest_dir)
+        .status();
+
+    if let Ok(s) = npx_status {
+        if s.success() {
+            tracing::info!("Tailwind build completed successfully via npx");
+            return Ok(());
+        }
+    }
+
+    let node_modules_exists = manifest_dir.join("node_modules").exists();
+    anyhow::bail!(
+        "Tailwind build failed. (node_modules exists: {}, prebuilt CSS exists: {}). Ensure Node.js and tailwindcss are installed and NODE_ENV is not 'production' during build.",
+        node_modules_exists,
+        prebuilt_tailwind.exists()
+    );
 }
 
 fn should_prepare_assets_only() -> bool {
@@ -104,19 +161,21 @@ async fn require_auth(req: Request<Body>, next: Next) -> impl IntoResponse {
         &axum::http::Method::POST | &axum::http::Method::PUT | &axum::http::Method::DELETE | &axum::http::Method::PATCH
     ) {
         let headers = req.headers();
-        let csrf_token = headers.get("X-CSRF-Token").and_then(|h| h.to_str().ok());
         let auth_token = auth::extract_token_from_headers(headers);
 
-        match (csrf_token, auth_token) {
-            (Some(csrf), Some(auth)) => {
-                if csrf != auth {
-                    tracing::warn!("CSRF token mismatch");
-                    return (StatusCode::FORBIDDEN, "CSRF token mismatch").into_response();
+        if let Some(auth) = auth_token {
+            let csrf_token = headers.get("X-CSRF-Token").and_then(|h| h.to_str().ok());
+            match csrf_token {
+                Some(csrf) => {
+                    if csrf != auth {
+                        tracing::warn!("CSRF token mismatch");
+                        return (StatusCode::FORBIDDEN, "CSRF token mismatch").into_response();
+                    }
                 }
-            }
-            _ => {
-                tracing::warn!("Missing CSRF token or Auth token for state-changing request");
-                return (StatusCode::FORBIDDEN, "Missing CSRF token").into_response();
+                None => {
+                    tracing::warn!("Missing CSRF token for authenticated state-changing request");
+                    return (StatusCode::FORBIDDEN, "Missing CSRF token").into_response();
+                }
             }
         }
     }
@@ -165,6 +224,46 @@ async fn serve_service_worker() -> impl IntoResponse {
             .into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+async fn serve_tailwind_css() -> impl IntoResponse {
+    // Prefer the compiled asset if present in public/assets, otherwise fall back
+    // to a minimal development CSS (static input) so clients don't get 404s.
+    let compiled = public_assets_root().join("tailwind.css");
+    if compiled.exists() {
+        if let Ok(bytes) = std::fs::read(&compiled) {
+            return (
+                [
+                    (header::CONTENT_TYPE, "text/css"),
+                    (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+                ],
+                bytes,
+            )
+                .into_response();
+        }
+    }
+
+    // Fallback: serve the source input.css so the page still gets some styles.
+    if let Ok(s) = std::fs::read_to_string("static/css/input.css") {
+        return (
+            [
+                (header::CONTENT_TYPE, "text/css"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            s,
+        )
+            .into_response();
+    }
+
+    // Final fallback: return empty CSS
+    (
+        [
+            (header::CONTENT_TYPE, "text/css"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        "/* tailwind.css missing */\n".to_string(),
+    )
+        .into_response()
 }
 
 async fn static_cache_control(req: Request<Body>, next: Next) -> impl IntoResponse {

@@ -9,7 +9,7 @@ use tokio::task;
 use crate::db::core::{DbPool, DbPoolEnum, RuntimeMode, UserProfileRow};
 use crate::db::models::UserProfileUpsert;
 
-pub(crate) mod donations;
+pub mod donations;
 pub(crate) mod receipts;
 
 fn first_present_env(keys: &[&str]) -> Option<String> {

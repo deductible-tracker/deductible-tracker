@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG ENABLE_OCR=0
+ARG PREBUILD_TESTS=0
 
 FROM dhi.io/rust:1 AS rust-toolchain
 
@@ -9,6 +10,7 @@ FROM oraclelinux:9-slim AS builder
 WORKDIR /app
 
 ARG ENABLE_OCR
+ARG PREBUILD_TESTS
 RUN microdnf install -y \
       oracle-instantclient-release-23ai-el9 \
     && microdnf install -y \
@@ -48,14 +50,13 @@ RUN --mount=type=cache,target=/cargo/registry \
   cargo fetch
 
 RUN set -eux; \
-    npm install --include=optional; \
+    npm ci --include=optional; \
     arch="$(uname -m)"; \
     case "$arch" in \
       aarch64|arm64) npm install --no-save @tailwindcss/oxide-linux-arm64-gnu ;; \
       x86_64|amd64) npm install --no-save @tailwindcss/oxide-linux-x64-gnu ;; \
       *) echo "Unsupported architecture for Tailwind native bindings: $arch" >&2; exit 1 ;; \
     esac
-
 
 # Copy full source and build the real binaries
 COPY . .
@@ -66,13 +67,35 @@ RUN --mount=type=cache,target=/cargo/registry \
       echo "ERROR: ENABLE_OCR=1 is not supported in the minimal hardened builder without extra native OCR packages." >&2; \
       exit 1; \
     fi; \
-    CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_STRIP=false cargo build --release --bins -j1 && \
+    CARGO_PROFILE_RELEASE_LTO=true \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+    CARGO_PROFILE_RELEASE_STRIP=true \
+    cargo build --release --bins -j1 && \
+    # Run the asset preparation step in a development environment so the
+    # bundled binary will run the Tailwind build helper (which only runs
+    # when RUST_ENV==development). The produced assets are the same.
     RUST_ENV=development PREPARE_ASSETS_ONLY=1 ./target-ol9/release/deductible-tracker && \
     cp /app/target-ol9/release/deductible-tracker /app/deductible-tracker && \
     cp /app/target-ol9/release/migrate /app/migrate
 
+# Remove build-time dev artifacts that should not be copied into runtime
+RUN rm -rf /app/node_modules /app/.parcel-cache /app/.vite /tmp/* /app/package-lock.json /app/.npm || true
+
+RUN --mount=type=cache,target=/cargo/registry \
+    --mount=type=cache,target=/cargo/git \
+    --mount=type=cache,target=/app/target-ol9 \
+    if [ "${PREBUILD_TESTS}" = "1" ]; then \
+      CARGO_BUILD_JOBS=1 \
+      CARGO_INCREMENTAL=0 \
+      CARGO_PROFILE_DEV_DEBUG=0 \
+      RUSTFLAGS="-C debuginfo=0" \
+      cargo build --locked --no-default-features --bin migrate -j1 && \
+      cargo test --locked --no-default-features -j1 --lib --test integration_js_jest --test integration_receipts_audit --no-run; \
+    fi
+
 # Stage 2: Runtime
-# Use OL 9 with the Oracle Instant Client repository enabled via the release package.
+# Use Oracle Linux 9 slim as the base for the final image.
+# We then prune it further by removing unneeded tools and files.
 FROM oraclelinux:9-slim AS runtime
 WORKDIR /app
 
@@ -90,20 +113,20 @@ RUN microdnf install -y \
       openssl \
       oracle-instantclient-basiclite \
     && microdnf clean all && \
+    # Remove microdnf and other package management tools to harden and shrink image
+    rm -rf /var/cache/dnf /var/cache/yum && \
+    # Prune Oracle Instant Client (already doing this, but being thorough)
     rm -f /usr/lib/oracle/23/client64/bin/adrci /usr/lib/oracle/23/client64/bin/genezi && \
-    rm -f /usr/lib/oracle/23/client64/lib/ojdbc8.jar /usr/lib/oracle/23/client64/lib/xstreams.jar && \
-    rm -f /usr/lib/oracle/23/client64/lib/libocci.so /usr/lib/oracle/23/client64/lib/libocci.so.10.1 /usr/lib/oracle/23/client64/lib/libocci.so.11.1 /usr/lib/oracle/23/client64/lib/libocci.so.12.1 /usr/lib/oracle/23/client64/lib/libocci.so.18.1 /usr/lib/oracle/23/client64/lib/libocci.so.19.1 /usr/lib/oracle/23/client64/lib/libocci.so.20.1 /usr/lib/oracle/23/client64/lib/libocci.so.21.1 /usr/lib/oracle/23/client64/lib/libocci.so.22.1 /usr/lib/oracle/23/client64/lib/libocci.so.23.1 && \
+    rm -f /usr/lib/oracle/23/client64/lib/ojdbc* /usr/lib/oracle/23/client64/lib/xstreams.jar && \
+    rm -f /usr/lib/oracle/23/client64/lib/libocci* && \
     rm -f /usr/share/oracle/23/client64/doc/BASIC_LITE_LICENSE /usr/share/oracle/23/client64/doc/BASIC_LITE_README && \
     rm -rf /usr/lib/oracle/23/client64/lib/network && \
     ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1 2>/dev/null || true
 
 # Optional OCR runtime libs (only installed when ENABLE_OCR=1)
+# Note: If ENABLE_OCR is used, the image will grow.
 ARG ENABLE_OCR=0
 RUN if [ "${ENABLE_OCR}" = "1" ]; then \
-      # Try installing tesseract & leptonica via microdnf. These packages may
-      # require EPEL or additional repos on some Oracle Linux installs. If your
-      # environment doesn't provide them, consider building a Debian-based
-      # runtime image or providing the libs another way.
       microdnf install -y tesseract leptonica && microdnf clean all || true; \
     fi
 

@@ -155,6 +155,13 @@ pub async fn delete_charity(pool: &DbPool, user_id: &str, charity_id: &str) -> a
                 let existing_created_at: Option<String> = existing.get(11).ok();
                 let existing_updated_at: Option<String> = existing.get(12).ok();
 
+                // Delete soft-deleted donations first to satisfy foreign key constraints
+                let del_donations_sql = "DELETE FROM donations WHERE charity_id = :1 AND user_id = :2 AND deleted = 1";
+                if let Err(e) = conn.execute(del_donations_sql, &[&charity_id, &user_id]) {
+                    tracing::error!("Failed to delete soft-deleted donations for charity {}: {}", charity_id, e);
+                    return Err(anyhow::anyhow!("Failed to clean up associated donations: {}", e));
+                }
+
                 let sql = "DELETE FROM charities WHERE id = :1 AND user_id = :2";
                 conn.execute(sql, &[&charity_id, &user_id])?;
                 let _ = conn.commit();

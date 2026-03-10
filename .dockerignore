@@ -7,3 +7,15 @@ target/
 terraform/
 Wallet_deductibledb/
 node_modules/
+.github/
+docs/
+tests/
+!tests/
+!tests/*.rs
+Makefile
+*.pub
+github_action_key
+VALUATION_PLAN.md
+DEV_SETUP.md
+README.md
+add_dark_mode.js

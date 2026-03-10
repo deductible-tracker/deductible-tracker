@@ -1,124 +1,278 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Deductible Tracker</title>
-    <link href="/css/fonts.css" rel="stylesheet">
-    <link href="/assets/tailwind.css" rel="stylesheet">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link href="/css/fonts.css" rel="stylesheet" />
+    <link href="/assets/tailwind.css" rel="stylesheet" />
     <script src="/vendor/dexie-4.3.0.min.js"></script>
     <script src="/vendor/lucide.min.js"></script>
-</head>
-<body class="font-sans bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100 h-screen flex flex-col antialiased">
+  </head>
+  <body
+    class="font-sans bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100 h-screen flex flex-col antialiased"
+  >
     <style>
-        @media (max-width: 1023px) {
-            body.hide-nav-on-mobile header {
-                display: none;
-            }
-            body.hide-nav-on-mobile main {
-                padding-top: 0;
-            }
+      @media (max-width: 1023px) {
+        body.hide-nav-on-mobile header {
+          display: none;
         }
+        body.hide-nav-on-mobile main {
+          padding-top: 0;
+        }
+      }
     </style>
-    <header class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 dark:border-slate-700/80 dark:bg-slate-900/90 backdrop-blur">
-        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div class="flex h-16 items-center justify-between gap-3">
-                <div class="flex min-w-0 items-center gap-2 sm:gap-3">
-                    <button id="mobile-menu-button" aria-label="Toggle navigation menu" aria-controls="mobile-menu" aria-expanded="false" class="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-                    </button>
-                    <div id="nav-logo" class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white dark:bg-indigo-500">
-                        <i data-lucide="calculator" class="h-5 w-5"></i>
-                    </div>
-                    <span id="nav-title" class="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-lg">Deductible Tracker</span>
-                    <nav id="nav-container" class="ml-3 hidden items-center gap-1 lg:flex lg:ml-5">
-                        <a href="#" data-route="/" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Home</a>
-                        <a href="#" data-route="/donations" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Donations</a>
-                        <a href="#" data-route="/charities" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Charities</a>
-                        <a href="#" data-route="/reports" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Reports</a>
-                        <a href="#" data-route="/personal" class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Personal</a>
-                    </nav>
-                </div>
-                <div class="flex items-center gap-2 sm:gap-3">
-                    <div id="sync-status" class="hidden items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 lg:flex">
-                        <i data-lucide="loader" class="mr-1 h-4 w-4 animate-spin"></i>
-                        Initializing...
-                    </div>
-                    <div id="auth-actions" class="flex items-center gap-2">
-                        <button id="btn-add-donation" class="hidden lg:inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600">Add Donation</button>
-                        <button id="btn-logout" class="hidden lg:inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">Logout</button>
-                    </div>
-                </div>
+    <header
+      class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 dark:border-slate-700/80 dark:bg-slate-900/90 backdrop-blur"
+    >
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="flex h-16 items-center justify-between gap-3">
+          <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+            <button
+              id="mobile-menu-button"
+              aria-label="Toggle navigation menu"
+              aria-controls="mobile-menu"
+              aria-expanded="false"
+              class="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            </button>
+            <div
+              id="nav-logo"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white dark:bg-indigo-500"
+            >
+              <i data-lucide="calculator" class="h-5 w-5"></i>
             </div>
+            <span
+              id="nav-title"
+              class="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-lg"
+              >Deductible Tracker</span
+            >
+            <nav id="nav-container" class="ml-3 hidden items-center gap-1 lg:flex lg:ml-5">
+              <a
+                href="#"
+                data-route="/"
+                class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+                >Home</a
+              >
+              <a
+                href="#"
+                data-route="/donations"
+                class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+                >Donations</a
+              >
+              <a
+                href="#"
+                data-route="/charities"
+                class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+                >Charities</a
+              >
+              <a
+                href="#"
+                data-route="/reports"
+                class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+                >Reports</a
+              >
+              <a
+                href="#"
+                data-route="/personal"
+                class="inline-flex items-center rounded-lg px-2 py-2 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+                >Personal</a
+              >
+            </nav>
+          </div>
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div
+              id="sync-status"
+              class="hidden items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 lg:flex"
+            >
+              <i data-lucide="loader" class="mr-1 h-4 w-4 animate-spin"></i>
+              Initializing...
+            </div>
+            <div id="auth-actions" class="flex items-center gap-2">
+              <button
+                id="btn-add-donation"
+                class="hidden lg:inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+              >
+                Add Donation
+              </button>
+              <button
+                id="btn-logout"
+                class="hidden lg:inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 lg:hidden" role="navigation" aria-label="Mobile navigation">
-            <div class="space-y-1 px-3 py-3">
-                <div class="pb-2">
-                    <button id="btn-add-donation-mobile" class="w-full inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600">Add donation</button>
-                </div>
-                <a href="#" data-route="/" class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Home</a>
-                <a href="#" data-route="/donations" class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Donations</a>
-                <a href="#" data-route="/charities" class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Charities</a>
-                <a href="#" data-route="/reports" class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Reports</a>
-                <a href="#" data-route="/personal" class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400">Personal</a>
-                <button id="btn-logout-mobile" class="mt-2 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">Logout</button>
-            </div>
+      <div
+        id="mobile-menu"
+        class="hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 lg:hidden"
+        role="navigation"
+        aria-label="Mobile navigation"
+      >
+        <div class="space-y-1 px-3 py-3">
+          <div class="pb-2">
+            <button
+              id="btn-add-donation-mobile"
+              class="w-full inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+            >
+              Add donation
+            </button>
+          </div>
+          <a
+            href="#"
+            data-route="/"
+            class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+            >Home</a
+          >
+          <a
+            href="#"
+            data-route="/donations"
+            class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+            >Donations</a
+          >
+          <a
+            href="#"
+            data-route="/charities"
+            class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+            >Charities</a
+          >
+          <a
+            href="#"
+            data-route="/reports"
+            class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+            >Reports</a
+          >
+          <a
+            href="#"
+            data-route="/personal"
+            class="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-400"
+            >Personal</a
+          >
+          <button
+            id="btn-logout-mobile"
+            class="mt-2 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            Logout
+          </button>
         </div>
+      </div>
     </header>
 
     <main id="app" class="flex-1 overflow-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        <div class="mx-auto max-w-7xl space-y-8">
-            <div id="home-summary" class="space-y-6">
-                <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-                    <div class="border-b border-slate-100 bg-linear-to-r from-indigo-50/70 to-slate-50 px-5 py-5 sm:px-8 dark:border-slate-700 dark:from-indigo-900/30 dark:to-slate-800">
-                        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                                <p class="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-400">Workspace Overview</p>
-                                <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl dark:text-slate-100">Track every donation with clarity</h1>
-                                <p class="mt-2 max-w-xl text-sm text-slate-600 dark:text-slate-300">Keep your giving organized year-round with searchable records, receipt workflows, and tax-ready reporting.</p>
-                            </div>
-                            <div class="flex items-center gap-3 self-start">
-                                <a href="#" id="download-data" class="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">Download data</a>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="px-5 py-5 sm:px-8 sm:py-7">
-                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <article class="rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-800">
-                                <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Total Donations</p>
-                                <p id="total-donations-amount" class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl dark:text-slate-100">$0.00</p>
-                                <p id="estimated-savings" class="mt-2 text-sm text-emerald-600 dark:text-emerald-400">$0.00 in estimated tax savings</p>
-                            </article>
-                            <article class="rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-800">
-                                <div class="mt-3 grid gap-2 text-sm">
-                                    <div class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700/50">
-                                        <p class="text-xs text-slate-500 dark:text-slate-400">Items</p>
-                                        <p id="figure-items-amount" class="text-base font-semibold text-slate-900 dark:text-slate-100">$0.00</p>
-                                    </div>
-                                    <div class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700/50">
-                                        <p class="text-xs text-slate-500 dark:text-slate-400">Money</p>
-                                        <p id="figure-money-amount" class="text-base font-semibold text-slate-900 dark:text-slate-100">$0.00</p>
-                                    </div>
-                                    <div class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700/50">
-                                        <p class="text-xs text-slate-500 dark:text-slate-400">Mileage</p>
-                                        <p id="figure-mileage-amount" class="text-base font-semibold text-slate-900 dark:text-slate-100">$0.00</p>
-                                    </div>
-                                </div>
-                            </article>
-                        </div>
-                    </div>
-                </section>
+      <div class="mx-auto max-w-7xl space-y-8">
+        <div id="home-summary" class="space-y-6">
+          <section
+            class="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
+          >
+            <div
+              class="border-b border-slate-100 bg-linear-to-r from-indigo-50/70 to-slate-50 px-5 py-5 sm:px-8 dark:border-slate-700 dark:from-indigo-900/30 dark:to-slate-800"
+            >
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p
+                    class="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-400"
+                  >
+                    Workspace Overview
+                  </p>
+                  <h1
+                    class="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl dark:text-slate-100"
+                  >
+                    Track every donation
+                  </h1>
+                  <p class="mt-2 max-w-xl text-sm text-slate-600 dark:text-slate-300">
+                    Keep your giving organized year-round with searchable records, receipt
+                    workflows, and tax-ready reporting.
+                  </p>
+                </div>
+                <div class="flex items-center gap-3 self-start">
+                  <a
+                    href="#"
+                    id="download-data"
+                    class="text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    >Download data</a
+                  >
+                </div>
+              </div>
             </div>
 
-            <section id="route-content" class="mt-0"></section>
+            <div class="px-5 py-5 sm:px-8 sm:py-7">
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <article
+                  class="rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-800"
+                >
+                  <p
+                    class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                  >
+                    Total Donations
+                  </p>
+                  <p
+                    id="total-donations-amount"
+                    class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl dark:text-slate-100"
+                  >
+                    $0.00
+                  </p>
+                  <p
+                    id="estimated-savings"
+                    class="mt-2 text-sm text-emerald-600 dark:text-emerald-400"
+                  >
+                    $0.00 in estimated tax savings
+                  </p>
+                </article>
+                <article
+                  class="rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-800"
+                >
+                  <div class="mt-3 grid gap-2 text-sm">
+                    <div class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700/50">
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Items</p>
+                      <p
+                        id="figure-items-amount"
+                        class="text-base font-semibold text-slate-900 dark:text-slate-100"
+                      >
+                        $0.00
+                      </p>
+                    </div>
+                    <div class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700/50">
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Money</p>
+                      <p
+                        id="figure-money-amount"
+                        class="text-base font-semibold text-slate-900 dark:text-slate-100"
+                      >
+                        $0.00
+                      </p>
+                    </div>
+                    <div class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-700/50">
+                      <p class="text-xs text-slate-500 dark:text-slate-400">Mileage</p>
+                      <p
+                        id="figure-mileage-amount"
+                        class="text-base font-semibold text-slate-900 dark:text-slate-100"
+                      >
+                        $0.00
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
         </div>
+
+        <section id="route-content" class="mt-0"></section>
+      </div>
     </main>
 
     <!-- Scripts -->
     <script type="module" src="/assets/app.js"></script>
     <script type="module" src="/assets/valuations.js"></script>
-</body>
+  </body>
 </html>

@@ -38,6 +38,7 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
    Create a `.env` file from `.env.example` and adjust values as needed.
 
    Minimal local example:
+
    ```bash
    cp .env.example .env
    ```
@@ -45,6 +46,7 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
    The default local stack reads `ORACLE_PDB_USER`, `ORACLE_PWD`, and `ORACLE_PDB_CONNECT_STRING` for development. Host-side Rust commands also accept `DEV_ORACLE_USER`, `DEV_ORACLE_PASSWORD`, and `DEV_ORACLE_CONNECT_STRING` if you want explicit dev-only names.
 
    For production (`RUST_ENV=production`), set Oracle credentials separately:
+
    ```bash
    DB_USER=...
    DB_PASSWORD=...
@@ -52,6 +54,7 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
    ```
 
 2. **Start Local Server**:
+
    ```bash
    colima start --vm-type=vz --mount-type=virtiofs --cpu 2 --memory 3
    docker-compose up --build
@@ -61,7 +64,16 @@ A production-grade serverless charitable donation tracker replacing TurboTax's I
 
    Rebuild the image with `docker-compose build` whenever you want refreshed Tailwind output and fingerprinted frontend assets.
 
+   For faster frontend iteration on `static/` files, use the dev override:
+
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+   ```
+
+   That variant bind-mounts `static/` into the app container and runs the app from the Dockerfile `builder` stage so startup can rebuild Tailwind and fingerprinted assets locally without a full image rebuild on every edit. After changing frontend files, `docker-compose restart app` is usually enough.
+
 3. **Build Tailwind CSS**:
+
    ```bash
    npm install
    npm run tailwind:watch
@@ -83,6 +95,7 @@ npm run tailwind:build
 ### Production Deployment
 
 1. **Infrastructure**:
+
    ```bash
    cd terraform
    terraform init
@@ -90,33 +103,34 @@ npm run tailwind:build
    ```
 
 2. **Build Docker Image**:
+
    ```bash
    make docker-build
    ```
 
 3. **Environment Variables**:
-    Set production runtime variables for Oracle + object storage, including:
-    `RUST_ENV=production`, `DB_USER`, `DB_PASSWORD`, `DB_CONNECT_STRING`,
-    `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OCI_REGION`,
-    `OCI_ACCESS_KEY_ID`, `OCI_SECRET_ACCESS_KEY`, `JWT_SECRET`, and `ALLOWED_ORIGINS`.
+   Set production runtime variables for Oracle + object storage, including:
+   `RUST_ENV=production`, `DB_USER`, `DB_PASSWORD`, `DB_CONNECT_STRING`,
+   `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OCI_REGION`,
+   `OCI_ACCESS_KEY_ID`, `OCI_SECRET_ACCESS_KEY`, `JWT_SECRET`, and `ALLOWED_ORIGINS`.
 
 ## Project Structure
 
 - `src/main.rs`: server entry point and module wiring.
 - `src/main_sections/`: HTTP/server organization by concern.
-   - `bootstrap/`: startup, state, router bootstrap.
-   - `http/`: middleware, handlers for index/fallback/cache policy.
-   - `assets/`: fingerprint/minification helper pipeline.
+  - `bootstrap/`: startup, state, router bootstrap.
+  - `http/`: middleware, handlers for index/fallback/cache policy.
+  - `assets/`: fingerprint/minification helper pipeline.
 - `src/auth.rs`: auth module root and include wiring.
 - `src/auth_sections/`: auth organization by concern.
-   - `flow/`: OAuth login/callback orchestration.
-   - `profile/`: dev login/logout/me/profile update handlers.
-   - `support/`: token/provider helpers and shared auth utilities.
+  - `flow/`: OAuth login/callback orchestration.
+  - `profile/`: dev login/logout/me/profile update handlers.
+  - `support/`: token/provider helpers and shared auth utilities.
 - `src/db/core.rs`: DB facade root and include wiring.
 - `src/db/core_sections/`: DB organization by domain.
-   - `bootstrap/`: pool/runtime init and shared setup.
-   - `donations/`: donation/receipt operations and valuations.
-   - `charities/`: charity CRUD and receipt OCR metadata updates.
+  - `bootstrap/`: pool/runtime init and shared setup.
+  - `donations/`: donation/receipt operations and valuations.
+  - `charities/`: charity CRUD and receipt OCR metadata updates.
 - `src/routes/`: API route handlers.
 - `src/db/oracle/`: Oracle-backed persistence used in both development and production.
 - `static/`: frontend assets (PWA).
@@ -124,12 +138,13 @@ npm run tailwind:build
 ## Docker Notes
 
 - `Dockerfile` builds both `deductible-tracker` and `migrate` binaries and ships
-   them in an Oracle Linux 9 runtime image.
+  them in an Oracle Linux 9 runtime image.
 - `docker-compose.yml` is now the default local development stack: Oracle Free,
-   one-shot migrations, and the app.
+  one-shot migrations, and the app.
 - `docker compose build` rebuilds Tailwind output and fingerprinted frontend assets into the image.
 - `docker compose up` starts the already-built image and does not regenerate frontend assets.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml up` is the local frontend workflow: it bind-mounts `static/` and can rebuild frontend assets on app restart.
 - Copy `.env.example` to `.env` before running `docker compose up --build`.
 - The Compose app container overrides the Oracle connect string to use the
-   internal hostname `oracle-dev`, so the same `.env` can still use
-   `//localhost:1521/FREEPDB1` for host-side `cargo run` commands.
+  internal hostname `oracle-dev`, so the same `.env` can still use
+  `//localhost:1521/FREEPDB1` for host-side `cargo run` commands.

@@ -16,8 +16,8 @@ x-app-environment: &app-environment
   DEV_ORACLE_USER: ${ORACLE_PDB_USER:-pdbadmin}
   DEV_ORACLE_PASSWORD: ${ORACLE_PWD}
   DEV_ORACLE_CONNECT_STRING: //oracle-dev:1521/${ORACLE_PDB:-FREEPDB1}
-  SKIP_TAILWIND_BUILD: "true"
-  SKIP_ASSET_REBUILD: "true"
+  SKIP_TAILWIND_BUILD: 'true'
+  SKIP_ASSET_REBUILD: 'true'
   ORACLE_PDB_USER: ${ORACLE_PDB_USER:-pdbadmin}
   ORACLE_PWD: ${ORACLE_PWD}
   ORACLE_PDB_CONNECT_STRING: //oracle-dev:1521/${ORACLE_PDB:-FREEPDB1}
@@ -41,15 +41,15 @@ services:
       ENABLE_ARCHIVELOG: ${ENABLE_ARCHIVELOG:-false}
       ENABLE_FORCE_LOGGING: ${ENABLE_FORCE_LOGGING:-false}
     ports:
-      - "1521:1521"
+      - '1521:1521'
     volumes:
       - oracle-data:/opt/oracle/oradata
       - ./scripts/oracle-dev-startup/01-grant-pdbadmin.sql:/opt/oracle/scripts/startup/01-grant-pdbadmin.sql:ro
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "printf \"whenever sqlerror exit 1;\\nselect 1 from dual;\\nexit;\\n\" | sqlplus -s -L \"$${ORACLE_PDB_USER:-pdbadmin}/$${ORACLE_PWD:-ChangeMe123}@//localhost:1521/$${ORACLE_PDB:-FREEPDB1}\" >/dev/null 2>&1 || exit 1"
+          'CMD-SHELL',
+          "printf \"whenever sqlerror exit 1;\\nselect 1 from dual;\\nexit;\\n\" | sqlplus -s -L \"$${ORACLE_PDB_USER:-pdbadmin}/$${ORACLE_PWD:-ChangeMe123}@//localhost:1521/$${ORACLE_PDB:-FREEPDB1}\" >/dev/null 2>&1 || exit 1",
         ]
       interval: 15s
       timeout: 15s
@@ -68,7 +68,7 @@ services:
     env_file:
       - .env
     environment: *app-environment
-    restart: "no"
+    restart: 'no'
 
   app:
     build:
@@ -80,7 +80,7 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "8080:8080"
+      - '8080:8080'
     env_file:
       - .env
     environment: *app-environment

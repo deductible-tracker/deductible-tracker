@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
   workflow_dispatch:
 
 concurrency:
@@ -54,6 +54,10 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          build-args: |
+            PREBUILD_TESTS=0
+            ENABLE_OCR=0
+            NODE_ENV=production
           platforms: linux/arm64
           push: true
           tags: |
@@ -337,7 +341,7 @@ jobs:
               --security-opt no-new-privileges \
               $WALLET_VOLUME \
               "$IMAGE_REF"
-            
+
             # Wait a few seconds and check if container is still running
             sleep 5
             if sudo docker ps | grep -q deductible-app; then

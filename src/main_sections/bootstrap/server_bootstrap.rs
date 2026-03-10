@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post, delete},
     Router,
     middleware::{from_fn, Next},
-    http::{HeaderValue, StatusCode},
+    http::{HeaderValue, StatusCode, HeaderName},
     response::{Html, IntoResponse},
 };
 use std::net::SocketAddr;
@@ -46,8 +46,7 @@ pub struct AssetEntrypoints {
     pub css_rewrites: HashMap<String, String>,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+pub async fn run_app() -> anyhow::Result<()> {
     // Load .env if it exists
     dotenvy::dotenv().ok();
 
@@ -198,6 +197,7 @@ async fn main() -> anyhow::Result<()> {
                 header::CONTENT_TYPE,
                 header::AUTHORIZATION,
                 header::ACCEPT,
+                HeaderName::from_static("x-csrf-token"),
             ])
             .allow_credentials(true)
     };
@@ -238,6 +238,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/config", get(auth::get_config))
         .merge(auth_router)
         .route("/sw.js", get(serve_service_worker))
+        .route("/assets/tailwind.css", get(serve_tailwind_css))
         .nest_service("/assets", ServeDir::new("public/assets"))
         .nest_service("/vendor", ServeDir::new("static/vendor"))
         .nest_service("/js", ServeDir::new("static/js"))
