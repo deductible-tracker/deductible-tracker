@@ -1,0 +1,153 @@
+[
+  { "path": "01-introduction.md", "title": "Rust Design Patterns", "category": "root" },
+
+  { "path": "02-idioms.md", "title": "Idioms", "category": "root" },
+  {
+    "path": "idioms/02-01-borrowed-args.md",
+    "title": "2.1 Use borrowed types for arguments",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-02-concat-format.md",
+    "title": "2.2 Concatenating strings with format!",
+    "category": "idiom"
+  },
+  { "path": "idioms/02-03-constructors.md", "title": "2.3 Constructors", "category": "idiom" },
+  {
+    "path": "idioms/02-04-default-trait.md",
+    "title": "2.4 The Default Trait",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-05-collections-deref.md",
+    "title": "2.5 Collections are smart pointers (Deref)",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-06-finalisation-destructors.md",
+    "title": "2.6 Finalisation in destructors",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-07-mem-take-replace.md",
+    "title": "2.7 mem::take / mem::replace",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-08-on-stack-dynamic-dispatch.md",
+    "title": "2.8 On-Stack Dynamic Dispatch",
+    "category": "idiom"
+  },
+  { "path": "idioms/02-09-ffi-idioms.md", "title": "2.9 FFI Idioms", "category": "idiom" },
+  {
+    "path": "idioms/02-10-iterating-option.md",
+    "title": "2.10 Iterating over an Option",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-11-closure-vars.md",
+    "title": "2.11 Pass variables to closure",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-12-non-exhaustive.md",
+    "title": "2.12 #[non_exhaustive] and private fields",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-13-doc-init.md",
+    "title": "2.13 Easy doc initialization",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-14-temporary-mutability.md",
+    "title": "2.14 Temporary mutability",
+    "category": "idiom"
+  },
+  {
+    "path": "idioms/02-15-return-consumed-on-error.md",
+    "title": "2.15 Return consumed argument on error",
+    "category": "idiom"
+  },
+
+  { "path": "03-design-patterns.md", "title": "Design Patterns", "category": "root" },
+  { "path": "patterns/03-01-command.md", "title": "Command", "category": "pattern" },
+  { "path": "patterns/03-02-interpreter.md", "title": "Interpreter", "category": "pattern" },
+  { "path": "patterns/03-03-newtype.md", "title": "Newtype", "category": "pattern" },
+  { "path": "patterns/03-04-raii-guards.md", "title": "RAII with guards", "category": "pattern" },
+  { "path": "patterns/03-05-strategy.md", "title": "Strategy (aka Policy)", "category": "pattern" },
+  { "path": "patterns/03-06-visitor.md", "title": "Visitor", "category": "pattern" },
+  { "path": "patterns/03-07-builder.md", "title": "Builder", "category": "pattern" },
+  { "path": "patterns/03-08-fold.md", "title": "Fold", "category": "pattern" },
+  {
+    "path": "patterns/03-09-struct-decomposition.md",
+    "title": "Struct decomposition for independent borrowing",
+    "category": "pattern"
+  },
+  {
+    "path": "patterns/03-10-prefer-small-crates.md",
+    "title": "Prefer small crates",
+    "category": "pattern"
+  },
+  {
+    "path": "patterns/03-11-contain-unsafety.md",
+    "title": "Contain unsafety in small modules",
+    "category": "pattern"
+  },
+  {
+    "path": "patterns/03-12-custom-traits.md",
+    "title": "Use custom traits to avoid complex type bounds",
+    "category": "pattern"
+  },
+  {
+    "path": "patterns/03-13-object-based-apis.md",
+    "title": "Object-Based APIs (FFI)",
+    "category": "pattern"
+  },
+  {
+    "path": "patterns/03-14-type-consolidation.md",
+    "title": "Type Consolidation into Wrappers (FFI)",
+    "category": "pattern"
+  },
+
+  { "path": "04-anti-patterns.md", "title": "Anti-Patterns", "category": "root" },
+  {
+    "path": "anti-patterns/04-01-clone-to-satisfy-borrow-checker.md",
+    "title": "Clone to satisfy the borrow checker",
+    "category": "anti-pattern"
+  },
+  {
+    "path": "anti-patterns/04-02-deny-warnings.md",
+    "title": "#![deny(warnings)]",
+    "category": "anti-pattern"
+  },
+  {
+    "path": "anti-patterns/04-03-deref-polymorphism.md",
+    "title": "Deref-polymorphism",
+    "category": "anti-pattern"
+  },
+
+  { "path": "05-functional-usage.md", "title": "Functional Usage of Rust", "category": "root" },
+  {
+    "path": "functional/05-01-programming-paradigms.md",
+    "title": "Programming paradigms",
+    "category": "functional"
+  },
+  {
+    "path": "functional/05-02-generics-as-type-classes.md",
+    "title": "Generics as Type Classes",
+    "category": "functional"
+  },
+  {
+    "path": "functional/05-03-functional-language-optics.md",
+    "title": "Functional Language Optics",
+    "category": "functional"
+  },
+
+  { "path": "06-resources.md", "title": "Resources and Further Reading", "category": "root" },
+  {
+    "path": "resources/06-01-design-principles.md",
+    "title": "6.1 Design principles",
+    "category": "resource"
+  }
+]

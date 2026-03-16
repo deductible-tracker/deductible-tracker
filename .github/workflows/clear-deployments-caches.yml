@@ -1,0 +1,53 @@
+name: Clear Caches and Old Deployments
+on:
+  schedule:
+    - cron: '0 4 * * 0' # Weekly on Sundays at 4 AM
+  workflow_dispatch: # Manual trigger option
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      deployments: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Clear all caches
+        run: gh cache delete --all --repo ${{ github.repository }} || echo "No caches found to delete"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old deployments
+        run: |
+          DEPLOYMENTS=$(gh api repos/${{ github.repository }}/deployments --jq '.[].id' || echo "")
+          COUNT=0
+          for ID in $DEPLOYMENTS; do
+            if [ $COUNT -eq 0 ]; then
+              echo "Keeping latest deployment: $ID"
+            else
+              echo "Deleting deployment: $ID"
+              gh api -X DELETE repos/${{ github.repository }}/deployments/$ID || echo "Failed to delete deployment $ID"
+            fi
+            COUNT=$((COUNT+1))
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old workflow runs
+        run: |
+          # Fetch IDs for all runs beyond the first 10.
+          # We use --limit 1000 to catch a large volume, then slice off the first 10.
+          # The list is returned as a JSON array, so we slice the array and map to databaseId.
+          RUNS=$(gh run list --limit 1000 --json databaseId --jq '.[10:] | .[].databaseId' || echo "")
+          if [ -n "$RUNS" ]; then
+            for ID in $RUNS; do
+              echo "Deleting run: $ID"
+              gh run delete "$ID" || echo "Failed to delete run $ID"
+            done
+          else
+            echo "No workflow runs found to delete (less than 10 runs exist)."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

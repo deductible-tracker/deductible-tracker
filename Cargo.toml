@@ -1,0 +1,92 @@
+[package]
+name = "deductible-tracker"
+version = "0.1.0"
+edition = "2021"
+default-run = "deductible-tracker"
+
+[[bin]]
+name = "deductible-tracker"
+path = "src/main.rs"
+test = false
+required-features = ["server"]
+
+[[bin]]
+name = "migrate"
+path = "src/bin/migrate.rs"
+test = false
+
+[dependencies]
+# --- Always needed (db + tests) ---
+# --- Always needed (db + tests) ---
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0", features = ["serde"] }
+anyhow = "1"
+tracing = "0"
+tracing-subscriber = { version = "0", features = ["env-filter"] }
+dotenvy = "0"
+# Pin rust-oracle to the upstream revision that moved to odpic-sys 0.2.0,
+# which removes the legacy bindgen -> which -> failure build chain.
+oracle = { git = "https://github.com/kubo/rust-oracle.git", rev = "caf3c0d06b654e79192e88bbaf516e599982af05", features = ["chrono"] }
+r2d2 = "0"
+
+# --- Server-only (gated behind "server" feature) ---
+axum = { version = "0", features = ["multipart", "macros"], optional = true }
+async-trait = { version = "0", optional = true }
+tower = { version = "0", features = ["limit"], optional = true }
+tower-http = { version = "0", features = ["cors", "trace", "fs", "set-header", "compression-full"], optional = true }
+jsonwebtoken = { version = "10", features = ["rust_crypto"], optional = true }
+base64 = { version = "0", optional = true }
+url = { version = "2", optional = true }
+oauth2 = { version = "5", optional = true }
+tower_governor = { version = "0", optional = true }
+csv = { version = "1", optional = true }
+leptess = { version = "0", optional = true }
+tempfile = { version = "3", optional = true }
+regex = { version = "1", optional = true }
+blake3 = { version = "1", optional = true }
+minifier = { version = "0", optional = true }
+openssl = { version = "0", features = ["vendored"], optional = true }
+reqwest = { version = "0", features = ["json", "rustls-tls", "stream"], optional = true }
+rand = { version = "0", optional = true }
+argon2 = { version = "0", optional = true }
+futures = { version = "0", optional = true }
+zip = { version = "8", optional = true }
+tokio-util = { version = "0.7", features = ["io"], optional = true }
+
+[features]
+default = ["server"]
+server = [
+    "dep:axum",
+    "dep:async-trait",
+    "dep:tower",
+    "dep:tower-http",
+    "dep:jsonwebtoken",
+    "dep:base64",
+    "dep:url",
+    "dep:oauth2",
+    "dep:tower_governor",
+    "dep:csv",
+    "dep:tempfile",
+    "dep:regex",
+    "dep:blake3",
+    "dep:minifier",
+    "dep:openssl",
+    "dep:reqwest",
+    "dep:rand",
+    "dep:argon2",
+    "dep:futures",
+    "dep:zip",
+    "dep:tokio-util",
+]
+app-bin = ["server"]
+ocr = ["server", "dep:leptess"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"
