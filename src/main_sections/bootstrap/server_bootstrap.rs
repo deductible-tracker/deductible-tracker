@@ -39,6 +39,10 @@ pub struct AppState {
     pub storage_region: String,
     pub storage_access_key_id: String,
     pub storage_secret_access_key: String,
+    pub ocrs_model_dir: String,
+    pub mistral_api_endpoint: String,
+    pub mistral_api_key: Option<String>,
+    pub mistral_model: String,
     pub index_template: String,
     pub service_worker_script: String,
     pub asset_entrypoints: AssetEntrypoints,
@@ -95,6 +99,11 @@ pub async fn run_app() -> anyhow::Result<()> {
     let storage_region = env::var("OCI_REGION").expect("OCI_REGION must be set");
     let storage_access_key_id = env::var("OCI_ACCESS_KEY_ID").expect("OCI_ACCESS_KEY_ID must be set");
     let storage_secret_access_key = env::var("OCI_SECRET_ACCESS_KEY").expect("OCI_SECRET_ACCESS_KEY must be set");
+    let ocrs_model_dir = env::var("OCRS_MODEL_DIR").unwrap_or_else(|_| "/tmp/deductible-tracker-ocrs-models".to_string());
+    let mistral_api_endpoint = env::var("MISTRAL_API_ENDPOINT")
+        .expect("MISTRAL_API_ENDPOINT must be set");
+    let mistral_api_key = env::var("MISTRAL_API_KEY").ok().filter(|value| !value.trim().is_empty());
+    let mistral_model = env::var("MISTRAL_MODEL").unwrap_or_else(|_| "mistral-small-latest".to_string());
 
     let state = AppState {
         db: db_pool,
@@ -103,6 +112,10 @@ pub async fn run_app() -> anyhow::Result<()> {
         storage_region,
         storage_access_key_id,
         storage_secret_access_key,
+        ocrs_model_dir,
+        mistral_api_endpoint,
+        mistral_api_key,
+        mistral_model,
         index_template,
         service_worker_script,
         asset_entrypoints,

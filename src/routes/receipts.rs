@@ -194,7 +194,21 @@ pub async fn list_receipts(
 
 #[derive(Deserialize)]
 pub struct OcrRequest {
-    pub id: String,
+    pub id: Option<String>,
+    pub key: Option<String>,
+    pub content_type: Option<String>,
+    pub size: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct OcrResponse {
+    pub status: String,
+    pub id: Option<String>,
+    pub ocr_text: Option<String>,
+    pub ocr_date: Option<chrono::NaiveDate>,
+    pub ocr_amount_usd: Option<f64>,
+    pub suggestion: Option<ocr::DonationReceiptSuggestion>,
+    pub warning: Option<String>,
 }
 
 pub async fn ocr_receipt(
@@ -202,58 +216,114 @@ pub async fn ocr_receipt(
     user: AuthenticatedUser,
     Json(req): Json<OcrRequest>
 ) -> impl IntoResponse {
-    // Fetch receipt
-    match crate::db::receipts::get_receipt(&state.db, &user.id, &req.id).await {
-        Ok(Some(receipt)) => {
-            if let Some(content_type) = receipt.content_type.as_deref() {
-                if allowed_ext_for_content_type(content_type).is_none() {
-                    return (StatusCode::BAD_REQUEST, "Unsupported content type").into_response();
-                }
-            }
-            if let Some(size) = receipt.size {
-                if size <= 0 || size > MAX_RECEIPT_SIZE_BYTES {
-                    return (StatusCode::BAD_REQUEST, "Invalid or oversized receipt").into_response();
-                }
-            }
-
-            // Run local OCR using Tesseract (leptess). Requires tesseract installed on the host.
-            match ocr::run_ocr(&state, &receipt.key).await {
-                Ok((text, date_opt, amt_opt)) => {
-                    let ocr_status = Some("done".to_string());
-                    let amt_f64 = amt_opt.map(|a| a as f64);
-                    if let Err(e) = crate::db::receipts::set_receipt_ocr(&state.db, &receipt.id, &Some(text.clone()), &date_opt, &amt_f64, &ocr_status).await {
-                        tracing::error!("Failed to set OCR: {}", e);
-                        return (StatusCode::INTERNAL_SERVER_ERROR, "OCR Error").into_response();
-                    }
-                    // Also log audit
-                    let audit_id = Uuid::new_v4().to_string();
-                    let details = Some(format!("OCR run for receipt {}: date={:?} amount={:?}", receipt.id, date_opt, amt_opt));
-                    if let Err(e) = crate::db::audit::log_audit(
-                        &state.db,
-                        &audit_id,
-                        &user.id,
-                        "ocr",
-                        "receipts",
-                        &Some(receipt.id.clone()),
-                        &details,
-                    )
-                    .await
-                    {
-                        tracing::error!("Failed to write audit log for OCR run (audit_id={}): {}", audit_id, e);
-                    }
-
-                    (StatusCode::OK, AxumJson(serde_json::json!({ "status": "ocr_completed", "id": receipt.id }))).into_response()
-                }
-                Err(e) => {
-                    tracing::error!("OCR run failed: {}", e);
-                    (StatusCode::INTERNAL_SERVER_ERROR, "OCR Failure").into_response()
-                }
+    let (receipt_id, receipt_key, content_type, size) = if let Some(receipt_id) = req.id.clone() {
+        match crate::db::receipts::get_receipt(&state.db, &user.id, &receipt_id).await {
+            Ok(Some(receipt)) => (
+                Some(receipt.id),
+                receipt.key,
+                receipt.content_type,
+                receipt.size,
+            ),
+            Ok(None) => return (StatusCode::NOT_FOUND, "Receipt not found").into_response(),
+            Err(e) => {
+                tracing::error!("DB error fetching receipt for OCR: {}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response();
             }
         }
-        Ok(None) => (StatusCode::NOT_FOUND, "Receipt not found").into_response(),
+    } else if let Some(key) = req.key.clone() {
+        let normalized_key = crate::storage::normalize_object_key(&state.bucket_name, &key);
+        let user_prefix = crate::storage::user_receipt_prefix(&user.id);
+        if !normalized_key.starts_with(&user_prefix) {
+            return (StatusCode::FORBIDDEN, "Forbidden").into_response();
+        }
+        (None, normalized_key, req.content_type.clone(), req.size)
+    } else {
+        return (StatusCode::BAD_REQUEST, "Receipt id or key is required").into_response();
+    };
+
+    if let Some(content_type_value) = content_type.as_deref() {
+        if allowed_ext_for_content_type(content_type_value).is_none() {
+            return (StatusCode::BAD_REQUEST, "Unsupported content type").into_response();
+        }
+    }
+    if let Some(size_value) = size {
+        if size_value <= 0 || size_value > MAX_RECEIPT_SIZE_BYTES {
+            return (StatusCode::BAD_REQUEST, "Invalid or oversized receipt").into_response();
+        }
+    }
+
+    match ocr::analyze_receipt(&state, &receipt_key, content_type.as_deref()).await {
+        Ok(analysis) => {
+            if let Some(receipt_id_value) = receipt_id.clone() {
+                let ocr_text = analysis.ocr_text.clone();
+                let ocr_date = analysis.ocr_date;
+                let ocr_amount = analysis.ocr_amount_cents.map(|value| value as f64);
+                let ocr_status = Some(analysis.ocr_status.clone());
+                if let Err(e) = crate::db::receipts::set_receipt_ocr(
+                    &state.db,
+                    &receipt_id_value,
+                    &ocr_text,
+                    &ocr_date,
+                    &ocr_amount,
+                    &ocr_status,
+                )
+                .await
+                {
+                    tracing::error!("Failed to persist OCR analysis: {}", e);
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "OCR Error").into_response();
+                }
+
+                let audit_id = Uuid::new_v4().to_string();
+                let details = Some(format!(
+                    "Receipt analysis for {}: status={} suggestion={}",
+                    receipt_id_value,
+                    analysis.ocr_status,
+                    analysis.suggestion.is_some()
+                ));
+                if let Err(e) = crate::db::audit::log_audit(
+                    &state.db,
+                    &audit_id,
+                    &user.id,
+                    "ocr",
+                    "receipts",
+                    &Some(receipt_id_value.clone()),
+                    &details,
+                )
+                .await
+                {
+                    tracing::error!("Failed to write audit log for OCR run (audit_id={}): {}", audit_id, e);
+                }
+            }
+
+            let response = OcrResponse {
+                status: analysis.ocr_status,
+                id: receipt_id,
+                ocr_text: analysis.ocr_text,
+                ocr_date: analysis.ocr_date,
+                ocr_amount_usd: analysis.ocr_amount_cents.map(|value| value as f64 / 100.0),
+                suggestion: analysis.suggestion,
+                warning: analysis.warning,
+            };
+            (StatusCode::OK, AxumJson(response)).into_response()
+        }
         Err(e) => {
-            tracing::error!("DB error fetching receipt for OCR: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response()
+            tracing::error!("OCR run failed: {}", e);
+            if let Some(receipt_id_value) = receipt_id {
+                let failed_status = Some("failed".to_string());
+                if let Err(db_error) = crate::db::receipts::set_receipt_ocr(
+                    &state.db,
+                    &receipt_id_value,
+                    &None,
+                    &None,
+                    &None,
+                    &failed_status,
+                )
+                .await
+                {
+                    tracing::error!("Failed to persist OCR failure status: {}", db_error);
+                }
+            }
+            (StatusCode::INTERNAL_SERVER_ERROR, "OCR Failure").into_response()
         }
     }
 }

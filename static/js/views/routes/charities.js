@@ -7,6 +7,14 @@ export async function renderCharitiesRoute(deps) {
     navigate,
     refreshCharitiesCache,
   } = deps;
+
+  const urlParams = new URLSearchParams(window.location.search);
+  let sortField = urlParams.get('sort') || 'name';
+  let sortOrder = urlParams.get('order') || 'asc';
+  let searchQuery = urlParams.get('q') || '';
+  let currentPage = parseInt(urlParams.get('page') || '1', 10);
+  const pageSize = 25;
+
   const root = document.getElementById('route-content') || document.getElementById('app');
   const userId = getCurrentUserId();
   let charities = [];
@@ -23,37 +31,110 @@ export async function renderCharitiesRoute(deps) {
     return parts.length ? parts.join(', ') : '—';
   };
 
+  // Apply Search
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    charities = charities.filter((c) => {
+      const name = (c.name || '').toLowerCase();
+      const ein = (c.ein || '').toLowerCase();
+      const category = (c.category || '').toLowerCase();
+      const status = (c.status || '').toLowerCase();
+      const deductibility = (c.deductibility || '').toLowerCase();
+      const address = formatAddress(c).toLowerCase();
+
+      return (
+        name.includes(q) ||
+        ein.includes(q) ||
+        category.includes(q) ||
+        status.includes(q) ||
+        deductibility.includes(q) ||
+        address.includes(q)
+      );
+    });
+  }
+
+  // Apply Sorting
+  charities.sort((a, b) => {
+    let valA, valB;
+    switch (sortField) {
+      case 'ein':
+        valA = a.ein || '';
+        valB = b.ein || '';
+        break;
+      case 'category':
+        valA = a.category || '';
+        valB = b.category || '';
+        break;
+      case 'status':
+        valA = a.status || '';
+        valB = b.status || '';
+        break;
+      case 'deductibility':
+        valA = a.deductibility || '';
+        valB = b.deductibility || '';
+        break;
+      case 'address':
+        valA = formatAddress(a);
+        valB = formatAddress(b);
+        break;
+      default:
+        valA = a.name || '';
+        valB = b.name || '';
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Pagination
+  const totalRecords = charities.length;
+  const totalPages = Math.ceil(totalRecords / pageSize);
+  currentPage = Math.max(1, Math.min(currentPage, totalPages || 1));
+  const paginatedCharities = charities.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  function getSortIcon(field) {
+    if (sortField !== field) return '';
+    return sortOrder === 'asc' ? ' ↑' : ' ↓';
+  }
+
   root.innerHTML = `
         <div class="mx-auto max-w-7xl space-y-5">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Charities</h1>
                     <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Manage your nonprofit directory.</p>
                 </div>
-                <button id="btn-new-charity" class="dt-btn-primary">New Charity</button>
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <input id="search-input" type="text" placeholder="Search..." class="dt-input py-2 pl-3 pr-8 text-sm w-48 sm:w-64" value="${escapeHtml(searchQuery)}" />
+                        ${searchQuery ? `<button id="clear-search" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">✕</button>` : ''}
+                    </div>
+                    <button id="btn-new-charity" class="dt-btn-primary whitespace-nowrap">New Charity</button>
+                </div>
             </div>
             <div class="dt-panel overflow-hidden">
                 <div class="hidden overflow-x-auto md:block">
                     <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                         <thead class="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Name</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">EIN</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Category</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Deductibility</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Address</th>
+                                <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="name">Name${getSortIcon('name')}</th>
+                                <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="ein">EIN${getSortIcon('ein')}</th>
+                                <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="category">Category${getSortIcon('category')}</th>
+                                <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="status">Status${getSortIcon('status')}</th>
+                                <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="deductibility">Deductibility${getSortIcon('deductibility')}</th>
+                                <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="address">Address${getSortIcon('address')}</th>
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-800">
                             ${
-                              charities.length === 0
-                                ? '<tr><td colspan="7" class="px-5 py-8 text-sm text-slate-500 dark:text-slate-400">No cached charities.</td></tr>'
-                                : charities
+                              paginatedCharities.length === 0
+                                ? '<tr><td colspan="7" class="px-5 py-8 text-sm text-slate-500 dark:text-slate-400">No cached charities found.</td></tr>'
+                                : paginatedCharities
                                     .map(
                                       (c) => `
-                                <tr class="hover:bg-slate-50 dark:bg-slate-700/50/70">
+                                <tr class="hover:bg-slate-50 dark:bg-slate-700/50/70 cursor-pointer charity-row" data-id="${c.id}">
                                     <td class="px-5 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(c.name)}</td>
                                     <td class="px-5 py-3 text-sm text-slate-700 dark:text-slate-300">${escapeHtml(c.ein || '—')}</td>
                                     <td class="px-5 py-3 text-sm text-slate-700 dark:text-slate-300">${escapeHtml(c.category || '—')}</td>
@@ -74,12 +155,12 @@ export async function renderCharitiesRoute(deps) {
                 </div>
                 <div class="space-y-3 p-4 md:hidden">
                     ${
-                      charities.length === 0
-                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 text-sm text-slate-500 dark:text-slate-400">No cached charities.</div>'
-                        : charities
+                      paginatedCharities.length === 0
+                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 text-sm text-slate-500 dark:text-slate-400">No cached charities found.</div>'
+                        : paginatedCharities
                             .map(
                               (c) => `
-                        <article class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+                        <article class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 charity-row" data-id="${c.id}">
                             <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(c.name)}</p>
                             <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">${escapeHtml(c.ein || 'No EIN')}</p>
                             <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(formatAddress(c))}</p>
@@ -94,6 +175,37 @@ export async function renderCharitiesRoute(deps) {
                     }
                 </div>
             </div>
+
+            ${totalPages > 1 ? `
+              <div class="flex items-center justify-between border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 sm:px-6 rounded-xl">
+                <div class="flex flex-1 justify-between sm:hidden">
+                  <button id="prev-page-mobile" ${currentPage === 1 ? 'disabled' : ''} class="dt-btn-secondary px-4 py-2 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}">Previous</button>
+                  <button id="next-page-mobile" ${currentPage === totalPages ? 'disabled' : ''} class="dt-btn-secondary px-4 py-2 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}">Next</button>
+                </div>
+                <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                  <div>
+                    <p class="text-sm text-slate-700 dark:text-slate-300">
+                      Showing <span class="font-medium">${(currentPage - 1) * pageSize + 1}</span> to <span class="font-medium">${Math.min(currentPage * pageSize, totalRecords)}</span> of <span class="font-medium">${totalRecords}</span> results
+                    </p>
+                  </div>
+                  <div>
+                    <nav class="isolate inline-flex -space-x-px rounded-md shadow-xs" aria-label="Pagination">
+                      <button id="prev-page" ${currentPage === 1 ? 'disabled' : ''} class="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 focus:z-20 focus:outline-offset-0 ${currentPage === 1 ? 'cursor-not-allowed' : ''}">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd"></path></svg>
+                      </button>
+                      ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => `
+                        <button class="page-btn relative inline-flex items-center px-4 py-2 text-sm font-semibold ${p === currentPage ? 'z-10 bg-indigo-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600' : 'text-slate-900 dark:text-slate-100 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}" data-page="${p}">${p}</button>
+                      `).join('')}
+                      <button id="next-page" ${currentPage === totalPages ? 'disabled' : ''} class="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 focus:z-20 focus:outline-offset-0 ${currentPage === totalPages ? 'cursor-not-allowed' : ''}">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"></path></svg>
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            ` : ''}
         </div>
     `;
 
@@ -101,16 +213,92 @@ export async function renderCharitiesRoute(deps) {
     .getElementById('btn-new-charity')
     ?.addEventListener('click', () => navigate('/charities/new'));
 
+  const searchInput = document.getElementById('search-input');
+  let searchTimeout;
+  searchInput?.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      urlParams.set('q', e.target.value);
+      urlParams.set('page', '1');
+      window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+      renderCharitiesRoute(deps);
+      document.getElementById('search-input')?.focus();
+      const input = document.getElementById('search-input');
+      if (input) input.setSelectionRange(input.value.length, input.value.length);
+    }, 300);
+  });
+
+  document.getElementById('clear-search')?.addEventListener('click', () => {
+    urlParams.delete('q');
+    urlParams.set('page', '1');
+    window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+    renderCharitiesRoute(deps);
+  });
+
+  document.querySelectorAll('.page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      urlParams.set('page', btn.dataset.page);
+      window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+      renderCharitiesRoute(deps);
+    });
+  });
+
+  ['prev-page', 'prev-page-mobile'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      if (currentPage > 1) {
+        urlParams.set('page', String(currentPage - 1));
+        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+        renderCharitiesRoute(deps);
+      }
+    });
+  });
+
+  ['next-page', 'next-page-mobile'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      if (currentPage < totalPages) {
+        urlParams.set('page', String(currentPage + 1));
+        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+        renderCharitiesRoute(deps);
+      }
+    });
+  });
+
+  document.querySelectorAll('.sortable-header').forEach((header) => {
+    header.addEventListener('click', () => {
+      const field = header.dataset.sort;
+      if (sortField === field) {
+        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortField = field;
+        sortOrder = 'asc';
+      }
+      urlParams.set('sort', sortField);
+      urlParams.set('order', sortOrder);
+      urlParams.set('page', '1');
+      window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+      renderCharitiesRoute(deps);
+    });
+  });
+
+  document.querySelectorAll('.charity-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      navigate(`/charities/view/${encodeURIComponent(row.dataset.id)}`);
+    });
+  });
+
   document.querySelectorAll('.edit-charity-btn').forEach((button) => {
     button.addEventListener('click', (e) => {
+      e.stopPropagation();
       navigate(`/charities/edit/${encodeURIComponent(e.currentTarget.dataset.id)}`);
     });
   });
 
   document.querySelectorAll('.delete-charity-btn').forEach((b) => {
     b.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const charityId = e.currentTarget.dataset.id;
-      if (!confirm('Delete cached charity?')) return;
+      if (!confirm('Are you sure you want to delete this charity?')) return;
       try {
         const uid = getCurrentUserId();
         if (uid && charityId) {
@@ -123,6 +311,104 @@ export async function renderCharitiesRoute(deps) {
         alert(err.message || 'Failed to delete');
       }
     });
+  });
+}
+
+export async function renderCharityViewRoute(charityId, deps) {
+  const { db, escapeHtml, getCurrentUserId, navigate } = deps;
+  const root = document.getElementById('route-content') || document.getElementById('app');
+  const userId = getCurrentUserId();
+  const charity = await db.charities.get(charityId);
+
+  if (!charity) {
+    alert('Charity not found');
+    await navigate('/charities');
+    return;
+  }
+
+  const formatAddress = (c) => {
+    const parts = [c.street, c.city, c.state, c.zip].map((v) => (v || '').trim()).filter(Boolean);
+    return parts.length ? parts.join(', ') : 'No address on file';
+  };
+
+  root.innerHTML = `
+        <div class="mx-auto max-w-4xl space-y-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(charity.name)}</h1>
+                    <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Detailed charity information and history.</p>
+                </div>
+                <div class="flex gap-2">
+                  <button id="btn-back-charities" class="dt-btn-secondary">Back</button>
+                  <button id="btn-edit-charity" class="dt-btn-primary" data-id="${charity.id}">Edit</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div class="md:col-span-2 space-y-5">
+                <div class="dt-panel p-6">
+                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-700 pb-2">Organization Details</h3>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">EIN</label>
+                      <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(charity.ein || '—')}</p>
+                    </div>
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Nonprofit Type</label>
+                      <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(charity.nonprofit_type || '—')}</p>
+                    </div>
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</label>
+                      <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(charity.category || '—')}</p>
+                    </div>
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
+                      <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
+                        <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">${escapeHtml(charity.status || 'Active')}</span>
+                      </p>
+                    </div>
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Classification</label>
+                      <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(charity.classification || '—')}</p>
+                    </div>
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Deductibility</label>
+                      <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(charity.deductibility || '—')}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="dt-panel p-6">
+                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-700 pb-2">Location</h3>
+                  <div>
+                    <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Address</label>
+                    <p class="mt-1 text-sm text-slate-900 dark:text-slate-100 whitespace-pre-wrap">${escapeHtml(formatAddress(charity))}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="space-y-5">
+                <div class="dt-panel p-6">
+                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-700 pb-2">Sync Information</h3>
+                  <div class="space-y-4">
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">System ID</label>
+                      <p class="mt-1 text-xs text-slate-400 font-mono break-all">${charity.id}</p>
+                    </div>
+                    <div>
+                      <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Last Cached</label>
+                      <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${charity.cached_at ? new Date(charity.cached_at).toLocaleString() : 'Never'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+        </div>
+    `;
+
+  document.getElementById('btn-back-charities')?.addEventListener('click', () => navigate('/charities'));
+  document.getElementById('btn-edit-charity')?.addEventListener('click', (e) => {
+    navigate(`/charities/edit/${encodeURIComponent(e.currentTarget.dataset.id)}`);
   });
 }
 

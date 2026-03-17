@@ -1,6 +1,6 @@
 import db from './db.js';
 import { getCurrentUserId } from './services/current-user.js';
-import { getCookie } from './services/http.js';
+import { attachReceiptFileToDonation } from './services/receipt-upload.js';
 
 function getToastHost() {
   let host = document.getElementById('toast-host');
@@ -125,89 +125,23 @@ async function uploadFile(file, donationId) {
     if (!userId) {
       throw new Error('Not authenticated');
     }
-    const res = await fetch('/api/receipts/upload', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': getCookie('auth_token'),
-      },
-      credentials: 'include',
-      body: JSON.stringify({ file_type: file.type }),
-    });
-
-    if (!res.ok) {
-      throw new Error('Failed to get upload URL');
-    }
-
-    const data = await res.json();
-    const uploadUrl = data.upload_url;
-    const key = data.key;
-
-    // Upload via PUT to presigned URL
-    const putRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': file.type,
-      },
-      body: file,
-    });
-
-    if (!putRes.ok && putRes.status !== 200 && putRes.status !== 204) {
-      throw new Error('Upload failed');
-    }
-
-    // Persist server-side record for metadata first
-    const confirmRes = await fetch('/api/receipts/confirm', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': getCookie('auth_token'),
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        key,
-        file_name: file.name,
-        content_type: file.type,
-        size: file.size,
-        donation_id: donationId,
-      }),
-    });
-
-    if (!confirmRes.ok) {
-      throw new Error('Failed to confirm receipt');
-    }
-
-    const body = await confirmRes.json();
-    const id = crypto.randomUUID();
+    const { confirmed, analysis } = await attachReceiptFileToDonation(file, donationId);
+    const id = confirmed.id || crypto.randomUUID();
     const meta = {
       id,
-      key,
+      key: confirmed.key,
       file_name: file.name,
       content_type: file.type,
       size: file.size,
       uploaded_at: new Date().toISOString(),
       donation_id: donationId,
       status: 'uploaded',
-      server_id: body && body.id ? body.id : null,
+      server_id: confirmed.id || null,
+      ocr_status: analysis && analysis.status ? analysis.status : null,
+      ocr_text: analysis && analysis.ocrText ? analysis.ocrText : null,
     };
 
     await db.receipts.put(meta);
-    // Trigger OCR asynchronously on the server for the confirmed receipt
-    try {
-      if (body && body.id) {
-        fetch('/api/receipts/ocr', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': getCookie('auth_token'),
-          },
-          credentials: 'include',
-          body: JSON.stringify({ id: body.id }),
-        }).catch((e) => console.warn('OCR request failed', e));
-      }
-    } catch (e) {
-      /* ignore */
-    }
     return meta;
   } catch (err) {
     console.error('Upload error', err);

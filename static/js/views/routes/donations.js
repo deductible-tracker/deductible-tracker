@@ -1,3 +1,13 @@
+import {
+  analyzeConfirmedReceipt,
+  analyzeUploadedReceipt,
+  attachReceiptFileToDonation,
+  confirmReceiptUpload,
+  isImageReceipt,
+  mapReceiptSuggestionToDonationDraft,
+  uploadReceiptToStorage,
+} from '../../services/receipt-upload.js';
+
 export async function renderDonationsRoute(deps) {
   const {
     calculateTaxEstimates,
@@ -15,11 +25,23 @@ export async function renderDonationsRoute(deps) {
   const userId = getCurrentUserId();
   const charities = userId ? await db.charities.where('user_id').equals(userId).toArray() : [];
   const charityNameMap = new Map(charities.map((c) => [c.id, c.name || 'Unknown charity']));
-  const donations = userId
-    ? (await db.donations.where('user_id').equals(userId).toArray()).sort((a, b) =>
-        String(b.date || '').localeCompare(String(a.date || ''))
-      )
-    : [];
+
+  // Filters & Sorting state
+  const urlParams = new URLSearchParams(window.location.search);
+  let currentYear = urlParams.get('year') || 'all';
+  let sortField = urlParams.get('sort') || 'date';
+  let sortOrder = urlParams.get('order') || 'desc';
+  let searchQuery = urlParams.get('q') || '';
+  let currentPage = parseInt(urlParams.get('page') || '1', 10);
+  const pageSize = 25;
+
+  let donations = userId ? await db.donations.where('user_id').equals(userId).toArray() : [];
+
+  // Get unique years for filter
+  const years = [...new Set(donations.map((d) => new Date(d.date).getFullYear()))].sort(
+    (a, b) => b - a
+  );
+
   const receipts = await db.receipts.toArray();
   const taxEstimates = await calculateTaxEstimates(
     donations,
@@ -28,14 +50,99 @@ export async function renderDonationsRoute(deps) {
     getCurrentUser() || {}
   );
 
+  // Apply Year Filter
+  if (currentYear !== 'all') {
+    const yearNum = parseInt(currentYear, 10);
+    donations = donations.filter((d) => new Date(d.date).getFullYear() === yearNum);
+  }
+
+  // Apply Search
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    donations = donations.filter((d) => {
+      const charityName = (charityNameMap.get(d.charity_id) || '').toLowerCase();
+      const date = (d.date || '').toLowerCase();
+      const status = (d.sync_status || 'synced').toLowerCase();
+      const category = (d.category || '').toLowerCase();
+      const amount = (d.amount != null ? formatCurrency(d.amount) : '').toLowerCase();
+      const savings = formatCurrency(taxEstimates.perDonation.get(d.id) || 0).toLowerCase();
+
+      return (
+        charityName.includes(q) ||
+        date.includes(q) ||
+        status.includes(q) ||
+        category.includes(q) ||
+        amount.includes(q) ||
+        savings.includes(q)
+      );
+    });
+  }
+
+  // Apply Sorting
+  donations.sort((a, b) => {
+    let valA, valB;
+    switch (sortField) {
+      case 'charity':
+        valA = charityNameMap.get(a.charity_id) || '';
+        valB = charityNameMap.get(b.charity_id) || '';
+        break;
+      case 'amount':
+        valA = a.amount || 0;
+        valB = b.amount || 0;
+        break;
+      case 'category':
+        valA = a.category || '';
+        valB = b.category || '';
+        break;
+      case 'status':
+        valA = a.sync_status || '';
+        valB = b.sync_status || '';
+        break;
+      case 'savings':
+        valA = taxEstimates.perDonation.get(a.id) || 0;
+        valB = taxEstimates.perDonation.get(b.id) || 0;
+        break;
+      default:
+        valA = a.date || '';
+        valB = b.date || '';
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Pagination
+  const totalRecords = donations.length;
+  const totalPages = Math.ceil(totalRecords / pageSize);
+  currentPage = Math.max(1, Math.min(currentPage, totalPages || 1));
+  const paginatedDonations = donations.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  function getSortIcon(field) {
+    if (sortField !== field) return '';
+    return sortOrder === 'asc' ? ' ↑' : ' ↓';
+  }
+
   root.innerHTML = `
         <div class="mx-auto max-w-7xl space-y-5">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Donations</h1>
                     <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Add donations, attach receipts immediately, and keep records audit-ready.</p>
                 </div>
-                <button id="btn-new-donation" class="dt-btn-primary">New Donation</button>
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <input id="search-input" type="text" placeholder="Search..." class="dt-input py-2 pl-3 pr-8 text-sm w-48 sm:w-64" value="${escapeHtml(searchQuery)}" />
+                        ${searchQuery ? `<button id="clear-search" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">✕</button>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select id="year-filter" class="dt-input py-2 px-3 text-sm w-28">
+                            <option value="all" ${currentYear === 'all' ? 'selected' : ''}>All Years</option>
+                            ${years.map((y) => `<option value="${y}" ${currentYear == y ? 'selected' : ''}>${y}</option>`).join('')}
+                        </select>
+                    </div>
+                    <button id="btn-new-donation" class="dt-btn-primary whitespace-nowrap">New Donation</button>
+                </div>
             </div>
 
             <div class="dt-panel overflow-hidden">
@@ -43,27 +150,39 @@ export async function renderDonationsRoute(deps) {
                     <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                         <thead class="bg-slate-50 dark:bg-slate-700/50">
                             <tr>
-                                <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Date</th>
-                                <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Charity</th>
-                                <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</th>
-                                <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Category</th>
-                                <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Amount</th>
-                                <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Estimated Tax Savings</th>
+                                <th scope="col" class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="date">
+                                  Date${getSortIcon('date')}
+                                </th>
+                                <th scope="col" class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="charity">
+                                  Charity${getSortIcon('charity')}
+                                </th>
+                                <th scope="col" class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="status">
+                                  Status${getSortIcon('status')}
+                                </th>
+                                <th scope="col" class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="category">
+                                  Category${getSortIcon('category')}
+                                </th>
+                                <th scope="col" class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="amount">
+                                  Amount${getSortIcon('amount')}
+                                </th>
+                                <th scope="col" class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="savings">
+                                  Estimated Tax Savings${getSortIcon('savings')}
+                                </th>
                                 <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-800">
                             ${
-                              donations.length === 0
+                              paginatedDonations.length === 0
                                 ? `
                                 <tr>
-                                    <td colspan="7" class="px-5 py-8 text-sm text-slate-500 dark:text-slate-400">No donations yet.</td>
+                                    <td colspan="7" class="px-5 py-8 text-sm text-slate-500 dark:text-slate-400">No donations found.</td>
                                 </tr>
                             `
-                                : donations
+                                : paginatedDonations
                                     .map(
                                       (d) => `
-                                <tr class="hover:bg-slate-50 dark:bg-slate-700/50/70">
+                                <tr class="hover:bg-slate-50 dark:bg-slate-700/50/70 cursor-pointer donation-row" data-id="${d.id}">
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(d.date)}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(charityNameMap.get(d.charity_id) || 'Unknown charity')}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
@@ -74,7 +193,6 @@ export async function renderDonationsRoute(deps) {
                                     <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-emerald-700 dark:text-emerald-300">${formatCurrency(taxEstimates.perDonation.get(d.id) || 0)}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
                                         <button class="edit-donation-btn dt-btn-secondary px-3 py-1.5" data-id="${d.id}">Edit</button>
-                                        <button class="manage-receipts-btn dt-btn-secondary ml-2 px-3 py-1.5" data-id="${d.id}">Receipts</button>
                                         <button class="delete-donation-btn dt-btn-danger ml-2 px-3 py-1.5" data-id="${d.id}">Delete</button>
                                     </td>
                                 </tr>
@@ -87,12 +205,12 @@ export async function renderDonationsRoute(deps) {
                 </div>
                 <div class="space-y-3 p-4 md:hidden">
                     ${
-                      donations.length === 0
-                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 text-sm text-slate-500 dark:text-slate-400">No donations yet.</div>'
-                        : donations
+                      paginatedDonations.length === 0
+                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 text-sm text-slate-500 dark:text-slate-400">No donations found.</div>'
+                        : paginatedDonations
                             .map(
                               (d) => `
-                        <article class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+                        <article class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 donation-row" data-id="${d.id}">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(charityNameMap.get(d.charity_id) || 'Unknown charity')}</p>
@@ -112,7 +230,6 @@ export async function renderDonationsRoute(deps) {
                             </div>
                             <div class="mt-3 flex gap-2">
                                 <button class="edit-donation-btn dt-btn-secondary flex-1 px-3 py-1.5" data-id="${d.id}">Edit</button>
-                                <button class="manage-receipts-btn dt-btn-secondary flex-1 px-3 py-1.5" data-id="${d.id}">Receipts</button>
                                 <button class="delete-donation-btn dt-btn-danger flex-1 px-3 py-1.5" data-id="${d.id}">Delete</button>
                             </div>
                         </article>
@@ -122,49 +239,144 @@ export async function renderDonationsRoute(deps) {
                     }
                 </div>
             </div>
+
+            ${totalPages > 1 ? `
+              <div class="flex items-center justify-between border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 sm:px-6 rounded-xl">
+                <div class="flex flex-1 justify-between sm:hidden">
+                  <button id="prev-page-mobile" ${currentPage === 1 ? 'disabled' : ''} class="dt-btn-secondary px-4 py-2 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}">Previous</button>
+                  <button id="next-page-mobile" ${currentPage === totalPages ? 'disabled' : ''} class="dt-btn-secondary px-4 py-2 ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : ''}">Next</button>
+                </div>
+                <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                  <div>
+                    <p class="text-sm text-slate-700 dark:text-slate-300">
+                      Showing <span class="font-medium">${(currentPage - 1) * pageSize + 1}</span> to <span class="font-medium">${Math.min(currentPage * pageSize, totalRecords)}</span> of <span class="font-medium">${totalRecords}</span> results
+                    </p>
+                  </div>
+                  <div>
+                    <nav class="isolate inline-flex -space-x-px rounded-md shadow-xs" aria-label="Pagination">
+                      <button id="prev-page" ${currentPage === 1 ? 'disabled' : ''} class="relative inline-flex items-center rounded-l-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 focus:z-20 focus:outline-offset-0 ${currentPage === 1 ? 'cursor-not-allowed' : ''}">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd"></path></svg>
+                      </button>
+                      ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => `
+                        <button class="page-btn relative inline-flex items-center px-4 py-2 text-sm font-semibold ${p === currentPage ? 'z-10 bg-indigo-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600' : 'text-slate-900 dark:text-slate-100 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}" data-page="${p}">${p}</button>
+                      `).join('')}
+                      <button id="next-page" ${currentPage === totalPages ? 'disabled' : ''} class="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 focus:z-20 focus:outline-offset-0 ${currentPage === totalPages ? 'cursor-not-allowed' : ''}">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"></path></svg>
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            ` : ''}
         </div>
     `;
 
-  document
-    .getElementById('btn-new-donation')
-    ?.addEventListener('click', () => navigate('/donations/new'));
+  document.getElementById('btn-new-donation')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigate('/donations/new');
+  });
 
-  document.querySelectorAll('.edit-donation-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      navigate(`/donations/edit/${encodeURIComponent(e.currentTarget.dataset.id)}`);
+  const searchInput = document.getElementById('search-input');
+  let searchTimeout;
+  searchInput?.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      urlParams.set('q', e.target.value);
+      urlParams.set('page', '1');
+      window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+      renderDonationsRoute(deps);
+      // Refocus after re-render
+      const newSearchInput = document.getElementById('search-input');
+      if (newSearchInput) {
+        newSearchInput.focus();
+        newSearchInput.setSelectionRange(newSearchInput.value.length, newSearchInput.value.length);
+      }
+    }, 300);
+  });
+
+  document.getElementById('clear-search')?.addEventListener('click', () => {
+    urlParams.delete('q');
+    urlParams.set('page', '1');
+    window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+    renderDonationsRoute(deps);
+    document.getElementById('search-input')?.focus();
+  });
+
+  document.querySelectorAll('.page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      urlParams.set('page', btn.dataset.page);
+      window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+      renderDonationsRoute(deps);
     });
   });
 
-  document.querySelectorAll('.manage-receipts-btn').forEach((btn) => {
+  ['prev-page', 'prev-page-mobile'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      if (currentPage > 1) {
+        urlParams.set('page', String(currentPage - 1));
+        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+        renderDonationsRoute(deps);
+      }
+    });
+  });
+
+  ['next-page', 'next-page-mobile'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      if (currentPage < totalPages) {
+        urlParams.set('page', String(currentPage + 1));
+        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+        renderDonationsRoute(deps);
+      }
+    });
+  });
+
+  document.querySelectorAll('.sortable-header').forEach((header) => {
+    header.addEventListener('click', () => {
+      const field = header.dataset.sort;
+      if (sortField === field) {
+        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortField = field;
+        sortOrder = 'asc';
+      }
+      urlParams.set('sort', sortField);
+      urlParams.set('order', sortOrder);
+      urlParams.set('page', '1');
+      window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+      renderDonationsRoute(deps);
+    });
+  });
+
+  document.querySelectorAll('.edit-donation-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      const id = e.currentTarget.dataset.id;
-      openReceiptManagerRoute(id, deps);
+      e.stopPropagation();
+      navigate(`/donations/edit/${encodeURIComponent(btn.dataset.id)}`);
     });
   });
 
   document.querySelectorAll('.delete-donation-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
-      const id = e.currentTarget.dataset.id;
-      if (!confirm('Delete this donation? Associated receipts will also be removed.')) return;
-      try {
-        await deleteDonationOnServer(id);
-        const localReceipts = await db.receipts.where('donation_id').equals(id).toArray();
-        for (const r of localReceipts) {
-          await db.receipts.delete(r.id);
-        }
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (!id) return;
+      if (confirm('Delete this donation? Associated receipts will also be removed.')) {
         await db.donations.delete(id);
-        await renderDonationsRoute(deps);
+        deps.Sync.queueAction('donations', 'delete', { id });
+        renderDonationsRoute(deps);
         await updateTotals();
-      } catch (err) {
-        console.error('Delete failed', err);
-        alert('Failed to delete donation');
       }
     });
   });
-}
 
-export async function openReceiptManagerRoute(donationId, deps) {
-  await deps.navigate(`/donations/receipts/${donationId}`);
+  document.querySelectorAll('.donation-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      // Don't navigate if clicking a button
+      if (e.target.closest('button')) return;
+      navigate(`/donations/view/${encodeURIComponent(row.dataset.id)}`);
+    });
+  });
 }
 
 async function getReceiptDownloadUrlRoute(key, deps) {
@@ -181,6 +393,96 @@ async function getReceiptDownloadUrlRoute(key, deps) {
   if (!res.ok) throw new Error('Presign failed');
   const data = await res.json();
   return data.download_url;
+}
+
+export async function renderDonationViewRoute(donationId, deps) {
+  const { db, escapeHtml, formatCurrency, navigate, calculateTaxEstimates, getCurrentUser } = deps;
+  const userId = deps.getCurrentUserId();
+  const donation = await db.donations.get(donationId);
+  if (!donation) {
+    alert('Donation not found');
+    navigate('/donations');
+    return;
+  }
+  const charity = await db.charities.get(donation.charity_id);
+  const receipts = await db.receipts.where('donation_id').equals(donationId).toArray();
+  const taxEstimates = await calculateTaxEstimates([donation], charity ? [charity] : [], receipts, getCurrentUser() || {});
+
+  const root = document.getElementById('route-content') || document.getElementById('app');
+  root.innerHTML = `
+    <div class="mx-auto max-w-3xl space-y-5">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Donation Details</h1>
+          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">View information and receipts for this donation.</p>
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-edit-donation" class="dt-btn-primary">Edit</button>
+          <button id="btn-back-donations" class="dt-btn-secondary">Back</button>
+        </div>
+      </div>
+      <div class="dt-panel p-5 sm:p-6 space-y-6">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Date</label>
+            <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(donation.date)}</p>
+          </div>
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Charity</label>
+            <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(charity?.name || 'Unknown charity')}</p>
+          </div>
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Category</label>
+            <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${escapeHtml(donation.category || '')}</p>
+          </div>
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Amount</label>
+            <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">${donation.amount ? formatCurrency(donation.amount) : '$0.00'}</p>
+          </div>
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Est. Tax Savings</label>
+            <p class="mt-1 text-sm font-medium text-emerald-700 dark:text-emerald-300">${formatCurrency(taxEstimates.totalEstimated)}</p>
+          </div>
+        </div>
+        ${donation.notes ? `
+          <div>
+            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Notes</label>
+            <p class="mt-1 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">${escapeHtml(donation.notes)}</p>
+          </div>
+        ` : ''}
+        
+        <div class="border-t border-slate-200 dark:border-slate-700 pt-6">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-4">Receipts</h3>
+          <div id="receipts-list" class="space-y-2">
+            ${receipts.length === 0 ? '<p class="text-sm text-slate-500 dark:text-slate-400">No receipts attached.</p>' : receipts.map(r => `
+              <div class="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-800">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(r.file_name || 'Receipt')}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">${r.uploaded_at ? new Date(r.uploaded_at).toLocaleDateString() : ''}</p>
+                </div>
+                <button class="preview-receipt-btn dt-btn-secondary px-3 py-1.5" data-key="${escapeHtml(r.key)}">Preview</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btn-back-donations')?.addEventListener('click', () => navigate('/donations'));
+  document.getElementById('btn-edit-donation')?.addEventListener('click', () => navigate(`/donations/edit/${encodeURIComponent(donationId)}`));
+
+  document.querySelectorAll('.preview-receipt-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const key = e.currentTarget.dataset.key;
+      try {
+        const url = await getReceiptDownloadUrlRoute(key, deps);
+        window.open(url, '_blank');
+      } catch (err) {
+        alert('Failed to preview receipt');
+      }
+    });
+  });
 }
 
 function buildDonationFormHtmlRoute(
@@ -249,8 +551,24 @@ function buildDonationFormHtmlRoute(
                             <input id="donation-amount" type="number" step="0.01" class="dt-input" value="${d.amount != null ? escapeHtml(String(d.amount)) : ''}" />
                         </div>
                         <div>
-                            <label class="dt-label">Receipts</label>
-                            <input id="donation-receipts" type="file" multiple accept="image/*,application/pdf" class="dt-input" />
+                            <label class="dt-label uppercase tracking-wide text-slate-500 text-[10px] font-bold">Upload Receipts</label>
+                            <div id="receipt-dropzone" class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-xl cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400">
+                                <div class="space-y-1 text-center">
+                                  <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 00-4 4H12a4 4 0 00-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                  </svg>
+                                  <div class="flex text-sm text-slate-600 dark:text-slate-400">
+                                    <span class="relative cursor-pointer bg-white dark:bg-slate-800 rounded-md font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 focus-within:outline-hidden">
+                                      Upload
+                                      <input id="donation-receipts" type="file" multiple accept="image/*,application/pdf" class="sr-only" />
+                                    </span>
+                                    <p class="pl-1">or drag and drop</p>
+                                  </div>
+                                  <p class="text-xs text-slate-500 dark:text-slate-400">PNG, JPG, PDF up to 10MB</p>
+                                </div>
+                            </div>
+                        <p id="donation-receipts-status" class="mt-2 text-xs text-slate-500 dark:text-slate-400">Selecting a receipt uploads it immediately and applies any available OCR prefill.</p>
+                        <div id="donation-receipts-list" class="mt-3 space-y-2"></div>
                         </div>
                     </div>
                     <div>
@@ -280,6 +598,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
   } = deps;
 
   const isEditMode = !!existingDonation;
+  const todayIso = new Date().toISOString().split('T')[0];
   const charityInput = document.getElementById('donation-charity-input');
   const charityIdInput = document.getElementById('donation-charity-id');
   const charityEinInput = document.getElementById('donation-charity-ein');
@@ -293,6 +612,369 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
   const brandNewPriceInput = document.getElementById('brand-new-price');
   const amountInput = document.getElementById('donation-amount');
   const valuationHint = document.getElementById('valuation-hint');
+  const dateInput = document.getElementById('donation-date');
+  const receiptInput = document.getElementById('donation-receipts');
+  const dropzone = document.getElementById('receipt-dropzone');
+  const receiptStatus = document.getElementById('donation-receipts-status');
+  const receiptList = document.getElementById('donation-receipts-list');
+  const draftReceipts = [];
+
+  // Load existing receipts if in edit mode
+  if (isEditMode) {
+    const existingReceipts = await db.receipts.where('donation_id').equals(existingDonation.id).toArray();
+    for (const r of existingReceipts) {
+      draftReceipts.push({
+        local_id: r.id,
+        server_id: r.id,
+        donation_id: r.donation_id,
+        file_name: r.file_name,
+        content_type: r.content_type,
+        size: r.size,
+        key: r.key,
+        stage: 'attached',
+        analysis: r.ocr_status ? { status: r.ocr_status, suggestion: null } : null
+      });
+    }
+  }
+
+  function setReceiptStatus(message, tone = 'muted') {
+    if (!receiptStatus) return;
+    const toneClass =
+      tone === 'error'
+        ? 'text-rose-600 dark:text-rose-300'
+        : tone === 'success'
+          ? 'text-emerald-600 dark:text-emerald-300'
+          : 'text-slate-500 dark:text-slate-400';
+    receiptStatus.className = `mt-2 text-xs ${toneClass}`;
+    receiptStatus.textContent = message;
+  }
+
+  function _findReceiptEntry(localId) {
+    return draftReceipts.find((entry) => entry.local_id === localId) || null;
+  }
+
+  function describeReceiptStage(entry) {
+    switch (entry.stage) {
+      case 'uploading':
+        return 'Uploading';
+      case 'attaching':
+        return 'Attaching to donation';
+      case 'analyzing':
+        return '<div class="flex items-center gap-1.5"><svg class="animate-spin h-3 w-3 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Analyzing...</span></div>';
+      case 'attached':
+        return 'Attached';
+      case 'pending-save':
+        return 'Uploaded';
+      case 'error':
+        return 'Needs attention';
+      default:
+        return 'Queued';
+    }
+  }
+
+  function summarizeReceiptSuggestion(entry) {
+    const suggestion = entry.analysis && entry.analysis.suggestion;
+    if (!suggestion) {
+      return entry.warning || (entry.analysis && entry.analysis.warning) || '';
+    }
+
+    const summary = [];
+    if (suggestion.organizationName) summary.push(suggestion.organizationName);
+    if (suggestion.dateOfDonation) summary.push(suggestion.dateOfDonation);
+    if (suggestion.amountUsd != null) summary.push(`$${Number(suggestion.amountUsd).toFixed(2)}`);
+    if (suggestion.itemName) summary.push(suggestion.itemName);
+    return summary.join(' • ');
+  }
+
+  function renderDraftReceipts() {
+    if (!receiptList) return;
+
+    if (draftReceipts.length === 0) {
+      receiptList.innerHTML =
+        '<div class="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">No receipts selected yet.</div>';
+      return;
+    }
+
+    receiptList.innerHTML = draftReceipts
+      .map((entry) => {
+        const note = summarizeReceiptSuggestion(entry);
+        const description = describeReceiptStage(entry);
+        const fileContent = entry.key 
+          ? `<button type="button" class="preview-receipt-btn text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline truncate block w-full text-left" data-key="${escapeHtml(entry.key)}">${escapeHtml(entry.file_name || 'Receipt')}</button>`
+          : `<p class="truncate text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(entry.file_name || 'Receipt')}</p>`;
+
+        return `
+          <div class="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-3 bg-white dark:bg-slate-800">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                ${fileContent}
+                <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">${description}</div>
+                ${note ? `<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">${escapeHtml(note)}</p>` : ''}
+              </div>
+              <div class="flex items-center gap-2">
+                <button type="button" class="delete-receipt-btn text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1" data-local-id="${escapeHtml(entry.local_id)}" title="Remove receipt">
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                ${entry.stage === 'error' ? '<span class="text-xs font-medium text-rose-600 dark:text-rose-300">Error</span>' : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    receiptList.querySelectorAll('.preview-receipt-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const key = e.currentTarget.dataset.key;
+        try {
+          const url = await getReceiptDownloadUrlRoute(key, deps);
+          window.open(url, '_blank');
+        } catch (err) {
+          alert('Failed to preview receipt');
+        }
+      });
+    });
+
+    receiptList.querySelectorAll('.delete-receipt-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const localId = e.currentTarget.dataset.localId;
+        const entry = _findReceiptEntry(localId);
+        if (!entry) return;
+
+        if (confirm('Are you sure you want to delete this receipt? This will remove it from the donation and delete the file.')) {
+          try {
+            if (entry.server_id) {
+              // It's already synced or attached, queue a delete on server
+              deps.Sync.queueAction('receipts', 'delete', { id: entry.server_id });
+              await db.receipts.delete(entry.server_id);
+            }
+            
+            // Remove from local draft list
+            const idx = draftReceipts.findIndex(r => r.local_id === localId);
+            if (idx !== -1) draftReceipts.splice(idx, 1);
+            
+            renderDraftReceipts();
+            setReceiptStatus('Receipt removed.', 'success');
+          } catch (err) {
+            console.error('Failed to delete receipt', err);
+            alert('Failed to delete receipt.');
+          }
+        }
+      });
+    });
+  }
+
+  function applyReceiptAnalysis(analysis) {
+    const patch = mapReceiptSuggestionToDonationDraft(analysis);
+    if (!patch) return;
+
+    if (patch.date && (!dateInput.value || (!isEditMode && dateInput.value === todayIso))) {
+      dateInput.value = patch.date;
+    }
+    if (patch.charityName && !charityInput.value.trim()) {
+      charityInput.value = patch.charityName;
+    }
+    if (
+      patch.category &&
+      (!isEditMode || !existingDonation.category || !existingDonation.amount) &&
+      categorySelect.value !== patch.category
+    ) {
+      categorySelect.value = patch.category;
+      categorySelect.dispatchEvent(new Event('change'));
+    }
+    if (patch.amount != null && !amountInput.value) {
+      amountInput.value = Number(patch.amount).toFixed(2);
+    }
+    if (patch.itemName && !valuationInput.value.trim()) {
+      valuationInput.value = patch.itemName;
+      if (patch.category === 'items') {
+        valuationFields?.classList.remove('hidden');
+      }
+    }
+  }
+
+  function upsertDraftReceipt(entryPatch) {
+    const existingIndex = draftReceipts.findIndex(
+      (entry) => entry.local_id === entryPatch.local_id
+    );
+    if (existingIndex >= 0) {
+      draftReceipts[existingIndex] = { ...draftReceipts[existingIndex], ...entryPatch };
+    } else {
+      draftReceipts.push(entryPatch);
+    }
+    renderDraftReceipts();
+  }
+
+  async function persistReceiptLocally(confirmedReceipt, analysis) {
+    await db.receipts.put({
+      id: confirmedReceipt.id,
+      key: confirmedReceipt.key,
+      file_name: confirmedReceipt.file_name,
+      content_type: confirmedReceipt.content_type,
+      size: confirmedReceipt.size,
+      donation_id: confirmedReceipt.donation_id,
+      uploaded_at: new Date().toISOString(),
+      ocr_status: analysis && analysis.status ? analysis.status : null,
+      ocr_text: analysis && analysis.ocrText ? analysis.ocrText : null,
+    });
+  }
+
+  async function analyzeAndApplyDraftReceipt(entry) {
+    try {
+      const analysis = entry.server_id
+        ? await analyzeConfirmedReceipt(entry.server_id)
+        : await analyzeUploadedReceipt(entry);
+      applyReceiptAnalysis(analysis);
+      return analysis;
+    } catch (err) {
+      return {
+        status: 'failed',
+        warning: err && err.message ? err.message : 'Receipt analysis failed.',
+        suggestion: null,
+      };
+    }
+  }
+
+  async function attachPendingReceiptsToDonation(donationId) {
+    let failures = 0;
+    for (const entry of draftReceipts) {
+      if (!entry.key || entry.server_id || entry.stage === 'error') continue;
+      upsertDraftReceipt({ local_id: entry.local_id, stage: 'attaching', warning: null });
+      try {
+        const confirmed = await confirmReceiptUpload(entry, donationId);
+        // Do not run OCR analysis here; it's already done during upload
+        const analysis = entry.analysis; 
+        await persistReceiptLocally(confirmed, analysis);
+        upsertDraftReceipt({
+          local_id: entry.local_id,
+          donation_id: donationId,
+          server_id: confirmed.id,
+          stage: 'attached',
+          analysis,
+          warning: analysis && analysis.warning ? analysis.warning : null,
+        });
+      } catch (err) {
+        failures += 1;
+        upsertDraftReceipt({
+          local_id: entry.local_id,
+          stage: 'error',
+          warning: err && err.message ? err.message : 'Failed to attach receipt.',
+        });
+      }
+    }
+    renderDraftReceipts();
+    return failures;
+  }
+
+  async function handleReceiptSelection(file) {
+    const localId = crypto.randomUUID();
+    const isFirstReceipt = draftReceipts.length === 0 && !isEditMode;
+
+    upsertDraftReceipt({
+      local_id: localId,
+      file_name: file.name,
+      content_type: file.type,
+      size: file.size,
+      stage: 'uploading',
+      warning: null,
+      analysis: null,
+    });
+
+    try {
+      const uploaded = await uploadReceiptToStorage(file);
+      const canAttachImmediately = isEditMode && existingDonation.sync_status === 'synced';
+      upsertDraftReceipt({
+        local_id: localId,
+        ...uploaded,
+        stage: canAttachImmediately ? 'attaching' : 'analyzing', // will update logic below
+      });
+
+      if (canAttachImmediately) {
+        const confirmed = await confirmReceiptUpload(uploaded, existingDonation.id);
+        // Analysis only for first receipt on NEW donation
+        const skipAnalysis = isEditMode || !isFirstReceipt;
+        const analysis = skipAnalysis
+          ? { status: 'skipped', suggestion: null }
+          : await analyzeAndApplyDraftReceipt({ ...uploaded, server_id: confirmed.id });
+
+        await persistReceiptLocally(confirmed, analysis);
+        upsertDraftReceipt({
+          local_id: localId,
+          donation_id: existingDonation.id,
+          server_id: confirmed.id,
+          stage: 'attached',
+          analysis,
+          warning: analysis && analysis.warning ? analysis.warning : null,
+        });
+      } else {
+        const skipAnalysis = isEditMode || !isFirstReceipt;
+        const analysis = skipAnalysis
+          ? { status: 'skipped', suggestion: null }
+          : isImageReceipt(uploaded.content_type)
+            ? await analyzeAndApplyDraftReceipt(uploaded)
+            : {
+                status: 'skipped_non_image',
+                warning: 'Only image receipts are analyzed for automatic prefill.',
+                suggestion: null,
+              };
+        upsertDraftReceipt({
+          local_id: localId,
+          stage: 'pending-save',
+          analysis,
+          warning: analysis && analysis.warning ? analysis.warning : null,
+        });
+      }
+
+      setReceiptStatus('Receipt uploaded successfully.', 'success');
+    } catch (err) {
+      upsertDraftReceipt({
+        local_id: localId,
+        stage: 'error',
+        warning: err && err.message ? err.message : 'Failed to upload receipt.',
+      });
+      setReceiptStatus('Receipt upload failed.', 'error');
+    }
+  }
+
+  dropzone?.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('border-indigo-500', 'bg-indigo-50', 'dark:bg-indigo-900/20');
+  });
+
+  dropzone?.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('border-indigo-500', 'bg-indigo-50', 'dark:bg-indigo-900/20');
+  });
+
+  dropzone?.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('border-indigo-500', 'bg-indigo-50', 'dark:bg-indigo-900/20');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    setReceiptStatus(`Uploading ${files.length} receipt${files.length === 1 ? '' : 's'}...`);
+    for (const file of files) {
+      await handleReceiptSelection(file);
+    }
+  });
+
+  dropzone?.addEventListener('click', (e) => {
+    if (e.target.closest('span')) return; // ignore if clicking "Upload" link/input
+    receiptInput.click();
+  });
+
+  receiptInput?.addEventListener('change', async () => {
+    const files = Array.from(receiptInput.files || []);
+    if (files.length === 0) return;
+    receiptInput.value = '';
+    setReceiptStatus(`Uploading ${files.length} receipt${files.length === 1 ? '' : 's'}...`);
+    for (const file of files) {
+      await handleReceiptSelection(file);
+    }
+  });
+
+  renderDraftReceipts();
 
   if (isEditMode && existingDonation.category === 'items' && existingDonation.notes) {
     const match = existingDonation.notes.match(/^Item: (.*?)(?:\n|$)/);
@@ -400,7 +1082,6 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
     .getElementById('btn-back-donations')
     ?.addEventListener('click', () => navigate('/donations'));
 
-  const dateInput = document.getElementById('donation-date');
   if (dateInput && !dateInput.value) {
     dateInput.value = new Date().toISOString().split('T')[0];
   }
@@ -538,7 +1219,6 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
     }
 
     const amount = parseFloat(document.getElementById('donation-amount').value) || 0;
-    const receiptFiles = Array.from(document.getElementById('donation-receipts').files || []);
 
     if (!date || !charity_name) {
       alert('Please provide date and charity name');
@@ -628,16 +1308,31 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
         }
       }
 
-      if (receiptFiles.length > 0 && donation.sync_status === 'synced') {
-        for (const file of receiptFiles) {
-          await uploadReceiptForDonationRoute(file, donation.id, deps);
+      const pendingReceipts = draftReceipts.filter(
+        (entry) => entry.key && !entry.server_id
+      );
+      if (pendingReceipts.length > 0 && donation.sync_status === 'synced') {
+        const failures = await attachPendingReceiptsToDonation(donation.id);
+        if (failures > 0) {
+          alert(
+            `Donation saved, but ${failures} receipt${failures === 1 ? '' : 's'} failed to attach.`
+          );
         }
-      } else if (receiptFiles.length > 0) {
-        alert('Donation saved offline. Upload receipts after sync completes.');
+      } else if (pendingReceipts.length > 0) {
+        // Queue these for later sync
+        for (const entry of pendingReceipts) {
+          deps.Sync.queueAction('receipts', 'attach', {
+            donation_id: donation.id,
+            key: entry.key,
+            file_name: entry.file_name,
+            content_type: entry.content_type,
+            size: entry.size
+          });
+        }
       }
 
       await updateTotals();
-      await navigate('/donations');
+      navigate('/donations');
     } catch (err) {
       console.error('Failed to save donation', err);
       alert('Failed to save donation');
@@ -685,147 +1380,8 @@ export async function renderDonationEditRoute(donationId, deps) {
   await bindDonationFormHandlersRoute({ userId, charities, existingDonation: existing }, deps);
 }
 
-export async function renderReceiptPageRoute(donationId, deps) {
-  const root = document.getElementById('route-content') || document.getElementById('app');
-  root.innerHTML = `
-        <div class="mx-auto max-w-3xl space-y-5">
-            <div class="flex items-center justify-between gap-2">
-                <div>
-                    <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Manage Receipts</h1>
-                    <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Upload and preview receipts for this donation.</p>
-                </div>
-                <button id="btn-back-donations" class="dt-btn-secondary">Back to Donations</button>
-            </div>
-            <div class="dt-panel p-5 sm:p-6">
-                <div class="mb-4">
-                    <label class="dt-label">Upload Receipt</label>
-                    <input id="receipt-upload-input" type="file" multiple accept="image/*,application/pdf" class="dt-input" />
-                    <button id="btn-upload-receipts" class="dt-btn-primary mt-2">Upload</button>
-                </div>
-                <h4 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Attached Receipts</h4>
-                <div id="attached-list"></div>
-            </div>
-        </div>
-    `;
-
-  document
-    .getElementById('btn-back-donations')
-    ?.addEventListener('click', () => deps.navigate('/donations'));
-
-  document.getElementById('btn-upload-receipts')?.addEventListener('click', async () => {
-    const fileInput = document.getElementById('receipt-upload-input');
-    const files = fileInput ? Array.from(fileInput.files || []) : [];
-    if (files.length === 0) {
-      alert('Please select a file to upload.');
-      return;
-    }
-    try {
-      for (const file of files) {
-        await uploadReceiptForDonationRoute(file, donationId, deps);
-      }
-      fileInput.value = '';
-      await refreshAttachedListRoute(donationId, root, deps);
-    } catch (err) {
-      console.error('Upload failed', err);
-      alert('Failed to upload receipt');
-    }
-  });
-
-  await refreshAttachedListRoute(donationId, root, deps);
-}
-
-async function refreshAttachedListRoute(donationId, container, deps) {
-  const normalizedId = donationId && String(donationId).trim() ? String(donationId) : null;
-  if (!normalizedId) return;
-  const attached = await deps.db.receipts.where('donation_id').equals(normalizedId).toArray();
-  const attachedList = container.querySelector('#attached-list');
-  if (!attachedList) return;
-
-  attachedList.innerHTML =
-    attached.length === 0
-      ? '<div class="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-4 text-sm text-slate-500 dark:text-slate-400">No attached receipts.</div>'
-      : attached
-          .map(
-            (r) => `
-            <div class="mb-2 flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 p-3">
-                <div>
-                    <div class="text-sm font-medium text-slate-900 dark:text-slate-100">${deps.escapeHtml(r.file_name || r.key)}</div>
-                    <div class="text-xs text-slate-500 dark:text-slate-400">${r.uploaded_at ? new Date(r.uploaded_at).toLocaleString() : ''}</div>
-                </div>
-                <div class="flex items-center space-x-2">
-                    <button class="preview-receipt-btn dt-btn-secondary px-3 py-1.5" data-key="${deps.escapeHtml(r.key)}">Preview</button>
-                </div>
-            </div>
-        `
-          )
-          .join('');
-
-  attachedList.querySelectorAll('.preview-receipt-btn').forEach((b) => {
-    b.addEventListener('click', async (e) => {
-      if (!navigator.onLine) {
-        alert('Receipt preview requires an internet connection.');
-        return;
-      }
-      const key = e.currentTarget.dataset.key;
-      try {
-        const downloadUrl = await getReceiptDownloadUrlRoute(key, deps);
-        window.open(downloadUrl, '_blank');
-      } catch {
-        alert('Preview failed');
-      }
-    });
-  });
-}
-
-async function uploadReceiptForDonationRoute(file, donationId, deps) {
-  const { getCookie } = deps;
-  const uploadRes = await fetch('/api/receipts/upload', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': getCookie('auth_token'),
-    },
-    credentials: 'include',
-    body: JSON.stringify({ file_type: file.type }),
-  });
-  if (!uploadRes.ok) throw new Error('Failed to request upload URL');
-
-  const uploadData = await uploadRes.json();
-  const putRes = await fetch(uploadData.upload_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type },
-    body: file,
-  });
-  if (!putRes.ok && putRes.status !== 200 && putRes.status !== 204) {
-    throw new Error('Receipt upload failed');
-  }
-
-  const confirmRes = await fetch('/api/receipts/confirm', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': getCookie('auth_token'),
-    },
-    credentials: 'include',
-    body: JSON.stringify({
-      key: uploadData.key,
-      file_name: file.name,
-      content_type: file.type,
-      size: file.size,
-      donation_id: donationId,
-    }),
-  });
-  if (!confirmRes.ok) throw new Error('Failed to confirm receipt');
-
-  const body = await confirmRes.json();
-  await deps.db.receipts.put({
-    id: crypto.randomUUID(),
-    key: uploadData.key,
-    file_name: file.name,
-    content_type: file.type,
-    size: file.size,
-    donation_id: donationId,
-    uploaded_at: new Date().toISOString(),
-    server_id: body && body.id ? body.id : null,
-  });
+export async function renderReceiptPageRoute(_donationId, deps) {
+  // This route is no longer used but we keep the export for now to avoid breaking imports
+  // until app.js is fully updated and verified.
+  await deps.navigate('/donations');
 }

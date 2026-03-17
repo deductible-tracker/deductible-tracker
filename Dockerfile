@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG ENABLE_OCR=0
+ARG ENABLE_OCR=1
 ARG PREBUILD_TESTS=0
 
 FROM dhi.io/rust:1 AS rust-toolchain
@@ -64,9 +64,13 @@ COPY . .
 RUN --mount=type=cache,target=/cargo/registry \
     --mount=type=cache,target=/cargo/git \
     --mount=type=cache,target=/app/target-ol9 \
+    set -eux; \
+    app_features="server"; \
+    mkdir -p /app/ocrs-models; \
     if [ "${ENABLE_OCR}" = "1" ]; then \
-      echo "ERROR: ENABLE_OCR=1 is not supported in the minimal hardened builder without extra native OCR packages." >&2; \
-      exit 1; \
+      app_features="${app_features},ocr"; \
+      curl -fsSL https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.rten -o /app/ocrs-models/text-detection.rten; \
+      curl -fsSL https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten -o /app/ocrs-models/text-recognition.rten; \
     fi; \
     CARGO_PROFILE_RELEASE_LTO=true \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
@@ -76,7 +80,7 @@ RUN --mount=type=cache,target=/cargo/registry \
     CARGO_PROFILE_RELEASE_LTO=true \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_STRIP=true \
-    cargo build --locked --release --no-default-features --features server --bin deductible-tracker -j1 && \
+    cargo build --locked --release --no-default-features --features "${app_features}" --bin deductible-tracker -j1 && \
     CARGO_PROFILE_RELEASE_LTO=true \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_STRIP=true \
@@ -129,22 +133,19 @@ RUN microdnf install -y \
     rm -rf /usr/lib/oracle/23/client64/lib/network && \
     ln -sf /usr/lib64/libnsl.so.3 /usr/lib64/libnsl.so.1 2>/dev/null || true
 
-# Optional OCR runtime libs (only installed when ENABLE_OCR=1)
-# Note: If ENABLE_OCR is used, the image will grow.
-ARG ENABLE_OCR=0
-RUN if [ "${ENABLE_OCR}" = "1" ]; then \
-      microdnf install -y tesseract leptonica && microdnf clean all || true; \
-    fi
+# OCRS uses bundled model files rather than native runtime libraries.
 
 ENV LD_LIBRARY_PATH=/usr/lib/oracle/23/client64/lib
 ENV OCI_LIB_DIR=/usr/lib/oracle/23/client64/lib
 ENV HOME=/home/appuser
 ENV RUST_ENV=production
 ENV TNS_ADMIN=/app/wallet
+ENV OCRS_MODEL_DIR=/app/ocrs-models
 
 # Copy binaries and assets
 COPY --from=builder --chown=appuser:appuser /app/deductible-tracker /app/deductible-tracker
 COPY --from=builder --chown=appuser:appuser /app/migrate /app/migrate
+COPY --from=builder --chown=appuser:appuser /app/ocrs-models /app/ocrs-models
 COPY --chown=appuser:appuser migrations /app/migrations
 COPY --from=builder --chown=appuser:appuser /app/static/index.html /app/static/index.html
 COPY --from=builder --chown=appuser:appuser /app/static/fonts /app/static/fonts

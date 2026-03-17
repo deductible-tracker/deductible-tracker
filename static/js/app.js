@@ -34,12 +34,13 @@ import {
   renderDonationEditRoute,
   renderDonationNewRoute,
   renderDonationsRoute,
-  renderReceiptPageRoute,
+  renderDonationViewRoute,
 } from './views/routes/donations.js';
 import {
   renderCharitiesRoute,
   renderCharityEditRoute,
   renderCharityNewRoute,
+  renderCharityViewRoute,
 } from './views/routes/charities.js';
 import { renderReportsRoute } from './views/routes/reports.js';
 import { renderPersonalInfoRoute } from './views/routes/personal.js';
@@ -241,9 +242,10 @@ function normalizeRoute(path) {
   if (routes[pathname]) return pathname;
   if (/^\/donations\/new$/.test(pathname)) return pathname;
   if (/^\/donations\/edit\/[^/]+$/.test(pathname)) return pathname;
-  if (/^\/donations\/receipts\/[^/]+$/.test(pathname)) return pathname;
+  if (/^\/donations\/view\/[^/]+$/.test(pathname)) return pathname;
   if (/^\/charities\/new$/.test(pathname)) return pathname;
   if (/^\/charities\/edit\/[^/]+$/.test(pathname)) return pathname;
+  if (/^\/charities\/view\/[^/]+$/.test(pathname)) return pathname;
   return '/';
 }
 
@@ -275,7 +277,7 @@ async function navigate(path, options = {}) {
   updateHomeSummaryVisibility(target);
 
   // Toggle nav visibility on mobile based on route
-  if (target.includes('/new') || target.includes('/edit') || target.includes('/receipts/')) {
+  if (target.includes('/new') || target.includes('/edit') || target.includes('/view/')) {
     document.body.classList.add('hide-nav-on-mobile');
   } else {
     document.body.classList.remove('hide-nav-on-mobile');
@@ -288,14 +290,16 @@ async function navigate(path, options = {}) {
     let m;
     if ((m = target.match(/^\/donations\/edit\/([^/]+)$/))) {
       handler = () => renderDonationEdit(decodeURIComponent(m[1]));
+    } else if ((m = target.match(/^\/donations\/view\/([^/]+)$/))) {
+      handler = () => renderDonationView(decodeURIComponent(m[1]));
     } else if (/^\/donations\/new$/.test(target)) {
       handler = renderDonationNew;
-    } else if ((m = target.match(/^\/donations\/receipts\/([^/]+)$/))) {
-      handler = () => renderReceiptPage(decodeURIComponent(m[1]));
     } else if ((m = target.match(/^\/charities\/edit\/([^/]+)$/))) {
       handler = () => renderCharityEdit(decodeURIComponent(m[1]));
     } else if (/^\/charities\/new$/.test(target)) {
       handler = renderCharityNew;
+    } else if ((m = target.match(/^\/charities\/view\/([^/]+)$/))) {
+      handler = () => renderCharityView(decodeURIComponent(m[1]));
     } else {
       handler = routes['/'];
     }
@@ -640,8 +644,8 @@ async function renderDonationEdit(donationId) {
   await renderDonationEditRoute(donationId, buildRouteDeps());
 }
 
-async function renderReceiptPage(donationId) {
-  await renderReceiptPageRoute(donationId, buildRouteDeps());
+async function renderDonationView(donationId) {
+  await renderDonationViewRoute(donationId, buildRouteDeps());
 }
 
 async function renderReports() {
@@ -657,6 +661,10 @@ async function renderCharityNew() {
 
 async function renderCharityEdit(charityId) {
   await renderCharityEditRoute(charityId, buildRouteDeps());
+}
+
+async function renderCharityView(charityId) {
+  await renderCharityViewRoute(charityId, buildRouteDeps());
 }
 
 async function renderPersonalInfo() {
