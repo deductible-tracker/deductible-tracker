@@ -15,6 +15,12 @@ name = "migrate"
 path = "src/bin/migrate.rs"
 test = false
 
+[[bin]]
+name = "prepare-assets"
+path = "src/bin/prepare_assets.rs"
+test = false
+required-features = ["server", "asset-pipeline"]
+
 [dependencies]
 # --- Always needed (db + tests) ---
 # --- Always needed (db + tests) ---
@@ -48,6 +54,8 @@ tempfile = { version = "3", optional = true }
 regex = { version = "1", optional = true }
 blake3 = { version = "1", optional = true }
 minifier = { version = "0", optional = true }
+brotli = { version = "8", optional = true }
+flate2 = { version = "1", optional = true }
 openssl = { version = "0", features = ["vendored"], optional = true }
 reqwest = { version = "0", features = ["json", "rustls-tls", "stream"], optional = true }
 rand = { version = "0", optional = true }
@@ -57,7 +65,7 @@ zip = { version = "8", optional = true }
 tokio-util = { version = "0.7", features = ["io"], optional = true }
 
 [features]
-default = ["server"]
+default = ["server", "asset-pipeline"]
 server = [
     "dep:axum",
     "dep:async-trait",
@@ -70,9 +78,6 @@ server = [
     "dep:tower_governor",
     "dep:csv",
     "dep:tempfile",
-    "dep:regex",
-    "dep:blake3",
-    "dep:minifier",
     "dep:openssl",
     "dep:reqwest",
     "dep:rand",
@@ -80,6 +85,13 @@ server = [
     "dep:futures",
     "dep:zip",
     "dep:tokio-util",
+]
+asset-pipeline = [
+    "dep:regex",
+    "dep:blake3",
+    "dep:minifier",
+    "dep:brotli",
+    "dep:flate2",
 ]
 app-bin = ["server"]
 ocr = ["server", "dep:leptess"]

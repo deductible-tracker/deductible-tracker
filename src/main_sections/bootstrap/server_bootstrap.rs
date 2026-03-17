@@ -1,11 +1,12 @@
 use axum::{
     extract::State,
-    routing::{get, post, delete},
+    routing::{delete, get, post},
     Router,
     middleware::{from_fn, Next},
-    http::{HeaderValue, StatusCode, HeaderName},
+    http::{HeaderName, HeaderValue, StatusCode},
     response::{Html, IntoResponse},
 };
+use base64::Engine as _;
 use std::net::SocketAddr;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
@@ -23,7 +24,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "asset-pipeline")]
 use std::process::Command;
+#[cfg(feature = "asset-pipeline")]
 use regex::Regex;
 
 use db::DbPool;
@@ -37,6 +40,7 @@ pub struct AppState {
     pub storage_access_key_id: String,
     pub storage_secret_access_key: String,
     pub index_template: String,
+    pub service_worker_script: String,
     pub asset_entrypoints: AssetEntrypoints,
 }
 
@@ -44,18 +48,23 @@ pub struct AppState {
 pub struct AssetEntrypoints {
     pub app: String,
     pub upload: String,
-    pub valuations: String,
-    pub css_rewrites: HashMap<String, String>,
+    pub dexie: String,
+    pub service_worker_version: String,
+    pub asset_rewrites: HashMap<String, String>,
+    pub precache_assets: Vec<String>,
 }
 
 pub async fn run_app() -> anyhow::Result<()> {
     // Load .env if it exists
     dotenvy::dotenv().ok();
 
-    run_tailwind_build_if_needed()?;
+    #[cfg(feature = "asset-pipeline")]
+    prepare_runtime_assets()?;
 
-    let asset_entrypoints = prepare_fingerprinted_assets()?;
+    let asset_entrypoints = load_asset_manifest()?;
+    let service_worker_script = load_service_worker_script()?;
 
+    #[cfg(feature = "asset-pipeline")]
     if should_prepare_assets_only() {
         return Ok(());
     }
@@ -95,6 +104,7 @@ pub async fn run_app() -> anyhow::Result<()> {
         storage_access_key_id,
         storage_secret_access_key,
         index_template,
+        service_worker_script,
         asset_entrypoints,
     };
 
@@ -238,12 +248,13 @@ pub async fn run_app() -> anyhow::Result<()> {
         .merge(auth_router)
         .route("/sw.js", get(serve_service_worker))
         .route("/assets/tailwind.css", get(serve_tailwind_css))
-        .nest_service("/assets", ServeDir::new("public/assets"))
-        .nest_service("/vendor", ServeDir::new("static/vendor"))
-        .nest_service("/js", ServeDir::new("static/js"))
-        .nest_service("/css", ServeDir::new("static/css"))
+        .nest_service(
+            "/assets",
+            ServeDir::new("public/assets")
+                .precompressed_br()
+                .precompressed_gzip(),
+        )
         .nest_service("/fonts", ServeDir::new("static/fonts"))
-        .nest_service("/data", ServeDir::new("static/data"))
         .fallback(get(spa_fallback))
         .layer(from_fn(static_cache_control))
         .layer(from_fn(require_auth))

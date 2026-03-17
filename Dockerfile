@@ -71,11 +71,16 @@ RUN --mount=type=cache,target=/cargo/registry \
     CARGO_PROFILE_RELEASE_LTO=true \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_STRIP=true \
-    cargo build --release --bins -j1 && \
-    # Run the asset preparation step in a development environment so the
-    # bundled binary will run the Tailwind build helper (which only runs
-    # when RUST_ENV==development). The produced assets are the same.
-    RUST_ENV=development PREPARE_ASSETS_ONLY=1 ./target-ol9/release/deductible-tracker && \
+    cargo build --locked --release --no-default-features --features server,asset-pipeline --bin prepare-assets -j1 && \
+    RUST_ENV=development ./target-ol9/release/prepare-assets && \
+    CARGO_PROFILE_RELEASE_LTO=true \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+    CARGO_PROFILE_RELEASE_STRIP=true \
+    cargo build --locked --release --no-default-features --features server --bin deductible-tracker -j1 && \
+    CARGO_PROFILE_RELEASE_LTO=true \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+    CARGO_PROFILE_RELEASE_STRIP=true \
+    cargo build --locked --release --no-default-features --bin migrate -j1 && \
     cp /app/target-ol9/release/deductible-tracker /app/deductible-tracker && \
     cp /app/target-ol9/release/migrate /app/migrate
 
@@ -141,9 +146,9 @@ ENV TNS_ADMIN=/app/wallet
 COPY --from=builder --chown=appuser:appuser /app/deductible-tracker /app/deductible-tracker
 COPY --from=builder --chown=appuser:appuser /app/migrate /app/migrate
 COPY --chown=appuser:appuser migrations /app/migrations
-COPY --from=builder --chown=appuser:appuser /app/static /app/static
+COPY --from=builder --chown=appuser:appuser /app/static/index.html /app/static/index.html
+COPY --from=builder --chown=appuser:appuser /app/static/fonts /app/static/fonts
 COPY --from=builder --chown=appuser:appuser /app/public /app/public
-RUN rm -rf /app/static/assets
 
 USER appuser
 

@@ -272,7 +272,6 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
     createOrGetCharityOnServer,
     db,
     escapeHtml,
-    getValuationTree,
     isCharityCacheFresh,
     navigate,
     Sync,
@@ -325,9 +324,9 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
         const { getCookie } = deps;
         const res = await fetch('/api/valuations/suggest', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': getCookie('auth_token')
+            'X-CSRF-Token': getCookie('auth_token'),
           },
           credentials: 'include',
           body: JSON.stringify({ query: q }),
@@ -336,28 +335,37 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
           const data = await res.json();
           const suggestions = data.suggestions || [];
           if (suggestions.length === 0) {
-            valuationSuggestions.innerHTML = '<div class="p-2 text-sm text-slate-500">No items found.</div>';
+            valuationSuggestions.innerHTML =
+              '<div class="p-2 text-sm text-slate-500">No items found.</div>';
           } else {
-            valuationSuggestions.innerHTML = suggestions.map(s => `
+            valuationSuggestions.innerHTML = suggestions
+              .map(
+                (s) => `
               <div class="cursor-pointer p-2 hover:bg-slate-50 dark:hover:bg-slate-700" data-name="${escapeHtml(s.name)}" data-min="${s.min}" data-max="${s.max}">
                 <div class="font-medium text-slate-900 dark:text-slate-100">${escapeHtml(s.name)}</div>
                 <div class="text-xs text-slate-500 dark:text-slate-400">Suggested: ($${s.min}-$${s.max})</div>
               </div>
-            `).join('');
+            `
+              )
+              .join('');
           }
           valuationSuggestions.classList.remove('hidden');
 
-          valuationSuggestions.querySelectorAll('div[data-name]').forEach(el => {
+          valuationSuggestions.querySelectorAll('div[data-name]').forEach((el) => {
             el.addEventListener('click', () => {
               const name = el.dataset.name;
               const min = el.dataset.min;
               const max = el.dataset.max;
               valuationInput.value = name;
               valuationSuggestions.classList.add('hidden');
-              
-              if (name.toLowerCase().includes('other') || name.toLowerCase().includes('not listed')) {
+
+              if (
+                name.toLowerCase().includes('other') ||
+                name.toLowerCase().includes('not listed')
+              ) {
                 brandNewPriceContainer?.classList.remove('hidden');
-                valuationHint.textContent = 'Valuation will be calculated at 30% of the brand new price.';
+                valuationHint.textContent =
+                  'Valuation will be calculated at 30% of the brand new price.';
               } else {
                 brandNewPriceContainer?.classList.add('hidden');
                 valuationHint.textContent = `Suggested value for "${name}": $${min || 0} - $${max || 0}. Please enter an amount within or near this range.`;

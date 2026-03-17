@@ -27,6 +27,7 @@ import {
   getCurrentUserId,
   setCurrentUser,
 } from './services/current-user.js';
+import { iconSvg } from './services/icons.js';
 import { escapeHtml } from './utils/html.js';
 import { renderDashboardRoute, renderRecentListRoute } from './views/routes/dashboard.js';
 import {
@@ -42,13 +43,6 @@ import {
 } from './views/routes/charities.js';
 import { renderReportsRoute } from './views/routes/reports.js';
 import { renderPersonalInfoRoute } from './views/routes/personal.js';
-import { getValuationTree } from './valuations.js';
-
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker
-    .register('/sw.js')
-    .catch((e) => console.warn('SW registration failed', e));
-}
 
 // Simple Router
 const routes = {
@@ -347,7 +341,7 @@ async function renderLogin() {
   const app = document.getElementById('app');
   app.innerHTML = `
         <div class="mx-auto grid min-h-full max-w-6xl items-center gap-8 py-8 sm:py-12 lg:grid-cols-2">
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-indigo-50 to-white p-6 sm:p-10">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-linear-to-br from-indigo-50 to-white p-6 sm:p-10">
                 <p class="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-400">Deductible Tracker</p>
                 <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-4xl">A better way to track charitable giving</h1>
                 <p class="mt-4 max-w-xl text-sm text-slate-600 dark:text-slate-300 sm:text-base">An offline-first replacement for Turbotax's It's Deductible.</p>
@@ -360,19 +354,21 @@ async function renderLogin() {
             </div>
             <div class="dt-panel p-6 sm:p-8">
                 <h2 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Sign in</h2>
-                <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Continue with Google to access your account.</p>
+                <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Continue with Google to create or access your account.</p>
                 
                 <div class="mt-8 flex flex-col items-center justify-center space-y-6">
-                    <div id="g_id_onload" data-context="signin" data-ux_mode="redirect" data-auto_prompt="false"></div>
+                  <div id="g_id_onload" data-context="signin" data-ux_mode="redirect" data-auto_prompt="false"></div>
 
+                  <div class="flex min-h-11 w-full max-w-[320px] items-center justify-center rounded-xl border border-slate-200 bg-white/85 px-3 py-1 dark:border-slate-700 dark:bg-slate-800/85">
                     <div class="g_id_signin"
-                        data-type="standard"
-                        data-shape="rectangular"
-                        data-theme="outline"
-                        data-text="signin_with"
-                        data-size="large"
-                        data-logo_alignment="left">
+                      data-type="standard"
+                      data-shape="rectangular"
+                      data-theme="outline"
+                      data-text="signin_with"
+                      data-size="large"
+                      data-logo_alignment="left">
                     </div>
+                  </div>
 
                     <div id="traditional-login-section" class="hidden w-full space-y-6">
                         <div class="relative w-full">
@@ -449,7 +445,11 @@ async function renderLogin() {
               login_uri: gIdOnload.getAttribute('data-login_uri'),
               ux_mode: 'redirect',
             });
-            google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
+            google.accounts.id.renderButton(gIdSignin, {
+              theme: 'outline',
+              size: 'large',
+              width: 280,
+            });
           }
         } catch (e) {
           console.warn('Google Identity initialization skipped', e);
@@ -566,7 +566,6 @@ function buildRouteDeps() {
     formatFigureText,
     getCurrentUser,
     getCurrentUserId,
-    getValuationTree,
     getUserCharityNameMap,
     getUserDonations,
     isCharityCacheFresh,
@@ -710,17 +709,15 @@ async function updateSyncStatus() {
 
   const pendingLabel = pending > 0 ? ` • ${pending} pending` : '';
   if (isOnline) {
-    statusEl.innerHTML = `<i data-lucide="cloud" class="h-4 w-4 mr-1 text-green-500"></i> Online${pendingLabel}${pending > 0 ? ' <button id="sync-now-btn" class="ml-2 text-xs text-blue-600 underline">Sync now</button>' : ''}`;
+    statusEl.innerHTML = `${iconSvg('cloud', 'mr-1 h-4 w-4 text-green-500')} Online${pendingLabel}${pending > 0 ? ' <button id="sync-now-btn" class="ml-2 text-xs text-blue-600 underline">Sync now</button>' : ''}`;
   } else {
-    statusEl.innerHTML = `<i data-lucide="cloud-off" class="h-4 w-4 mr-1 text-red-500"></i> Offline${pendingLabel}`;
+    statusEl.innerHTML = `${iconSvg('cloud-off', 'mr-1 h-4 w-4 text-red-500')} Offline${pendingLabel}`;
   }
 
   if (pending > 0 && isOnline) {
     const btn = document.getElementById('sync-now-btn');
     if (btn) btn.addEventListener('click', () => Sync.pushChanges());
   }
-
-  if (window.lucide) lucide.createIcons();
 }
 
 // --- Init ---
@@ -769,10 +766,6 @@ async function init() {
     sessionStorage.removeItem('dexie_schema_reset_done');
   } catch (_) {
     /* ignore */
-  }
-
-  if (window.lucide) {
-    lucide.createIcons();
   }
 
   // 1. Network Status & Initial UI State

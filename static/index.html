@@ -4,12 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Deductible Tracker</title>
+    <link rel="preload" href="/css/fonts.css" as="style" />
     <link href="/css/fonts.css" rel="stylesheet" />
+    <link rel="preload" href="/assets/tailwind.css" as="style" fetchpriority="high" />
     <link href="/assets/tailwind.css" rel="stylesheet" />
-    <script src="/vendor/dexie-4.3.0.min.js"></script>
-    <script src="/vendor/lucide.min.js"></script>
+    <link
+      rel="preload"
+      href="/fonts/roboto/roboto-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/roboto/roboto-500.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
   </head>
   <body
+    data-dt-bootstrap="__DT_BOOTSTRAP_B64__"
     class="font-sans bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-100 h-screen flex flex-col antialiased"
   >
     <style>
@@ -48,7 +63,28 @@
               id="nav-logo"
               class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white dark:bg-indigo-500"
             >
-              <i data-lucide="calculator" class="h-5 w-5"></i>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                class="h-5 w-5"
+              >
+                <rect x="4" y="2" width="16" height="20" rx="2"></rect>
+                <line x1="8" y1="6" x2="16" y2="6"></line>
+                <line x1="16" y1="14" x2="16" y2="18"></line>
+                <path d="M16 10h.01"></path>
+                <path d="M12 10h.01"></path>
+                <path d="M8 10h.01"></path>
+                <path d="M12 14h.01"></path>
+                <path d="M8 14h.01"></path>
+                <path d="M12 18h.01"></path>
+                <path d="M8 18h.01"></path>
+              </svg>
             </div>
             <span
               id="nav-title"
@@ -93,7 +129,19 @@
               id="sync-status"
               class="hidden items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 lg:flex"
             >
-              <i data-lucide="loader" class="mr-1 h-4 w-4 animate-spin"></i>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                class="mr-1 h-4 w-4 animate-spin"
+              >
+                <path d="M21 12a9 9 0 1 1-6.22-8.56"></path>
+              </svg>
               Initializing...
             </div>
             <div id="auth-actions" class="flex items-center gap-2">
@@ -195,8 +243,7 @@
                     workflows, and tax-ready reporting.
                   </p>
                 </div>
-                <div class="flex items-center gap-3 self-start">
-                </div>
+                <div class="flex items-center gap-3 self-start"></div>
               </div>
             </div>
 
@@ -266,7 +313,7 @@
     </main>
 
     <!-- Scripts -->
+    <link rel="modulepreload" href="/assets/app.js" />
     <script type="module" src="/assets/app.js"></script>
-    <script type="module" src="/assets/valuations.js"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 // Service Worker for Deductible Tracker - offline asset caching
-const CACHE_NAME = 'dt-cache-v2';
+/* global __DT_PRECACHE_ASSETS__ */
+const CACHE_NAME = '__DT_CACHE_NAME__';
 
 function createOfflineResponse() {
   const offlineHtml = `
@@ -36,12 +37,7 @@ function createOfflineResponse() {
 }
 
 // Core assets to pre-cache on install
-const PRECACHE_ASSETS = [
-  '/',
-  '/vendor/dexie-4.3.0.min.js',
-  '/vendor/lucide.min.js',
-  '/assets/tailwind.css',
-];
+const PRECACHE_ASSETS = __DT_PRECACHE_ASSETS__;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

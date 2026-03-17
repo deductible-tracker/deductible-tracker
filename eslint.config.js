@@ -17,7 +17,6 @@ export default [
         ...globals.node,
         ...globals.jest,
         crypto: 'readonly',
-        lucide: 'readonly',
         Dexie: 'readonly',
         google: 'readonly',
       },

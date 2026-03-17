@@ -79,9 +79,55 @@ fn clear_generated_fingerprinted_assets(dir: &Path) -> anyhow::Result<()> {
         }
 
         let ext = path.extension().and_then(|e| e.to_str());
+        if ext == Some("gz") || ext == Some("br") {
+            fs::remove_file(path)?;
+            continue;
+        }
+
         if ext == Some("js") || (ext == Some("css") && has_fingerprint_suffix(&path)) {
             fs::remove_file(path)?;
         }
+    }
+
+    Ok(())
+}
+
+fn write_generated_asset(path: &Path, content: &[u8]) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(path, content)?;
+    write_precompressed_variants(path, content)?;
+    Ok(())
+}
+
+fn write_precompressed_variants(path: &Path, content: &[u8]) -> anyhow::Result<()> {
+    let ext = path.extension().and_then(|e| e.to_str());
+    if ext != Some("js") && ext != Some("css") {
+        return Ok(());
+    }
+
+    {
+        use std::io::Write as _;
+
+        let gz_path = PathBuf::from(format!("{}.gz", path.display()));
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+        encoder.write_all(content)?;
+        let gzip_bytes = encoder.finish()?;
+        fs::write(gz_path, gzip_bytes)?;
+    }
+
+    {
+        use std::io::Write as _;
+
+        let br_path = PathBuf::from(format!("{}.br", path.display()));
+        let mut brotli_bytes = Vec::new();
+        {
+            let mut encoder = brotli::CompressorWriter::new(&mut brotli_bytes, 4096, 11, 22);
+            encoder.write_all(content)?;
+        }
+        fs::write(br_path, brotli_bytes)?;
     }
 
     Ok(())

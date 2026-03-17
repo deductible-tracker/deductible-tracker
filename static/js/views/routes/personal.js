@@ -1,3 +1,5 @@
+import { iconSvg } from '../../services/icons.js';
+
 function normalizeFilingStatus(status) {
   const normalized = String(status || 'single').toLowerCase();
   if (
@@ -163,11 +165,11 @@ export async function renderPersonalInfoRoute(deps) {
                     <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Backup your data to a restorable ZIP file or restore from a previous backup.</p>
                     <div class="mt-4 flex flex-wrap gap-4">
                     <button id="backup-btn" class="dt-btn-secondary flex items-center gap-2">
-                        <i data-lucide="download" class="h-4 w-4"></i>
+                      ${iconSvg('download', 'h-4 w-4')}
                         Backup My Data
                     </button>
                     <button id="restore-btn" class="dt-btn-secondary flex items-center gap-2">
-                        <i data-lucide="upload" class="h-4 w-4"></i>
+                      ${iconSvg('upload', 'h-4 w-4')}
                         Restore Data
                     </button>
                     <input id="restore-input" type="file" accept=".zip" class="hidden" />
@@ -191,10 +193,6 @@ export async function renderPersonalInfoRoute(deps) {
   const agiEl = document.getElementById('profile-agi');
   const marginalRateEl = document.getElementById('profile-marginal-rate');
   let rateRequestCounter = 0;
-
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
 
   document.getElementById('backup-btn')?.addEventListener('click', async () => {
     try {
@@ -262,7 +260,9 @@ export async function renderPersonalInfoRoute(deps) {
   });
 
   document.getElementById('delete-account-btn')?.addEventListener('click', async () => {
-    if (!confirm('Are you absolutely sure you want to delete your account? This cannot be undone.')) {
+    if (
+      !confirm('Are you absolutely sure you want to delete your account? This cannot be undone.')
+    ) {
       return;
     }
 

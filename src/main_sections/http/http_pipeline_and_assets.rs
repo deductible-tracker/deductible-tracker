@@ -1,3 +1,4 @@
+#[cfg(feature = "asset-pipeline")]
 fn run_tailwind_build_if_needed() -> anyhow::Result<()> {
     let env_mode = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string());
     if env_mode != "development" {
@@ -84,12 +85,14 @@ fn run_tailwind_build_if_needed() -> anyhow::Result<()> {
     );
 }
 
+#[cfg(feature = "asset-pipeline")]
 fn should_prepare_assets_only() -> bool {
     env::var("PREPARE_ASSETS_ONLY")
         .map(|v| v.eq_ignore_ascii_case("1") || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
 
+#[cfg(feature = "asset-pipeline")]
 fn should_skip_asset_rebuild() -> bool {
     env::var("SKIP_ASSET_REBUILD")
         .map(|v| v.eq_ignore_ascii_case("1") || v.eq_ignore_ascii_case("true"))
@@ -109,12 +112,33 @@ fn load_asset_manifest() -> anyhow::Result<AssetEntrypoints> {
     Ok(serde_json::from_str(&manifest)?)
 }
 
+fn load_service_worker_script() -> anyhow::Result<String> {
+    Ok(fs::read_to_string(Path::new("public").join("sw.js"))?)
+}
+
+#[cfg(feature = "asset-pipeline")]
 fn write_asset_manifest(entrypoints: &AssetEntrypoints) -> anyhow::Result<()> {
     let manifest_path = asset_manifest_path();
     if let Some(parent) = manifest_path.parent() {
         fs::create_dir_all(parent)?;
     }
     fs::write(&manifest_path, serde_json::to_vec_pretty(entrypoints)?)?;
+    Ok(())
+}
+
+#[cfg(feature = "asset-pipeline")]
+pub fn prepare_runtime_assets() -> anyhow::Result<()> {
+    run_tailwind_build_if_needed()?;
+
+    let asset_entrypoints = prepare_fingerprinted_assets()?;
+    let service_worker_script = build_service_worker_script(&asset_entrypoints)?;
+    let service_worker_path = Path::new("public").join("sw.js");
+
+    if let Some(parent) = service_worker_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(service_worker_path, service_worker_script)?;
     Ok(())
 }
 
@@ -193,12 +217,17 @@ async fn require_auth(req: Request<Body>, next: Next) -> impl IntoResponse {
 }
 
 async fn serve_index(State(state): State<AppState>) -> impl IntoResponse {
+    let bootstrap = serde_json::json!({
+        "dexie": state.asset_entrypoints.dexie,
+        "serviceWorkerVersion": state.asset_entrypoints.service_worker_version,
+    });
+    let bootstrap_b64 = base64::engine::general_purpose::STANDARD.encode(bootstrap.to_string());
     let mut html = state
         .index_template
         .replace("/assets/app.js", &state.asset_entrypoints.app)
         .replace("/assets/upload.js", &state.asset_entrypoints.upload)
-        .replace("/assets/valuations.js", &state.asset_entrypoints.valuations);
-    for (original, fingerprinted) in &state.asset_entrypoints.css_rewrites {
+        .replace("__DT_BOOTSTRAP_B64__", &bootstrap_b64);
+    for (original, fingerprinted) in &state.asset_entrypoints.asset_rewrites {
         html = html.replace(original, fingerprinted);
     }
     Html(html)
@@ -212,18 +241,31 @@ async fn spa_fallback(State(state): State<AppState>, req: Request<Body>) -> impl
     serve_index(State(state)).await.into_response()
 }
 
-async fn serve_service_worker() -> impl IntoResponse {
-    match std::fs::read_to_string("static/sw.js") {
-        Ok(content) => (
-            [
-                (header::CONTENT_TYPE, "application/javascript"),
-                (header::CACHE_CONTROL, "no-cache"),
-            ],
-            content,
-        )
-            .into_response(),
-        Err(_) => StatusCode::NOT_FOUND.into_response(),
-    }
+#[cfg(feature = "asset-pipeline")]
+fn build_service_worker_script(entrypoints: &AssetEntrypoints) -> anyhow::Result<String> {
+    let template = std::fs::read_to_string("static/sw.js")?;
+    let cache_name = format!("dt-cache-{}", entrypoints.service_worker_version);
+    let precache_assets = serde_json::to_string(&entrypoints.precache_assets)?;
+    let rendered = template
+        .replace("__DT_CACHE_NAME__", &cache_name)
+        .replace("__DT_PRECACHE_ASSETS__", &precache_assets);
+    Ok(minify_js_asset(&rendered))
+}
+
+async fn serve_service_worker(State(state): State<AppState>) -> impl IntoResponse {
+    let mut response = (
+        [
+            (header::CONTENT_TYPE, "application/javascript"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        state.service_worker_script.clone(),
+    )
+        .into_response();
+    response.headers_mut().insert(
+        HeaderName::from_static("service-worker-allowed"),
+        HeaderValue::from_static("/"),
+    );
+    response
 }
 
 async fn serve_tailwind_css() -> impl IntoResponse {
@@ -330,7 +372,38 @@ async fn static_cache_control(req: Request<Body>, next: Next) -> impl IntoRespon
         return response;
     }
 
+    if path.starts_with("/fonts/")
+        && (path.ends_with(".woff2") || path.ends_with(".woff"))
+        && response.status() == StatusCode::OK
+    {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        );
+        return response;
+    }
+
+    if path.starts_with("/vendor/")
+        && path.contains('-')
+        && path.ends_with(".js")
+        && response.status() == StatusCode::OK
+    {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        );
+        return response;
+    }
+
     // Loader assets and HTML should revalidate so users pick up new fingerprint mappings.
+    if path == "/sw.js" {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        );
+        return response;
+    }
+
     if ((path.starts_with("/assets/") && (path.ends_with(".js") || path.ends_with(".css"))) || path == "/" || path == "/index.html")
         && response.status() == StatusCode::OK
     {
@@ -343,6 +416,7 @@ async fn static_cache_control(req: Request<Body>, next: Next) -> impl IntoRespon
     response
 }
 
+#[cfg(feature = "asset-pipeline")]
 fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
     if should_skip_asset_rebuild() {
         return load_asset_manifest();
@@ -350,6 +424,8 @@ fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
 
     let static_root = Path::new("static");
     let js_root = static_root.join("js");
+    let vendor_root = static_root.join("vendor");
+    let css_root = static_root.join("css");
     let source_assets_root = static_root.join("assets");
     let assets_root = public_assets_root();
 
@@ -359,7 +435,9 @@ fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
 
     let mut app = "/assets/app.js".to_string();
     let mut upload = "/assets/upload.js".to_string();
-    let mut valuations = "/assets/valuations.js".to_string();
+    let mut dexie = "/vendor/dexie-4.3.0.min.js".to_string();
+    let mut asset_rewrites: HashMap<String, String> = HashMap::new();
+    let mut precache_assets = vec!["/".to_string()];
 
     if js_root.exists() {
         let mut files = Vec::new();
@@ -372,7 +450,30 @@ fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
             let src = js_root.join(rel);
             let content = fs::read_to_string(&src)?;
             let minified = minify_js_asset(&content);
-            let hash = blake3::hash(minified.as_bytes()).to_hex().to_string();
+
+            raw_by_rel.insert(rel.clone(), minified);
+        }
+
+        let mut js_graph_seed = files
+            .iter()
+            .filter_map(|rel| {
+                raw_by_rel
+                    .get(rel)
+                    .map(|content| (rel.to_string_lossy().to_string(), content.clone()))
+            })
+            .collect::<Vec<_>>();
+        js_graph_seed.sort_by(|left, right| left.0.cmp(&right.0));
+        let js_build_hash = blake3::hash(serde_json::to_string(&js_graph_seed)?.as_bytes())
+            .to_hex()
+            .to_string();
+
+        for rel in &files {
+            let minified = raw_by_rel
+                .get(rel)
+                .ok_or_else(|| anyhow::anyhow!("Missing source content for {}", rel.display()))?;
+            let hash = blake3::hash(format!("{}:{}", js_build_hash, minified).as_bytes())
+                .to_hex()
+                .to_string();
             let short_hash = &hash[..12];
 
             let stem = rel
@@ -384,7 +485,6 @@ fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
             let mut fp_rel = rel.clone();
             fp_rel.set_file_name(hashed_name);
 
-            raw_by_rel.insert(rel.clone(), minified);
             fp_by_rel.insert(rel.clone(), fp_rel);
         }
 
@@ -428,33 +528,107 @@ fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
                 .get(rel)
                 .ok_or_else(|| anyhow::anyhow!("Missing fingerprinted path for {}", rel.display()))?;
             let out_path = assets_root.join(out_rel);
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&out_path, rewritten.as_bytes())?;
+            write_generated_asset(&out_path, rewritten.as_bytes())?;
         }
 
         app = fp_by_rel
-            .get(&PathBuf::from("app.js"))
+            .get(&PathBuf::from("boot.js"))
             .map(|p| format!("/assets/{}", p.to_string_lossy().replace('\\', "/")))
-            .ok_or_else(|| anyhow::anyhow!("Missing fingerprinted app.js"))?;
+            .ok_or_else(|| anyhow::anyhow!("Missing fingerprinted boot.js"))?;
         upload = fp_by_rel
             .get(&PathBuf::from("upload.js"))
             .map(|p| format!("/assets/{}", p.to_string_lossy().replace('\\', "/")))
             .ok_or_else(|| anyhow::anyhow!("Missing fingerprinted upload.js"))?;
-        valuations = fp_by_rel
-            .get(&PathBuf::from("valuations.js"))
-            .map(|p| format!("/assets/{}", p.to_string_lossy().replace('\\', "/")))
-            .ok_or_else(|| anyhow::anyhow!("Missing fingerprinted valuations.js"))?;
+        precache_assets.push(app.clone());
     } else {
         tracing::warn!("Skipping JS fingerprinting: {} does not exist", js_root.display());
     }
 
+    if vendor_root.exists() {
+        let mut vendor_files = Vec::new();
+        collect_js_files(&vendor_root, &vendor_root, &mut vendor_files)?;
+
+        for rel in &vendor_files {
+            let src = vendor_root.join(rel);
+            let content = fs::read_to_string(&src)?;
+            let minified = minify_js_asset(&content);
+            let hash = blake3::hash(minified.as_bytes()).to_hex().to_string();
+            let short_hash = &hash[..12];
+
+            let stem = rel
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow::anyhow!("Invalid vendor JS file name: {}", rel.display()))?;
+
+            let hashed_name = format!("{}-{}.js", stem, short_hash);
+            let mut fp_rel = PathBuf::from("vendor");
+            if let Some(parent) = rel.parent() {
+                fp_rel.push(parent);
+            }
+            fp_rel.push(hashed_name);
+
+            let out_path = assets_root.join(&fp_rel);
+            write_generated_asset(&out_path, minified.as_bytes())?;
+
+            let original_path = format!("/vendor/{}", rel.to_string_lossy().replace('\\', "/"));
+            let hashed_path = format!("/assets/{}", fp_rel.to_string_lossy().replace('\\', "/"));
+            asset_rewrites.insert(original_path.clone(), hashed_path.clone());
+
+            if rel == &PathBuf::from("dexie-4.3.0.min.js") {
+                dexie = hashed_path.clone();
+                precache_assets.push(hashed_path);
+            }
+        }
+    }
+
+    if css_root.exists() {
+        let mut static_css_files = Vec::new();
+        collect_css_files(&css_root, &css_root, &mut static_css_files)?;
+
+        for rel in &static_css_files {
+            if rel.file_name().and_then(|s| s.to_str()) == Some("input.css") {
+                continue;
+            }
+
+            let src = css_root.join(rel);
+            let content = fs::read_to_string(&src)?;
+            let minified = minify_css_asset(&content);
+            let hash = blake3::hash(minified.as_bytes()).to_hex().to_string();
+            let short_hash = &hash[..12];
+
+            let stem = rel
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow::anyhow!("Invalid CSS file name: {}", rel.display()))?;
+
+            let hashed_name = format!("{}-{}.css", stem, short_hash);
+            let mut fp_rel = PathBuf::from("css");
+            if let Some(parent) = rel.parent() {
+                fp_rel.push(parent);
+            }
+            fp_rel.push(hashed_name);
+
+            let out_path = assets_root.join(&fp_rel);
+            write_generated_asset(&out_path, minified.as_bytes())?;
+
+            let original_path = format!("/css/{}", rel.to_string_lossy().replace('\\', "/"));
+            let hashed_path = format!("/assets/{}", fp_rel.to_string_lossy().replace('\\', "/"));
+            asset_rewrites.insert(original_path, hashed_path.clone());
+
+            if rel == &PathBuf::from("fonts.css") {
+                precache_assets.push(hashed_path);
+            }
+        }
+    }
+
     let mut css_files = Vec::new();
     collect_css_files(&assets_root, &assets_root, &mut css_files)?;
-    let mut css_rewrites: HashMap<String, String> = HashMap::new();
 
     for rel in &css_files {
+        if has_fingerprint_suffix(rel) {
+            continue;
+        }
+
         let src = assets_root.join(rel);
         let content = fs::read_to_string(&src)?;
         let minified = minify_css_asset(&content);
@@ -471,21 +645,32 @@ fn prepare_fingerprinted_assets() -> anyhow::Result<AssetEntrypoints> {
         fp_rel.set_file_name(hashed_name);
 
         let out_path = assets_root.join(&fp_rel);
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&out_path, minified.as_bytes())?;
+        write_generated_asset(&out_path, minified.as_bytes())?;
 
         let original_path = format!("/assets/{}", rel.to_string_lossy().replace('\\', "/"));
         let hashed_path = format!("/assets/{}", fp_rel.to_string_lossy().replace('\\', "/"));
-        css_rewrites.insert(original_path, hashed_path);
+        asset_rewrites.insert(original_path, hashed_path.clone());
+
+        if rel == &PathBuf::from("tailwind.css") {
+            precache_assets.push(hashed_path);
+        }
     }
+
+    precache_assets.sort();
+    precache_assets.dedup();
+
+    let service_worker_version = blake3::hash(serde_json::to_string(&precache_assets)?.as_bytes())
+        .to_hex()
+        .to_string()[..12]
+        .to_string();
 
     let entrypoints = AssetEntrypoints {
         app,
         upload,
-        valuations,
-        css_rewrites,
+        dexie,
+        service_worker_version,
+        asset_rewrites,
+        precache_assets,
     };
 
     write_asset_manifest(&entrypoints)?;

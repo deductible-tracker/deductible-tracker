@@ -1,3 +1,5 @@
+import { iconSvg } from '../../services/icons.js';
+
 export async function renderDashboardRoute(deps) {
   const { renderRecentList } = deps;
 
@@ -15,8 +17,6 @@ export async function renderDashboardRoute(deps) {
             </div>
         </div>
     `;
-
-  if (window.lucide) lucide.createIcons();
   renderRecentList();
 }
 
@@ -49,7 +49,7 @@ export async function renderRecentListRoute(deps) {
             </div>
             <div class="mt-2 text-sm text-slate-500 dark:text-slate-400">
                     <p class="flex items-center">
-                        <i data-lucide="calendar" class="mr-1.5 h-4 w-4 shrink-0 text-slate-400"></i>
+                      ${iconSvg('calendar', 'mr-1.5 h-4 w-4 shrink-0 text-slate-400')}
                         ${escapeHtml(d.date)}
                     </p>
             </div>
@@ -57,5 +57,4 @@ export async function renderRecentListRoute(deps) {
     `
     )
     .join('');
-  lucide.createIcons();
 }
