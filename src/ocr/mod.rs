@@ -299,6 +299,15 @@ mod real {
             return Ok(None);
         };
 
+        // Validate the endpoint to prevent SSRF (#9)
+        if !state.mistral_api_endpoint.starts_with("https://api.mistral.ai/")
+            && !state
+                .mistral_api_endpoint
+                .starts_with("https://chat.mistral.ai/")
+        {
+            return Err(anyhow!("Untrusted Mistral API endpoint: {}", state.mistral_api_endpoint));
+        }
+
         let response = client
             .post(&state.mistral_api_endpoint)
             .bearer_auth(api_key)
