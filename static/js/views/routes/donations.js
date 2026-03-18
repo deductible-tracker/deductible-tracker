@@ -362,8 +362,7 @@ export async function renderDonationsRoute(deps) {
       const id = btn.dataset.id;
       if (!id) return;
       if (confirm('Delete this donation? Associated receipts will also be removed.')) {
-        await db.donations.delete(id);
-        deps.Sync.queueAction('donations', 'delete', { id });
+        deps.Sync.queueAction('donations', { id }, 'delete');
         renderDonationsRoute(deps);
         await updateTotals();
       }
@@ -747,8 +746,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
           try {
             if (entry.server_id) {
               // It's already synced or attached, queue a delete on server
-              deps.Sync.queueAction('receipts', 'delete', { id: entry.server_id });
-              await db.receipts.delete(entry.server_id);
+              deps.Sync.queueAction('receipts', { id: entry.server_id }, 'delete');
             }
             
             // Remove from local draft list
@@ -1321,13 +1319,13 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       } else if (pendingReceipts.length > 0) {
         // Queue these for later sync
         for (const entry of pendingReceipts) {
-          deps.Sync.queueAction('receipts', 'attach', {
+          deps.Sync.queueAction('receipts', {
             donation_id: donation.id,
             key: entry.key,
             file_name: entry.file_name,
             content_type: entry.content_type,
             size: entry.size
-          });
+          }, 'attach');
         }
       }
 
