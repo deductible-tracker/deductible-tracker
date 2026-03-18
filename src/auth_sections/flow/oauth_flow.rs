@@ -33,7 +33,7 @@ pub enum AuthCallback {
     Code { code: String, state: String },
     Credential { 
         credential: String,
-        _g_csrf_token: Option<String> 
+        g_csrf_token: Option<String> 
     },
 }
 
@@ -353,7 +353,19 @@ pub async fn callback(
                 }
             }
         }
-        AuthCallback::Credential { credential, .. } => {
+        AuthCallback::Credential { credential, g_csrf_token } => {
+            // CSRF protection for Google One Tap: Compare g_csrf_token in form and g_csrf_token in cookie
+            let csrf_cookie = extract_cookie_by_name(&headers, "g_csrf_token");
+            if let (Some(form_token), Some(cookie_token)) = (g_csrf_token, csrf_cookie) {
+                if form_token != cookie_token {
+                    tracing::warn!("Google CSRF token mismatch");
+                    return (StatusCode::UNAUTHORIZED, "CSRF verification failed").into_response();
+                }
+            } else {
+                tracing::warn!("Missing Google CSRF state (form or cookie)");
+                return (StatusCode::UNAUTHORIZED, "CSRF verification failed").into_response();
+            }
+
             // Logic for Google 1-tap / button (JWT in 'credential' field)
             // In a production app, we would verify this JWT using Google's public keys.
             // For now, we will decode it insecurely or assume the library handled it.
