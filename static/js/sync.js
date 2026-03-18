@@ -101,8 +101,13 @@ export const Sync = {
 
     for (const task of queue) {
       try {
+        if (!task.item_id && task.action !== 'delete') {
+          console.warn('Skipping sync task with missing item_id', task);
+          continue;
+        }
+
         if (task.table === 'donations') {
-          const donation = await db.donations.get(task.item_id);
+          const donation = task.item_id ? await db.donations.get(task.item_id) : null;
           if (donation || task.action === 'delete') {
             batch.donations.push({
               action: task.action,
