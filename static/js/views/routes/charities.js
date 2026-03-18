@@ -176,7 +176,9 @@ export async function renderCharitiesRoute(deps) {
                 </div>
             </div>
 
-            ${totalPages > 1 ? `
+            ${
+              totalPages > 1
+                ? `
               <div class="flex items-center justify-between border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 sm:px-6 rounded-xl">
                 <div class="flex flex-1 justify-between sm:hidden">
                   <button id="prev-page-mobile" ${currentPage === 1 ? 'disabled' : ''} class="dt-btn-secondary px-4 py-2 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}">Previous</button>
@@ -194,9 +196,13 @@ export async function renderCharitiesRoute(deps) {
                         <span class="sr-only">Previous</span>
                         <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd"></path></svg>
                       </button>
-                      ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => `
+                      ${Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .map(
+                          (p) => `
                         <button class="page-btn relative inline-flex items-center px-4 py-2 text-sm font-semibold ${p === currentPage ? 'z-10 bg-indigo-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600' : 'text-slate-900 dark:text-slate-100 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}" data-page="${p}">${p}</button>
-                      `).join('')}
+                      `
+                        )
+                        .join('')}
                       <button id="next-page" ${currentPage === totalPages ? 'disabled' : ''} class="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 focus:z-20 focus:outline-offset-0 ${currentPage === totalPages ? 'cursor-not-allowed' : ''}">
                         <span class="sr-only">Next</span>
                         <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"></path></svg>
@@ -205,7 +211,9 @@ export async function renderCharitiesRoute(deps) {
                   </div>
                 </div>
               </div>
-            ` : ''}
+            `
+                : ''
+            }
         </div>
     `;
 
@@ -235,7 +243,7 @@ export async function renderCharitiesRoute(deps) {
     renderCharitiesRoute(deps);
   });
 
-  document.querySelectorAll('.page-btn').forEach(btn => {
+  document.querySelectorAll('.page-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       urlParams.set('page', btn.dataset.page);
       window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
@@ -243,7 +251,7 @@ export async function renderCharitiesRoute(deps) {
     });
   });
 
-  ['prev-page', 'prev-page-mobile'].forEach(id => {
+  ['prev-page', 'prev-page-mobile'].forEach((id) => {
     document.getElementById(id)?.addEventListener('click', () => {
       if (currentPage > 1) {
         urlParams.set('page', String(currentPage - 1));
@@ -253,7 +261,7 @@ export async function renderCharitiesRoute(deps) {
     });
   });
 
-  ['next-page', 'next-page-mobile'].forEach(id => {
+  ['next-page', 'next-page-mobile'].forEach((id) => {
     document.getElementById(id)?.addEventListener('click', () => {
       if (currentPage < totalPages) {
         urlParams.set('page', String(currentPage + 1));
@@ -315,9 +323,8 @@ export async function renderCharitiesRoute(deps) {
 }
 
 export async function renderCharityViewRoute(charityId, deps) {
-  const { db, escapeHtml, getCurrentUserId, navigate } = deps;
+  const { db, escapeHtml, navigate } = deps;
   const root = document.getElementById('route-content') || document.getElementById('app');
-  const userId = getCurrentUserId();
   const charity = await db.charities.get(charityId);
 
   if (!charity) {
@@ -406,7 +413,9 @@ export async function renderCharityViewRoute(charityId, deps) {
         </div>
     `;
 
-  document.getElementById('btn-back-charities')?.addEventListener('click', () => navigate('/charities'));
+  document
+    .getElementById('btn-back-charities')
+    ?.addEventListener('click', () => navigate('/charities'));
   document.getElementById('btn-edit-charity')?.addEventListener('click', (e) => {
     navigate(`/charities/edit/${encodeURIComponent(e.currentTarget.dataset.id)}`);
   });

@@ -111,31 +111,16 @@ If `ALLOW_DEV_LOGIN=true` and the server runs with `RUST_ENV=development`, you c
 - To inspect the readiness gate directly, run `docker-compose ps` and `docker-compose logs -f oracle-dev`. `app` waits for `oracle-dev` to become healthy, not just for the database process to print its startup banner.
 - The dev override is intended for local-only frontend work. The default `docker-compose.yml` remains the production-like path that serves prebuilt assets from the image.
 
-### OCR (ocrs + Mistral) setup (optional)
+### OCR (Mistral OCR API) setup
 
-The project supports OCR for receipt processing using the `ocrs` crate for text extraction and Mistral AI for parsing the raw text into structured data.
+The project uses the [Mistral OCR API](https://docs.mistral.ai/capabilities/document_ai/basic_ocr/) for high-accuracy receipt processing. This supports PDFs, Word documents, images, and many other formats.
 
 To enable OCR functionality:
 
 1. **Environmental Variables**: Set the following in your `.env` file:
-   - `MISTRAL_API_KEY`: Your Mistral AI API key (required for structured extraction).
-   - `MISTRAL_API_ENDPOINT`: Mistral API base URL (defaults to `https://api.mistral.ai/v1/conversations`).
-   - `MISTRAL_MODEL`: Mistral model to use (defaults to `mistral-small-latest`).
-   - `OCRS_MODEL_DIR`: Directory to cache `ocrs` ONNX/RTEN models (defaults to `/tmp/deductible-tracker-ocrs-models`).
-
-2. **Build with the OCR feature**:
-   ```bash
-   RUST_ENV=development cargo build --features ocr
-   ```
-
-3. **Run the server**:
-   ```bash
-   RUST_ENV=development cargo run --features ocr
-   ```
-
-Notes:
-- If the `ocr` feature is disabled or `MISTRAL_API_KEY` is missing, the server will still run, but OCR endpoints will return a warning or error.
-- The `ocrs` engine will automatically download required models to `OCRS_MODEL_DIR` on the first run.
+   - `MISTRAL_API_KEY`: Your Mistral AI API key (required).
+   - `MISTRAL_API_ENDPOINT`: Mistral OCR endpoint (defaults to `https://api.mistral.ai/v1/ocr`).
+   - `MISTRAL_MODEL`: Mistral model to use (e.g., `mistral-ocr-latest`).
 
 ## Production OAuth & secret management
 

@@ -1,7 +1,6 @@
 import {
   analyzeConfirmedReceipt,
   analyzeUploadedReceipt,
-  attachReceiptFileToDonation,
   confirmReceiptUpload,
   isImageReceipt,
   mapReceiptSuggestionToDonationDraft,
@@ -12,7 +11,6 @@ export async function renderDonationsRoute(deps) {
   const {
     calculateTaxEstimates,
     db,
-    deleteDonationOnServer,
     escapeHtml,
     formatCurrency,
     getCurrentUser,
@@ -240,7 +238,9 @@ export async function renderDonationsRoute(deps) {
                 </div>
             </div>
 
-            ${totalPages > 1 ? `
+            ${
+              totalPages > 1
+                ? `
               <div class="flex items-center justify-between border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 sm:px-6 rounded-xl">
                 <div class="flex flex-1 justify-between sm:hidden">
                   <button id="prev-page-mobile" ${currentPage === 1 ? 'disabled' : ''} class="dt-btn-secondary px-4 py-2 ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}">Previous</button>
@@ -258,9 +258,13 @@ export async function renderDonationsRoute(deps) {
                         <span class="sr-only">Previous</span>
                         <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd"></path></svg>
                       </button>
-                      ${Array.from({ length: totalPages }, (_, i) => i + 1).map(p => `
+                      ${Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .map(
+                          (p) => `
                         <button class="page-btn relative inline-flex items-center px-4 py-2 text-sm font-semibold ${p === currentPage ? 'z-10 bg-indigo-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600' : 'text-slate-900 dark:text-slate-100 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}" data-page="${p}">${p}</button>
-                      `).join('')}
+                      `
+                        )
+                        .join('')}
                       <button id="next-page" ${currentPage === totalPages ? 'disabled' : ''} class="relative inline-flex items-center rounded-r-md px-2 py-2 text-slate-400 ring-1 ring-inset ring-slate-300 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 focus:z-20 focus:outline-offset-0 ${currentPage === totalPages ? 'cursor-not-allowed' : ''}">
                         <span class="sr-only">Next</span>
                         <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"></path></svg>
@@ -269,7 +273,9 @@ export async function renderDonationsRoute(deps) {
                   </div>
                 </div>
               </div>
-            ` : ''}
+            `
+                : ''
+            }
         </div>
     `;
 
@@ -304,7 +310,7 @@ export async function renderDonationsRoute(deps) {
     document.getElementById('search-input')?.focus();
   });
 
-  document.querySelectorAll('.page-btn').forEach(btn => {
+  document.querySelectorAll('.page-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       urlParams.set('page', btn.dataset.page);
       window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
@@ -312,7 +318,7 @@ export async function renderDonationsRoute(deps) {
     });
   });
 
-  ['prev-page', 'prev-page-mobile'].forEach(id => {
+  ['prev-page', 'prev-page-mobile'].forEach((id) => {
     document.getElementById(id)?.addEventListener('click', () => {
       if (currentPage > 1) {
         urlParams.set('page', String(currentPage - 1));
@@ -322,7 +328,7 @@ export async function renderDonationsRoute(deps) {
     });
   });
 
-  ['next-page', 'next-page-mobile'].forEach(id => {
+  ['next-page', 'next-page-mobile'].forEach((id) => {
     document.getElementById(id)?.addEventListener('click', () => {
       if (currentPage < totalPages) {
         urlParams.set('page', String(currentPage + 1));
@@ -396,7 +402,6 @@ async function getReceiptDownloadUrlRoute(key, deps) {
 
 export async function renderDonationViewRoute(donationId, deps) {
   const { db, escapeHtml, formatCurrency, navigate, calculateTaxEstimates, getCurrentUser } = deps;
-  const userId = deps.getCurrentUserId();
   const donation = await db.donations.get(donationId);
   if (!donation) {
     alert('Donation not found');
@@ -405,7 +410,12 @@ export async function renderDonationViewRoute(donationId, deps) {
   }
   const charity = await db.charities.get(donation.charity_id);
   const receipts = await db.receipts.where('donation_id').equals(donationId).toArray();
-  const taxEstimates = await calculateTaxEstimates([donation], charity ? [charity] : [], receipts, getCurrentUser() || {});
+  const taxEstimates = await calculateTaxEstimates(
+    [donation],
+    charity ? [charity] : [],
+    receipts,
+    getCurrentUser() || {}
+  );
 
   const root = document.getElementById('route-content') || document.getElementById('app');
   root.innerHTML = `
@@ -443,17 +453,26 @@ export async function renderDonationViewRoute(donationId, deps) {
             <p class="mt-1 text-sm font-medium text-emerald-700 dark:text-emerald-300">${formatCurrency(taxEstimates.totalEstimated)}</p>
           </div>
         </div>
-        ${donation.notes ? `
+        ${
+          donation.notes
+            ? `
           <div>
             <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Notes</label>
             <p class="mt-1 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">${escapeHtml(donation.notes)}</p>
           </div>
-        ` : ''}
+        `
+            : ''
+        }
         
         <div class="border-t border-slate-200 dark:border-slate-700 pt-6">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-4">Receipts</h3>
           <div id="receipts-list" class="space-y-2">
-            ${receipts.length === 0 ? '<p class="text-sm text-slate-500 dark:text-slate-400">No receipts attached.</p>' : receipts.map(r => `
+            ${
+              receipts.length === 0
+                ? '<p class="text-sm text-slate-500 dark:text-slate-400">No receipts attached.</p>'
+                : receipts
+                    .map(
+                      (r) => `
               <div class="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-800">
                 <div class="min-w-0">
                   <p class="truncate text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(r.file_name || 'Receipt')}</p>
@@ -461,17 +480,26 @@ export async function renderDonationViewRoute(donationId, deps) {
                 </div>
                 <button class="preview-receipt-btn dt-btn-secondary px-3 py-1.5" data-key="${escapeHtml(r.key)}">Preview</button>
               </div>
-            `).join('')}
+            `
+                    )
+                    .join('')
+            }
           </div>
         </div>
       </div>
     </div>
   `;
 
-  document.getElementById('btn-back-donations')?.addEventListener('click', () => navigate('/donations'));
-  document.getElementById('btn-edit-donation')?.addEventListener('click', () => navigate(`/donations/edit/${encodeURIComponent(donationId)}`));
+  document
+    .getElementById('btn-back-donations')
+    ?.addEventListener('click', () => navigate('/donations'));
+  document
+    .getElementById('btn-edit-donation')
+    ?.addEventListener('click', () =>
+      navigate(`/donations/edit/${encodeURIComponent(donationId)}`)
+    );
 
-  document.querySelectorAll('.preview-receipt-btn').forEach(btn => {
+  document.querySelectorAll('.preview-receipt-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const key = e.currentTarget.dataset.key;
       try {
@@ -556,14 +584,15 @@ function buildDonationFormHtmlRoute(
                                   <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
                                     <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 00-4 4H12a4 4 0 00-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                                   </svg>
-                                  <div class="flex text-sm text-slate-600 dark:text-slate-400">
-                                    <span class="relative cursor-pointer bg-white dark:bg-slate-800 rounded-md font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 focus-within:outline-hidden">
-                                      Upload
-                                      <input id="donation-receipts" type="file" multiple accept="image/*,application/pdf" class="sr-only" />
-                                    </span>
-                                    <p class="pl-1">or drag and drop</p>
+                                  <div class="flex flex-col items-center text-sm text-slate-600 dark:text-slate-400">
+                                    <label for="donation-receipts" class="relative cursor-pointer bg-white dark:bg-slate-800 rounded-md font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 focus-within:outline-hidden">
+                                      <span>Upload or drag and drop</span>
+                                      <input id="donation-receipts" name="donation-receipts" type="file" multiple 
+                                        accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.csv,.txt,.epub,.xml,.rtf,.odt,.bib,.fb2,.ipynb,.tex,.opml,.1,.man,image/jpeg,image/png,image/avif,image/tiff,image/gif,image/heic,image/heif,image/bmp,image/webp" 
+                                        class="sr-only" />
+                                    </label>
                                   </div>
-                                  <p class="text-xs text-slate-500 dark:text-slate-400">PNG, JPG, PDF up to 10MB</p>
+                                  <p class="text-xs text-slate-500 dark:text-slate-400">Supported file types include: PDF, DOCX, HEIC/HEIF, JPG, PNG</p>
                                 </div>
                             </div>
                         <p id="donation-receipts-status" class="mt-2 text-xs text-slate-500 dark:text-slate-400">Selecting a receipt uploads it immediately and applies any available OCR prefill.</p>
@@ -620,7 +649,10 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
 
   // Load existing receipts if in edit mode
   if (isEditMode) {
-    const existingReceipts = await db.receipts.where('donation_id').equals(existingDonation.id).toArray();
+    const existingReceipts = await db.receipts
+      .where('donation_id')
+      .equals(existingDonation.id)
+      .toArray();
     for (const r of existingReceipts) {
       draftReceipts.push({
         local_id: r.id,
@@ -631,7 +663,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
         size: r.size,
         key: r.key,
         stage: 'attached',
-        analysis: r.ocr_status ? { status: r.ocr_status, suggestion: null } : null
+        analysis: r.ocr_status ? { status: r.ocr_status, suggestion: null } : null,
       });
     }
   }
@@ -698,7 +730,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       .map((entry) => {
         const note = summarizeReceiptSuggestion(entry);
         const description = describeReceiptStage(entry);
-        const fileContent = entry.key 
+        const fileContent = entry.key
           ? `<button type="button" class="preview-receipt-btn text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline truncate block w-full text-left" data-key="${escapeHtml(entry.key)}">${escapeHtml(entry.file_name || 'Receipt')}</button>`
           : `<p class="truncate text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(entry.file_name || 'Receipt')}</p>`;
 
@@ -724,7 +756,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       })
       .join('');
 
-    receiptList.querySelectorAll('.preview-receipt-btn').forEach(btn => {
+    receiptList.querySelectorAll('.preview-receipt-btn').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const key = e.currentTarget.dataset.key;
         try {
@@ -736,23 +768,27 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       });
     });
 
-    receiptList.querySelectorAll('.delete-receipt-btn').forEach(btn => {
+    receiptList.querySelectorAll('.delete-receipt-btn').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const localId = e.currentTarget.dataset.localId;
         const entry = _findReceiptEntry(localId);
         if (!entry) return;
 
-        if (confirm('Are you sure you want to delete this receipt? This will remove it from the donation and delete the file.')) {
+        if (
+          confirm(
+            'Are you sure you want to delete this receipt? This will remove it from the donation and delete the file.'
+          )
+        ) {
           try {
             if (entry.server_id) {
               // It's already synced or attached, queue a delete on server
               deps.Sync.queueAction('receipts', { id: entry.server_id }, 'delete');
             }
-            
+
             // Remove from local draft list
-            const idx = draftReceipts.findIndex(r => r.local_id === localId);
+            const idx = draftReceipts.findIndex((r) => r.local_id === localId);
             if (idx !== -1) draftReceipts.splice(idx, 1);
-            
+
             renderDraftReceipts();
             setReceiptStatus('Receipt removed.', 'success');
           } catch (err) {
@@ -843,7 +879,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       try {
         const confirmed = await confirmReceiptUpload(entry, donationId);
         // Do not run OCR analysis here; it's already done during upload
-        const analysis = entry.analysis; 
+        const analysis = entry.analysis;
         await persistReceiptLocally(confirmed, analysis);
         upsertDraftReceipt({
           local_id: entry.local_id,
@@ -910,13 +946,8 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
         const skipAnalysis = isEditMode || !isFirstReceipt;
         const analysis = skipAnalysis
           ? { status: 'skipped', suggestion: null }
-          : isImageReceipt(uploaded.content_type)
-            ? await analyzeAndApplyDraftReceipt(uploaded)
-            : {
-                status: 'skipped_non_image',
-                warning: 'Only image receipts are analyzed for automatic prefill.',
-                suggestion: null,
-              };
+          : await analyzeAndApplyDraftReceipt(uploaded);
+
         upsertDraftReceipt({
           local_id: localId,
           stage: 'pending-save',
@@ -1306,9 +1337,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
         }
       }
 
-      const pendingReceipts = draftReceipts.filter(
-        (entry) => entry.key && !entry.server_id
-      );
+      const pendingReceipts = draftReceipts.filter((entry) => entry.key && !entry.server_id);
       if (pendingReceipts.length > 0 && donation.sync_status === 'synced') {
         const failures = await attachPendingReceiptsToDonation(donation.id);
         if (failures > 0) {
@@ -1319,13 +1348,17 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       } else if (pendingReceipts.length > 0) {
         // Queue these for later sync
         for (const entry of pendingReceipts) {
-          deps.Sync.queueAction('receipts', {
-            donation_id: donation.id,
-            key: entry.key,
-            file_name: entry.file_name,
-            content_type: entry.content_type,
-            size: entry.size
-          }, 'attach');
+          deps.Sync.queueAction(
+            'receipts',
+            {
+              donation_id: donation.id,
+              key: entry.key,
+              file_name: entry.file_name,
+              content_type: entry.content_type,
+              size: entry.size,
+            },
+            'attach'
+          );
         }
       }
 

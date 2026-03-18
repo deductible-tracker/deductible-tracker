@@ -56,7 +56,6 @@ jobs:
           context: .
           build-args: |
             PREBUILD_TESTS=0
-            ENABLE_OCR=1
             NODE_ENV=production
           platforms: linux/arm64
           push: true

@@ -20,9 +20,35 @@ const PRESIGN_EXPIRATION_SECS: u64 = 300;
 
 fn allowed_ext_for_content_type(content_type: &str) -> Option<&'static str> {
     match content_type {
+        // Images
         "image/jpeg" => Some("jpg"),
         "image/png" => Some("png"),
+        "image/avif" => Some("avif"),
+        "image/tiff" => Some("tiff"),
+        "image/gif" => Some("gif"),
+        "image/heic" => Some("heic"),
+        "image/heif" => Some("heif"),
+        "image/bmp" => Some("bmp"),
+        "image/webp" => Some("webp"),
+        // Documents
         "application/pdf" => Some("pdf"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Some("docx"),
+        "application/msword" => Some("doc"),
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Some("pptx"),
+        "application/vnd.ms-powerpoint" => Some("ppt"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
+        "text/csv" => Some("csv"),
+        "text/plain" => Some("txt"),
+        "application/epub+zip" => Some("epub"),
+        "application/xml" => Some("xml"),
+        "application/rtf" => Some("rtf"),
+        "application/vnd.oasis.opendocument.text" => Some("odt"),
+        "application/x-bibtex" => Some("bib"),
+        "application/x-fictionbook+xml" => Some("fb2"),
+        "application/x-ipynb+json" => Some("ipynb"),
+        "application/x-tex" => Some("tex"),
+        "text/x-opml" => Some("opml"),
+        "text/troff" => Some("1"),
         _ => None,
     }
 }
@@ -257,7 +283,7 @@ pub async fn ocr_receipt(
             if let Some(receipt_id_value) = receipt_id.clone() {
                 let ocr_text = analysis.ocr_text.clone();
                 let ocr_date = analysis.ocr_date;
-                let ocr_amount = analysis.ocr_amount_cents.map(|value| value as f64);
+                let ocr_amount = analysis.ocr_amount_cents.map(|value| value as f64 / 100.0);
                 let ocr_status = Some(analysis.ocr_status.clone());
                 if let Err(e) = crate::db::receipts::set_receipt_ocr(
                     &state.db,
@@ -270,7 +296,15 @@ pub async fn ocr_receipt(
                 .await
                 {
                     tracing::error!("Failed to persist OCR analysis: {}", e);
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "OCR Error").into_response();
+                    return (StatusCode::OK, AxumJson(OcrResponse {
+                        status: "failed".to_string(),
+                        id: receipt_id,
+                        ocr_text: None,
+                        ocr_date: None,
+                        ocr_amount_usd: None,
+                        suggestion: None,
+                        warning: Some("Unable to prepopulate donation data".to_string()),
+                    })).into_response();
                 }
 
                 let audit_id = Uuid::new_v4().to_string();
@@ -308,22 +342,15 @@ pub async fn ocr_receipt(
         }
         Err(e) => {
             tracing::error!("OCR run failed: {}", e);
-            if let Some(receipt_id_value) = receipt_id {
-                let failed_status = Some("failed".to_string());
-                if let Err(db_error) = crate::db::receipts::set_receipt_ocr(
-                    &state.db,
-                    &receipt_id_value,
-                    &None,
-                    &None,
-                    &None,
-                    &failed_status,
-                )
-                .await
-                {
-                    tracing::error!("Failed to persist OCR failure status: {}", db_error);
-                }
-            }
-            (StatusCode::INTERNAL_SERVER_ERROR, "OCR Failure").into_response()
+            (StatusCode::OK, AxumJson(OcrResponse {
+                status: "failed".to_string(),
+                id: receipt_id,
+                ocr_text: None,
+                ocr_date: None,
+                ocr_amount_usd: None,
+                suggestion: None,
+                warning: Some("Unable to prepopulate donation data".to_string()),
+            })).into_response()
         }
     }
 }

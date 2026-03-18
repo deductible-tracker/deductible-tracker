@@ -9,7 +9,7 @@ A production-grade charitable donation tracker and valuation engine, designed as
 - **Charity Intelligence**: Integrated with the ProPublica Nonprofits API for real-time charity verification and EIN lookups.
 - **Intelligent Receipt Processing**:
   - Secure storage in OCI Object Storage using S3-compatible APIs and presigned URLs.
-  - Optional OCR (Optical Character Recognition) using Tesseract and Leptonica to extract dates and amounts from uploaded receipts.
+  - Mistral OCR API integration for high-accuracy text extraction and structured donation data pre-fill (supporting PDF, Word, Images, and more).
 - **Tax Optimization**: Real-time tax benefit estimates based on user-provided filing status, AGI, and marginal tax rates.
 - **Privacy & Security**: JWT-based authentication with support for OAuth2 providers (Google) and secure session management via HttpOnly cookies.
 
@@ -19,7 +19,7 @@ A production-grade charitable donation tracker and valuation engine, designed as
 
 - **Framework**: [Axum](https://github.com/tokio-rs/axum) on [Tokio](https://tokio.rs/) for asynchronous I/O.
 - **Database**: [Oracle Database 23ai](https://www.oracle.com/database/23ai/) (Autonomous Database in production, Free Edition for local development).
-- **OCR**: Pure Rust OCR using [`ocrs`](https://github.com/robertknight/ocrs) for text detection/recognition, combined with Mistral AI for structured data extraction.
+- **OCR**: Integrated [Mistral OCR API](https://docs.mistral.ai/capabilities/document_ai/basic_ocr/) for processing receipts (PDFs, images, documents) into structured JSON data.
 - **Authentication**: OAuth2 and JWT (using `jsonwebtoken` and `oauth2` crates).
 - **Storage**: OCI Object Storage (S3-Compatible API).
 
@@ -45,7 +45,7 @@ The codebase is organized into modular "sections" to maintain clarity as the pro
 - `src/db/core_sections/`: Domain-specific database operations (donations, charities, valuations).
 - `src/db/oracle/`: Low-level Oracle OCI bindings and persistence logic.
 - `src/routes/`: API endpoint definitions and request handlers.
-- `src/ocr/`: Optional Tesseract-based OCR implementation.
+- `src/ocr/`: Mistral OCR API integration logic.
 - `static/`: Frontend source files (HTML, JS, CSS).
 - `public/`: Generated and fingerprinted production assets.
 
