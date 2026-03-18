@@ -111,35 +111,31 @@ If `ALLOW_DEV_LOGIN=true` and the server runs with `RUST_ENV=development`, you c
 - To inspect the readiness gate directly, run `docker-compose ps` and `docker-compose logs -f oracle-dev`. `app` waits for `oracle-dev` to become healthy, not just for the database process to print its startup banner.
 - The dev override is intended for local-only frontend work. The default `docker-compose.yml` remains the production-like path that serves prebuilt assets from the image.
 
-### OCR (Tesseract) setup (optional)
+### OCR (ocrs + Mistral) setup (optional)
 
-The project supports local OCR using Tesseract/Leptonica via the `leptess` crate. This is optional — builds will succeed without Tesseract, but OCR functionality will return a clear error until enabled.
+The project supports OCR for receipt processing using the `ocrs` crate for text extraction and Mistral AI for parsing the raw text into structured data.
 
-To enable real local OCR:
+To enable OCR functionality:
 
-1. Install system dependencies (macOS example):
+1. **Environmental Variables**: Set the following in your `.env` file:
+   - `MISTRAL_API_KEY`: Your Mistral AI API key (required for structured extraction).
+   - `MISTRAL_API_ENDPOINT`: Mistral API base URL (defaults to `https://api.mistral.ai/v1/conversations`).
+   - `MISTRAL_MODEL`: Mistral model to use (defaults to `mistral-small-latest`).
+   - `OCRS_MODEL_DIR`: Directory to cache `ocrs` ONNX/RTEN models (defaults to `/tmp/deductible-tracker-ocrs-models`).
 
-```bash
-brew install tesseract
-brew install leptonica
-```
+2. **Build with the OCR feature**:
+   ```bash
+   RUST_ENV=development cargo build --features ocr
+   ```
 
-2. Build the project with the `ocr` feature enabled:
-
-```bash
-RUST_ENV=development cargo build --features ocr
-```
-
-3. Run the server (with OCR feature enabled):
-
-```bash
-RUST_ENV=development cargo run --features ocr
-```
+3. **Run the server**:
+   ```bash
+   RUST_ENV=development cargo run --features ocr
+   ```
 
 Notes:
-
-- If you don't enable the `ocr` feature or you don't have Tesseract installed, the server will still build and run; calling the OCR endpoint will return an error indicating OCR is not enabled.
-- On Linux or other platforms, use your package manager to install `tesseract` and `leptonica`.
+- If the `ocr` feature is disabled or `MISTRAL_API_KEY` is missing, the server will still run, but OCR endpoints will return a warning or error.
+- The `ocrs` engine will automatically download required models to `OCRS_MODEL_DIR` on the first run.
 
 ## Production OAuth & secret management
 

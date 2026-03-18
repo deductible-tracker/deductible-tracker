@@ -19,7 +19,7 @@ A production-grade charitable donation tracker and valuation engine, designed as
 
 - **Framework**: [Axum](https://github.com/tokio-rs/axum) on [Tokio](https://tokio.rs/) for asynchronous I/O.
 - **Database**: [Oracle Database 23ai](https://www.oracle.com/database/23ai/) (Autonomous Database in production, Free Edition for local development).
-- **OCR**: [Tesseract](https://github.com/tesseract-ocr/tesseract) via the `leptess` crate (gated by the `ocr` feature).
+- **OCR**: Pure Rust OCR using [`ocrs`](https://github.com/robertknight/ocrs) for text detection/recognition, combined with Mistral AI for structured data extraction.
 - **Authentication**: OAuth2 and JWT (using `jsonwebtoken` and `oauth2` crates).
 - **Storage**: OCI Object Storage (S3-Compatible API).
 
