@@ -84,15 +84,18 @@ jobs:
       group: deploy-production
       cancel-in-progress: true
     environment: production
+    env:
+      OCI_CLI_USER: ${{ secrets.OCI_USER_OCID }}
+      OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_KEY_FILE }}
+      OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
     steps:
-      - name: Setup OCI CLI
-        uses: oracle-actions/setup-oci@v1
+      - name: Install OCI CLI
+        uses: oracle-actions/run-oci-cli-command@v1.3.2
         with:
-          user: ${{ secrets.OCI_USER_OCID }}
-          fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-          tenancy: ${{ secrets.OCI_TENANCY_OCID }}
-          region: ${{ secrets.OCI_REGION }}
-          key: ${{ secrets.OCI_KEY_FILE }}
+          command: 'setup install'
+          silent: false
 
       - name: Update Instance Metadata Tag to Trigger Deploy
         env:
