@@ -167,6 +167,7 @@ jobs:
           MISTRAL_API_ENDPOINT=$MISTRAL_API_ENDPOINT
           MISTRAL_MODEL=$MISTRAL_MODEL
           MISTRAL_API_KEY=$MISTRAL_API_KEY
+          SITE_DOMAIN=dd.joshkraemer.com
           EOF
           )
           
