@@ -124,20 +124,18 @@ jobs:
         run: |
           IMAGE_REF="${{ needs.build.outputs.image_ref }}"
           
-          # 1. Discover the active instance OCID (filter by compartment and name, excluding terminated)
-          # We search for instances named 'app_server' that are NOT in the TERMINATED state.
-          COMPARTMENT_ID="${{ secrets.OCI_TENANCY_OCID }}" # Use tenancy as root or specific compartment secret if available
-          # Fallback to OCI_CLI_TENANCY if OCI_COMPARTMENT_OCID is not provided
+          # 1. Discover the active instance OCID
+          # We search for instances that are NOT in the TERMINATED state.
           TARGET_COMPARTMENT="${{ secrets.OCI_COMPARTMENT_OCID }}"
           : "${TARGET_COMPARTMENT:=$OCI_CLI_TENANCY}"
 
+          # Search by tag instead of display-name since names are timestamped
           INSTANCE_OCID=$(oci compute instance list --compartment-id "$TARGET_COMPARTMENT" \
-            --display-name "app_server" \
             --lifecycle-state RUNNING \
-            --query "data[0].id" --raw-output)
+            --query "data[?\"defined-tags\".\"Operations\".\"deployed_image\"].id | [0]" --raw-output)
 
           if [ -z "$INSTANCE_OCID" ] || [ "$INSTANCE_OCID" == "null" ]; then
-            echo "ERROR: No RUNNING instance named 'app_server' found in compartment $TARGET_COMPARTMENT"
+            echo "ERROR: No RUNNING instance with tag project=deductible-tracker found in compartment $TARGET_COMPARTMENT"
             exit 1
           fi
           echo "Found active instance: $INSTANCE_OCID"
