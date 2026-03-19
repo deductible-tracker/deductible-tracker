@@ -171,10 +171,15 @@ jobs:
           
           SECRETS_BASE64=$(echo "$ENV_CONTENT" | sed 's/^[[:space:]]*//' | base64 -w 0)
           
-          # 2. Update OCI Instance Metadata with Image Reference and Secrets
-          # Use metadata instead of defined-tags to avoid tag validation limits.
+          # 2. Get existing metadata to preserve user_data
+          # The OCI CLI update-instance command replaces ALL metadata if --metadata is used.
+          # We must fetch the current user_data and include it in the update.
+          EXISTING_METADATA=$(oci compute instance get --instance-id "$INSTANCE_OCID" --query "data.metadata" --output json)
+          USER_DATA=$(echo "$EXISTING_METADATA" | jq -r '.user_data')
+          
+          # 3. Update OCI Instance Metadata with Image Reference, Secrets, and preserved User Data
           # We use --force because metadata updates still prompt for confirmation in the CLI.
           oci compute instance update --instance-id "$INSTANCE_OCID" \
-            --metadata "{\"deployed_image\": \"$IMAGE_REF\", \"app_secrets\": \"$SECRETS_BASE64\"}" \
+            --metadata "{\"deployed_image\": \"$IMAGE_REF\", \"app_secrets\": \"$SECRETS_BASE64\", \"user_data\": \"$USER_DATA\"}" \
             --force
           exit 0
