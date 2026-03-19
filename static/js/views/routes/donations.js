@@ -2,7 +2,6 @@ import {
   analyzeConfirmedReceipt,
   analyzeUploadedReceipt,
   confirmReceiptUpload,
-  isImageReceipt,
   mapReceiptSuggestionToDonationDraft,
   uploadReceiptToStorage,
 } from '../../services/receipt-upload.js';
@@ -647,6 +646,43 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
   const receiptList = document.getElementById('donation-receipts-list');
   const draftReceipts = [];
 
+  function parseDonationAmount(rawValue) {
+    if (!rawValue) return null;
+    const parsed = Number.parseFloat(rawValue);
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  }
+
+  function validateDonationSubmission({
+    date,
+    charityName,
+    charityId,
+    category,
+    amountRaw,
+    amount,
+  }) {
+    if (!date || !charityName) {
+      return 'Please provide date and charity name';
+    }
+
+    if (amountRaw && !Number.isFinite(amount)) {
+      return 'Please enter a valid amount';
+    }
+
+    if (amount != null && Number.isFinite(amount) && amount < 0) {
+      return 'Donation amount cannot be negative';
+    }
+
+    if (category === 'money' && (!Number.isFinite(amount) || amount <= 0)) {
+      return 'Money donations require a positive amount';
+    }
+
+    if (!charityId) {
+      return 'Please select or create a valid charity before saving this donation';
+    }
+
+    return null;
+  }
+
   // Load existing receipts if in edit mode
   if (isEditMode) {
     const existingReceipts = await db.receipts
@@ -1247,44 +1283,58 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       }
     }
 
-    const amount = parseFloat(document.getElementById('donation-amount').value) || 0;
-
-    if (!date || !charity_name) {
-      alert('Please provide date and charity name');
-      return;
-    }
+    const amountRaw = document.getElementById('donation-amount').value.trim();
+    const amount = parseDonationAmount(amountRaw);
 
     const year = new Date(date).getFullYear();
     try {
       let charityId = charity_id || (isEditMode ? existingDonation.charity_id : '') || '';
       if (!charityId) {
-        const resp = await createOrGetCharityOnServer(charity_name, charity_ein || null);
-        const charity = resp && resp.charity ? resp.charity : null;
-        if (charity && charity.id) {
-          charityId = charity.id;
-          await db.charities.put({
-            id: charity.id,
-            user_id: userId,
-            name: charity.name,
-            ein: charity.ein || '',
-            category: charity.category || null,
-            status: charity.status || null,
-            classification: charity.classification || null,
-            nonprofit_type: charity.nonprofit_type || null,
-            deductibility: charity.deductibility || null,
-            street: charity.street || null,
-            city: charity.city || null,
-            state: charity.state || null,
-            zip: charity.zip || null,
-            cached_at: Date.now(),
-          });
+        try {
+          const resp = await createOrGetCharityOnServer(charity_name, charity_ein || null);
+          const charity = resp && resp.charity ? resp.charity : null;
+          if (charity && charity.id) {
+            charityId = charity.id;
+            charityIdInput.value = charityId;
+            await db.charities.put({
+              id: charity.id,
+              user_id: userId,
+              name: charity.name,
+              ein: charity.ein || '',
+              category: charity.category || null,
+              status: charity.status || null,
+              classification: charity.classification || null,
+              nonprofit_type: charity.nonprofit_type || null,
+              deductibility: charity.deductibility || null,
+              street: charity.street || null,
+              city: charity.city || null,
+              state: charity.state || null,
+              zip: charity.zip || null,
+              cached_at: Date.now(),
+            });
+          }
+        } catch (err) {
+          console.error('Failed to resolve charity before saving donation', err);
         }
+      }
+
+      const validationError = validateDonationSubmission({
+        date,
+        charityName: charity_name,
+        charityId,
+        category,
+        amountRaw,
+        amount,
+      });
+      if (validationError) {
+        alert(validationError);
+        return;
       }
 
       const payload = {
         date,
         charity_name,
-        charity_id: charityId || null,
+        charity_id: charityId,
         charity_ein: charity_ein || null,
         category,
         amount,
@@ -1314,7 +1364,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
             user_id: userId,
             year,
             date,
-            charity_id: charityId || null,
+            charity_id: charityId,
             notes: notes || null,
             category,
             amount,
@@ -1327,7 +1377,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
             user_id: userId,
             year,
             date,
-            charity_id: charityId || null,
+            charity_id: charityId,
             notes: notes || null,
             category,
             amount,
@@ -1348,16 +1398,25 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
       } else if (pendingReceipts.length > 0) {
         // Queue these for later sync
         for (const entry of pendingReceipts) {
-          deps.Sync.queueAction(
+          const queuedReceiptId = entry.queued_id || crypto.randomUUID();
+          upsertDraftReceipt({
+            local_id: entry.local_id,
+            queued_id: queuedReceiptId,
+            donation_id: donation.id,
+            stage: 'queued',
+            warning: null,
+          });
+          await deps.Sync.queueAction(
             'receipts',
             {
+              id: queuedReceiptId,
               donation_id: donation.id,
               key: entry.key,
               file_name: entry.file_name,
               content_type: entry.content_type,
               size: entry.size,
             },
-            'attach'
+            'create'
           );
         }
       }

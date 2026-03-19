@@ -1,14 +1,17 @@
 import { jest } from '@jest/globals';
 
 const syncQueueCollection = {
+  _toArrayResult: [],
+  _countResult: 0,
   where: jest.fn(() => ({
     equals: jest.fn(() => ({
-      toArray: jest.fn(async () => []),
-      count: jest.fn(async () => 0),
+      toArray: jest.fn(async () => syncQueueCollection._toArrayResult),
+      count: jest.fn(async () => syncQueueCollection._countResult),
     })),
   })),
   add: jest.fn(),
   delete: jest.fn(),
+  bulkDelete: jest.fn(),
 };
 
 const mockDb = {
@@ -97,6 +100,8 @@ describe('Sync profile updates', () => {
     };
 
     jest.clearAllMocks();
+    syncQueueCollection._toArrayResult = [];
+    syncQueueCollection._countResult = 0;
     consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -170,5 +175,44 @@ describe('Sync profile updates', () => {
         name: 'Casey Synced',
       })
     );
+  });
+
+  test('queueAction rejects create actions without an item id', async () => {
+    await Sync.queueAction(
+      'donations',
+      {
+        user_id: 'user-1',
+        charity_id: 'charity-1',
+        amount: 25,
+      },
+      'create'
+    );
+
+    expect(mockDb.donations.put).not.toHaveBeenCalled();
+    expect(syncQueueCollection.add).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'Skipping sync queue action with missing item id',
+      'donations',
+      'create',
+      expect.objectContaining({ charity_id: 'charity-1' })
+    );
+  });
+
+  test('pushChanges drops malformed queued tasks with missing item ids', async () => {
+    syncQueueCollection._toArrayResult = [
+      {
+        id: 12,
+        user_id: 'user-1',
+        table: 'donations',
+        item_id: undefined,
+        action: 'create',
+        timestamp: Date.now(),
+      },
+    ];
+
+    await Sync.pushChanges();
+
+    expect(syncQueueCollection.bulkDelete).toHaveBeenCalledWith([12]);
+    expect(apiJson).not.toHaveBeenCalledWith('/api/sync/batch', expect.anything());
   });
 });

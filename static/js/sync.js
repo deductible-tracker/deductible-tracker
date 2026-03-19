@@ -55,6 +55,19 @@ function clearPendingProfileUpdate(userId) {
   }
 }
 
+function normalizeQueueAction(table, action) {
+  if (table === 'receipts' && action === 'attach') {
+    return 'create';
+  }
+  return typeof action === 'string' && action.trim() ? action : null;
+}
+
+function normalizeQueueItemId(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 export const Sync = {
   async pushChanges() {
     const userId = getCurrentUserId();
@@ -98,20 +111,31 @@ export const Sync = {
     };
     const taskIds = [];
     const donationUpdates = [];
+    const invalidTaskIds = [];
 
     for (const task of queue) {
       try {
-        if (!task.item_id && task.action !== 'delete') {
-          console.warn('Skipping sync task with missing item_id', task);
+        const action = normalizeQueueAction(task.table, task.action);
+        const itemId = normalizeQueueItemId(task.item_id);
+
+        if (!action) {
+          console.warn('Dropping sync task with invalid action', task);
+          invalidTaskIds.push(task.id);
+          continue;
+        }
+
+        if (!itemId) {
+          console.warn('Dropping sync task with missing item_id', task);
+          invalidTaskIds.push(task.id);
           continue;
         }
 
         if (task.table === 'donations') {
-          const donation = task.item_id ? await db.donations.get(task.item_id) : null;
-          if (donation || task.action === 'delete') {
+          const donation = await db.donations.get(itemId);
+          if (donation || action === 'delete') {
             batch.donations.push({
-              action: task.action,
-              id: task.item_id,
+              action,
+              id: itemId,
               date: donation ? donation.date : null,
               year: donation ? donation.year : null,
               category: donation ? donation.category : null,
@@ -121,12 +145,12 @@ export const Sync = {
               updated_at: donation ? donation.updated_at : null,
             });
             taskIds.push(task.id);
-            if (task.action !== 'delete') {
-              donationUpdates.push(task.item_id);
+            if (action !== 'delete') {
+              donationUpdates.push(itemId);
             }
           }
-        } else if (task.table === 'receipts' && task.action === 'create') {
-          const receipt = await db.receipts.get(task.item_id);
+        } else if (task.table === 'receipts' && action === 'create') {
+          const receipt = await db.receipts.get(itemId);
           if (receipt && receipt.donation_id) {
             batch.receipts.push({
               action: 'create',
@@ -145,7 +169,18 @@ export const Sync = {
       }
     }
 
+    if (invalidTaskIds.length > 0) {
+      await db.sync_queue.bulkDelete(invalidTaskIds);
+    }
+
     if (batch.donations.length === 0 && batch.receipts.length === 0) {
+      if (invalidTaskIds.length > 0) {
+        try {
+          window.dispatchEvent(new CustomEvent('sync-queue-changed'));
+        } catch (e) {
+          /* ignore */
+        }
+      }
       return;
     }
 
@@ -240,24 +275,46 @@ export const Sync = {
   },
 
   async queueAction(table, item, action) {
+    if (!item || typeof item !== 'object') {
+      console.warn('Skipping sync queue action with invalid item', table, action, item);
+      return;
+    }
+
+    const normalizedAction = normalizeQueueAction(table, action);
+    if (!normalizedAction) {
+      console.warn('Skipping sync queue action with invalid action', table, action, item);
+      return;
+    }
+
+    const itemId = normalizeQueueItemId(item.id);
+    if (!itemId) {
+      console.warn(
+        'Skipping sync queue action with missing item id',
+        table,
+        normalizedAction,
+        item
+      );
+      return;
+    }
+
     const userId = item.user_id || getCurrentUserId();
     if (!userId) {
       console.warn('No user id for sync queue action', table, action);
       return;
     }
     // 1. Apply to local DB immediately (Optimistic UI)
-    if (action === 'create' || action === 'update') {
-      await db.table(table).put({ ...item, user_id: userId, sync_status: 'pending' });
-    } else if (action === 'delete') {
-      await db.table(table).delete(item.id);
+    if (normalizedAction === 'create' || normalizedAction === 'update') {
+      await db.table(table).put({ ...item, id: itemId, user_id: userId, sync_status: 'pending' });
+    } else if (normalizedAction === 'delete') {
+      await db.table(table).delete(itemId);
     }
 
     // 2. Add to Queue
     await db.sync_queue.add({
       table,
       user_id: userId,
-      item_id: item.id,
-      action,
+      item_id: itemId,
+      action: normalizedAction,
       timestamp: Date.now(),
     });
 

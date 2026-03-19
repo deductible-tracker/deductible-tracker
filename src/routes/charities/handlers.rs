@@ -330,8 +330,18 @@ pub async fn delete_charity(
 
     match crate::db::charities::delete_charity(&state.db, &user.id, &charity_id).await {
         Ok(true) => (StatusCode::OK, "Deleted").into_response(),
-        Ok(false) => (StatusCode::NOT_FOUND, "Not found").into_response(),
+        Ok(false) => match crate::db::charities::count_donations_for_charity(&state.db, &user.id, &charity_id).await {
+            Ok(count) if count > 0 => (StatusCode::CONFLICT, "Charity has donations").into_response(),
+            Ok(_) => (StatusCode::NOT_FOUND, "Not found").into_response(),
+            Err(e) => {
+                tracing::error!("Charity delete recheck error: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response()
+            }
+        },
         Err(e) => {
+            if e.to_string().contains("ORA-02292") {
+                return (StatusCode::CONFLICT, "Charity has donations").into_response();
+            }
             tracing::error!("Charity delete error: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response()
         }

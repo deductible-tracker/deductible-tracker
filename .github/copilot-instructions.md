@@ -23,11 +23,20 @@ This file orients GitHub Copilot to the repository's layout, common development 
 - **Testing (Full Suite)**: `docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test`
 - **Format**: `cargo fmt` and `npm run format`
 
+### Linting & Formatting (JS)
+
+- **Auto-fix on change**: For any JavaScript/TypeScript/frontend changes or any files targeted by ESLint/Prettier, run automatic fixes before committing or opening a PR:
+  - `npm run lint:js -- --fix` (runs ESLint with auto-fix)
+  - `npm run format` (runs Prettier to reformat files)
+  - Run `npm run format:check` in CI to catch remaining formatting issues.
+  - **Fix all errors AND warnings** before final submission.
+   - **Unused variables**: Prefer removing unused variables instead of commenting them out. Before removing, perform a repo-wide search to confirm the symbol isn't referenced elsewhere, then run `npm run lint:js -- --fix` and `npm run format` to ensure no new warnings are introduced.
+
 ## Core Engineering Standards (CRITICAL)
 
 1. **Consult In-Repo Documentation**: ALWAYS check `docs/design-patterns/rust/` before suggesting Rust code.
 2. **Rust Engineering**:
-   - **Anytime Rust code is changed, ALWAYS run `cargo check`.**
+   - **Anytime Rust code is changed, ALWAYS run `cargo check` and `cargo clippy --fix --allow-dirty`.**
    - **Fix all errors AND warnings** before final submission.
    - Use `anyhow::Result` and `tracing`.
 3. **Oracle DB Patterns**:

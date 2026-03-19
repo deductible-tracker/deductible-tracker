@@ -147,12 +147,62 @@ pub struct ListParams {
     pub since: Option<String>,
 }
 
+fn validate_create_donation_request(req: &CreateDonationRequest) -> Result<(), &'static str> {
+    let has_charity_id = req
+        .charity_id
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+
+    if req.charity_name.trim().is_empty() && !has_charity_id {
+        return Err("Charity required");
+    }
+
+    if let Some(amount) = req.amount {
+        if amount < 0.0 {
+            return Err("Donation amount cannot be negative");
+        }
+    }
+
+    let category = normalize_category(&req.category).unwrap_or_else(|| "money".to_string());
+    if category == "money" && req.amount.unwrap_or(0.0) <= 0.0 {
+        return Err("Money donations require a positive amount");
+    }
+
+    Ok(())
+}
+
+fn validate_update_donation_request(req: &UpdateDonationRequest) -> Result<(), &'static str> {
+    if let Some(charity_id) = req.charity_id.as_deref() {
+        if charity_id.trim().is_empty() {
+            return Err("Charity id required");
+        }
+    }
+
+    if let Some(amount) = req.amount {
+        if amount < 0.0 {
+            return Err("Donation amount cannot be negative");
+        }
+    }
+
+    if matches!(normalize_category(&req.category).as_deref(), Some("money")) && req.amount.unwrap_or(0.0) <= 0.0 {
+        return Err("Money donations require a positive amount");
+    }
+
+    Ok(())
+}
+
 pub async fn create_donation(
     State(state): State<AppState>,
     user: AuthenticatedUser,
     Json(req): Json<CreateDonationRequest>
 ) -> impl IntoResponse {
+    if let Err(message) = validate_create_donation_request(&req) {
+        return (StatusCode::BAD_REQUEST, message).into_response();
+    }
+
     let user_id = user.id;
+    let charity_name = req.charity_name.trim().to_string();
     
     let date = NaiveDate::parse_from_str(&req.date, "%Y-%m-%d")
         .unwrap_or_else(|_| chrono::Utc::now().date_naive());
@@ -161,17 +211,17 @@ pub async fn create_donation(
     let now = chrono::Utc::now();
     let year = date.year();
     let category = normalize_category(&req.category);
-    let charity_id = if let Some(cid) = req.charity_id.clone() {
-        cid
+    let charity_id = if let Some(cid) = req.charity_id.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        cid.to_string()
     } else {
-        match crate::db::charities::find_charity_by_name_or_ein(&state.db, &user_id, &req.charity_name, &req.charity_ein).await {
+        match crate::db::charities::find_charity_by_name_or_ein(&state.db, &user_id, &charity_name, &req.charity_ein).await {
             Ok(Some(existing)) => existing.id,
             Ok(None) => {
                 let new_id = Uuid::new_v4().to_string();
                 let new_charity = NewCharity {
                     id: new_id.clone(),
                     user_id: user_id.clone(),
-                    name: req.charity_name.clone(),
+                    name: charity_name.clone(),
                     ein: req.charity_ein.clone(),
                     category: None,
                     status: None,
@@ -238,6 +288,10 @@ pub async fn update_donation(
     user: AuthenticatedUser,
     Json(req): Json<UpdateDonationRequest>
 ) -> impl IntoResponse {
+    if let Err(message) = validate_update_donation_request(&req) {
+        return (StatusCode::BAD_REQUEST, message).into_response();
+    }
+
     let user_id = user.id;
 
     let (date_opt, year_opt) = if let Some(date_str) = req.date.clone() {
@@ -254,7 +308,7 @@ pub async fn update_donation(
         date_opt,
         year_opt,
         category_opt: normalized_category,
-        charity_id_opt: req.charity_id.clone(),
+        charity_id_opt: req.charity_id.as_deref().map(str::trim).filter(|value| !value.is_empty()).map(ToString::to_string),
         amount_opt: req.amount,
         notes: req.notes.clone(),
         incoming_updated_at,
