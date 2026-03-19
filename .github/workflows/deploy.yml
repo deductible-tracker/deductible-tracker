@@ -12,6 +12,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -155,8 +156,9 @@ jobs:
           SECRETS_BASE64=$(echo "$ENV_CONTENT" | sed 's/^[[:space:]]*//' | base64 -w 0)
           
           # 2. Update OCI Instance Metadata with Image Reference and Secrets
-          # Use metadata instead of defined-tags to avoid tag validation limits
-          # and to avoid the --force requirement for defined-tags.
+          # Use metadata instead of defined-tags to avoid tag validation limits.
+          # We use --force because metadata updates still prompt for confirmation in the CLI.
           oci compute instance update --instance-id "$INSTANCE_OCID" \
-            --metadata "{\"deployed_image\": \"$IMAGE_REF\", \"app_secrets\": \"$SECRETS_BASE64\"}"
+            --metadata "{\"deployed_image\": \"$IMAGE_REF\", \"app_secrets\": \"$SECRETS_BASE64\"}" \
+            --force
           exit 0
