@@ -80,16 +80,22 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: read
     concurrency:
       group: deploy-production
       cancel-in-progress: true
     environment: production
     steps:
-      - name: Deploy to Oracle VM via SSH
-        uses: appleboy/ssh-action@v1.2.5
+      - name: Setup OCI CLI
+        uses: oracle-actions/setup-oci@v1
+        with:
+          user: ${{ secrets.OCI_USER_OCID }}
+          fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+          tenancy: ${{ secrets.OCI_TENANCY_OCID }}
+          region: ${{ secrets.OCI_REGION }}
+          key: ${{ secrets.OCI_KEY_FILE }}
+
+      - name: Update Instance Metadata Tag to Trigger Deploy
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_CONNECT_STRING: ${{ secrets.DB_CONNECT_STRING }}
@@ -107,93 +113,48 @@ jobs:
           GOOGLE_TOKEN_URL: ${{ secrets.GOOGLE_TOKEN_URL }}
           GOOGLE_USERINFO_URL: ${{ secrets.GOOGLE_USERINFO_URL }}
           GOOGLE_REDIRECT_URL: ${{ secrets.GOOGLE_REDIRECT_URL }}
-          WALLET_ZIP_BASE64: ${{ secrets.WALLET_ZIP_BASE64 }}
-          SITE_DOMAIN: ${{ secrets.SITE_DOMAIN }}
           PROPUBLICA_API_BASE_URL: ${{ secrets.PROPUBLICA_API_BASE_URL }}
           MISTRAL_API_ENDPOINT: ${{ secrets.MISTRAL_API_ENDPOINT }}
           MISTRAL_MODEL: ${{ secrets.MISTRAL_MODEL }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-        with:
-          debug: false
-          host: ${{ secrets.OCI_INSTANCE_IP }}
-          username: opc
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          timeout: 60s
-          envs: GITHUB_TOKEN,DB_USER,DB_PASSWORD,DB_CONNECT_STRING,OBJECT_STORAGE_ENDPOINT,OBJECT_STORAGE_BUCKET,OCI_REGION,OCI_ACCESS_KEY_ID,OCI_SECRET_ACCESS_KEY,JWT_SECRET,ALLOWED_ORIGINS,OAUTH_PROVIDERS,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_AUTH_URL,GOOGLE_TOKEN_URL,GOOGLE_USERINFO_URL,GOOGLE_REDIRECT_URL,WALLET_ZIP_BASE64,SITE_DOMAIN,PROPUBLICA_API_BASE_URL,MISTRAL_API_ENDPOINT,MISTRAL_MODEL,MISTRAL_API_KEY
-          script: |
-            set -euo pipefail
-            umask 077
+        run: |
+          IMAGE_REF="${{ needs.build.outputs.image_ref }}"
+          INSTANCE_OCID="${{ secrets.OCI_INSTANCE_OCID }}"
+          
+          # 1. Capture environment variables and encode them
+          ENV_CONTENT=$(cat <<EOF
+          DB_USER=$DB_USER
+          DB_PASSWORD=$DB_PASSWORD
+          DB_CONNECT_STRING=$DB_CONNECT_STRING
+          MY_WALLET_DIRECTORY=/app/wallet
+          TNS_ADMIN=/app/wallet
+          OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT
+          OBJECT_STORAGE_BUCKET=$OBJECT_STORAGE_BUCKET
+          OCI_REGION=$OCI_REGION
+          OCI_ACCESS_KEY_ID=$OCI_ACCESS_KEY_ID
+          OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY
+          JWT_SECRET=$JWT_SECRET
+          ALLOWED_ORIGINS=$ALLOWED_ORIGINS
+          OAUTH_PROVIDERS=$OAUTH_PROVIDERS
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+          GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
+          GOOGLE_AUTH_URL=$GOOGLE_AUTH_URL
+          GOOGLE_TOKEN_URL=$GOOGLE_TOKEN_URL
+          GOOGLE_USERINFO_URL=$GOOGLE_USERINFO_URL
+          GOOGLE_REDIRECT_URL=$GOOGLE_REDIRECT_URL
+          PROPUBLICA_API_BASE_URL=$PROPUBLICA_API_BASE_URL
+          MISTRAL_API_ENDPOINT=$MISTRAL_API_ENDPOINT
+          MISTRAL_MODEL=$MISTRAL_MODEL
+          MISTRAL_API_KEY=$MISTRAL_API_KEY
+          EOF
+          )
+          
+          SECRETS_BASE64=$(echo "$ENV_CONTENT" | sed 's/^[[:space:]]*//' | base64 -w 0)
+          
+          # 2. Update OCI Instance Metadata with Image Reference and Secrets
+          oci compute instance update --instance-id "$INSTANCE_OCID" \
+            --defined-tags "{\"Operations\": {\"deployed_image\": \"$IMAGE_REF\", \"app_secrets\": \"$SECRETS_BASE64\"}}"
 
-            # Ensure target dir exists and set ownership
-            sudo mkdir -p /home/opc
-            sudo chown opc:opc /home/opc
-
-            # 1. Login to GHCR (using sudo so docker daemon access is available)
-            printf "%s" "$GITHUB_TOKEN" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            # 2. Create/Update environment file safely
-            {
-              echo "DB_USER=$DB_USER"
-              echo "DB_PASSWORD=$DB_PASSWORD"
-              echo "DB_CONNECT_STRING=$DB_CONNECT_STRING"
-              echo "MY_WALLET_DIRECTORY=/app/wallet"
-              echo "TNS_ADMIN=/app/wallet"
-              echo "OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT"
-              echo "OBJECT_STORAGE_BUCKET=$OBJECT_STORAGE_BUCKET"
-              echo "OCI_REGION=$OCI_REGION"
-              echo "OCI_ACCESS_KEY_ID=$OCI_ACCESS_KEY_ID"
-              echo "OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY"
-              echo "JWT_SECRET=$JWT_SECRET"
-              echo "ALLOWED_ORIGINS=$ALLOWED_ORIGINS"
-              echo "OAUTH_PROVIDERS=$OAUTH_PROVIDERS"
-              echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID"
-              echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET"
-              echo "GOOGLE_AUTH_URL=$GOOGLE_AUTH_URL"
-              echo "GOOGLE_TOKEN_URL=$GOOGLE_TOKEN_URL"
-              echo "GOOGLE_USERINFO_URL=$GOOGLE_USERINFO_URL"
-              echo "GOOGLE_REDIRECT_URL=$GOOGLE_REDIRECT_URL"
-              echo "PROPUBLICA_API_BASE_URL=$PROPUBLICA_API_BASE_URL"
-              echo "MISTRAL_API_ENDPOINT=$MISTRAL_API_ENDPOINT"
-              echo "MISTRAL_MODEL=$MISTRAL_MODEL"
-              echo "MISTRAL_API_KEY=$MISTRAL_API_KEY"
-            } | sudo tee /home/opc/app.env > /dev/null
-
-            sudo chmod 600 /home/opc/app.env
-            sudo chown opc:opc /home/opc/app.env
-
-            # 2b. (Optional) Install unzip and hydrate wallet from secret
-            WALLET_DIR="/home/opc/wallet"
-            if [ -n "$WALLET_ZIP_BASE64" ]; then
-              if ! command -v unzip >/dev/null 2>&1; then
-                sudo yum install -y unzip
-              fi
-              sudo mkdir -p "$WALLET_DIR"
-              printf "%s" "$WALLET_ZIP_BASE64" | base64 -d | sudo tee /tmp/wallet.zip >/dev/null
-              sudo unzip -o /tmp/wallet.zip -d "$WALLET_DIR" >/dev/null
-              sudo rm -f /tmp/wallet.zip
-              
-              # If the zip contains a single top-level dir (e.g., Wallet_deductibledb), flatten it
-              TOP_DIR_COUNT=$(sudo find "$WALLET_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-              if [ "$TOP_DIR_COUNT" -eq 1 ]; then
-                TOP_DIR=$(sudo find "$WALLET_DIR" -mindepth 1 -maxdepth 1 -type d | head -n1)
-                sudo sh -c "cd \"$TOP_DIR\" && cp -a . \"$WALLET_DIR\"/"
-                sudo rm -rf "$TOP_DIR"
-              fi
-
-              # Fix sqlnet.ora WALLET_LOCATION to point to /app/wallet (container path)
-              SQLNET_PATH=$(sudo find "$WALLET_DIR" -maxdepth 2 -name sqlnet.ora | head -n1 || true)
-              if [ -n "$SQLNET_PATH" ]; then
-                sudo sed -i 's|DIRECTORY="[^"]*"|DIRECTORY="/app/wallet"|g' "$SQLNET_PATH"
-              fi
-
-              # Ensure wallet is readable by the app inside the container (appuser)
-              sudo find "$WALLET_DIR" -type d -exec chmod 755 {} \;
-              sudo find "$WALLET_DIR" -type f -exec chmod 644 {} \;
-              sudo chown -R opc:opc "$WALLET_DIR"
-              echo "Wallet contents:"
-              sudo ls -l "$WALLET_DIR"
-              sudo find "$WALLET_DIR" -maxdepth 1 -type f -ls
-            fi
 
             # 2c. Wait for DB to be reachable (parse DB_CONNECT_STRING and test TCP)
             if ! command -v nc >/dev/null 2>&1; then
