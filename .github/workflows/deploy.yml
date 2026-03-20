@@ -171,15 +171,14 @@ jobs:
           
           SECRETS_BASE64=$(echo "$ENV_CONTENT" | sed 's/^[[:space:]]*//' | base64 -w 0)
           
-          # 2. Get existing metadata to preserve user_data
-          # The OCI CLI update-instance command replaces ALL metadata if --metadata is used.
-          # We must fetch the current user_data and include it in the update.
+          # 2. Merge deployment data into existing metadata so we preserve
+          # SSH authorized keys and cloud-init user_data.
           EXISTING_METADATA=$(oci compute instance get --instance-id "$INSTANCE_OCID" --query "data.metadata" --output json)
-          USER_DATA=$(echo "$EXISTING_METADATA" | jq -r '.user_data')
+          UPDATED_METADATA=$(echo "$EXISTING_METADATA" | jq -c --arg image "$IMAGE_REF" --arg secrets "$SECRETS_BASE64" '. + {deployed_image: $image, app_secrets: $secrets}')
           
-          # 3. Update OCI Instance Metadata with Image Reference, Secrets, and preserved User Data
+          # 3. Update OCI instance metadata with the latest deployment payload.
           # We use --force because metadata updates still prompt for confirmation in the CLI.
           oci compute instance update --instance-id "$INSTANCE_OCID" \
-            --metadata "{\"deployed_image\": \"$IMAGE_REF\", \"app_secrets\": \"$SECRETS_BASE64\", \"user_data\": \"$USER_DATA\"}" \
+            --metadata "$UPDATED_METADATA" \
             --force
           exit 0

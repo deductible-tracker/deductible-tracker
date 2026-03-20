@@ -24,6 +24,9 @@ Wallet_deductibledb/
 
 # Terraform
 terraform/
+!terraform/
+terraform/*
+!terraform/cloud-init.yaml
 
 # Local SSH keys for GitHub Actions (do NOT commit)
 github_action_key
