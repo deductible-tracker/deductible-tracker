@@ -224,12 +224,7 @@ pub async fn run_app() -> anyhow::Result<()> {
         .route("/api/auth/risc", post(auth::risc_webhook))
         .layer(GovernorLayer::new(auth_governor_config));
 
-    // Router Setup
-    let app = Router::new()
-        .route("/", get(serve_index))
-        .route("/index.html", get(serve_index))
-        .route("/health", get(health_check))
-        // API Routes
+    let api_router = Router::new()
         .route("/api/donations", get(routes::donations::list_donations).post(routes::donations::create_donation))
         .route("/api/donations/{id}", delete(routes::donations::delete_donation).put(routes::donations::update_donation))
         .route("/api/donations/import", post(routes::donations::import_donations))
@@ -256,6 +251,16 @@ pub async fn run_app() -> anyhow::Result<()> {
         .route("/api/me/import", post(auth::import_me))
         .route("/api/config", get(auth::get_config))
         .merge(auth_router)
+        .layer(from_fn(require_auth))
+        .layer(cors)
+        .layer(GovernorLayer::new(governor_config));
+
+    // Router Setup
+    let app = Router::new()
+        .merge(api_router)
+        .route("/", get(serve_index))
+        .route("/index.html", get(serve_index))
+        .route("/health", get(health_check))
         .route("/sw.js", get(serve_service_worker))
         .route("/assets/tailwind.css", get(serve_tailwind_css))
         .nest_service(
@@ -267,9 +272,6 @@ pub async fn run_app() -> anyhow::Result<()> {
         .nest_service("/fonts", ServeDir::new("static/fonts"))
         .fallback(get(spa_fallback))
         .layer(from_fn(static_cache_control))
-        .layer(from_fn(require_auth))
-        .layer(cors)
-        .layer(GovernorLayer::new(governor_config))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(SetResponseHeaderLayer::overriding(
