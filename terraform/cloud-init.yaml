@@ -41,11 +41,6 @@ write_files:
           chown opc:opc /home/opc/app.env
       fi
 
-        if [ -f /home/opc/app.env ]; then
-          # shellcheck disable=SC1091
-          . /home/opc/app.env
-        fi
-
       # Compare with last deployed
       LAST_IMAGE=""
       if [ -f "$STATE_FILE" ]; then
@@ -55,8 +50,10 @@ write_files:
       if [ "$TAGS" != "$LAST_IMAGE" ]; then
           echo "New deployment detected: $TAGS"
 
-          if [ -n "$GHCR_USERNAME" ] && [ -n "$GHCR_TOKEN" ]; then
-              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          GHCR_USERNAME_VALUE=$(grep '^GHCR_USERNAME=' /home/opc/app.env 2>/dev/null | cut -d'=' -f2-)
+          GHCR_TOKEN_VALUE=$(grep '^GHCR_TOKEN=' /home/opc/app.env 2>/dev/null | cut -d'=' -f2-)
+          if [ -n "$GHCR_USERNAME_VALUE" ] && [ -n "$GHCR_TOKEN_VALUE" ]; then
+            echo "$GHCR_TOKEN_VALUE" | docker login ghcr.io -u "$GHCR_USERNAME_VALUE" --password-stdin
           fi
           
             # 1. Pull the new image
