@@ -100,6 +100,8 @@ jobs:
 
       - name: Update Instance Metadata Tag to Trigger Deploy
         env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_CONNECT_STRING: ${{ secrets.DB_CONNECT_STRING }}
@@ -145,6 +147,8 @@ jobs:
           DB_USER=$DB_USER
           DB_PASSWORD=$DB_PASSWORD
           DB_CONNECT_STRING=$DB_CONNECT_STRING
+          GHCR_USERNAME=$GHCR_USERNAME
+          GHCR_TOKEN=$GHCR_TOKEN
           MY_WALLET_DIRECTORY=/app/wallet
           TNS_ADMIN=/app/wallet
           OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT
