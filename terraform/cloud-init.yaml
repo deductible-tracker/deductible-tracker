@@ -119,8 +119,8 @@ runcmd:
   - systemctl stop cockpit.socket || true
   - systemctl disable cockpit.socket || true
   - usermod -aG docker opc
-  # Configure SSH firewall (Restore defaults for testing)
-  - [sh, -c, 'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --add-service=ssh; firewall-cmd --permanent --add-port=2222/tcp; firewall-cmd --reload; fi']
+  # Configure host firewall for SSH and public web traffic.
+  - [sh, -c, 'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --add-service=ssh; firewall-cmd --permanent --add-port=2222/tcp; firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --reload; fi']
   - [sh, -c, 'sshd -t && systemctl enable --now sshd && systemctl reload-or-restart sshd']
   # Setup OCI Logging Agent
   - [sh, -c, 'systemctl enable --now oracle-cloud-agent && systemctl restart oracle-cloud-agent-updater']
