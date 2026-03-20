@@ -23,10 +23,17 @@ public/assets/
 Wallet_deductibledb/
 
 # Terraform
-terraform/
-!terraform/
-terraform/*
-!terraform/cloud-init.yaml
+.terraform/
+terraform/*.json
+terraform/*.txt
+terraform/*.py
+terraform/tfplan*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
 
 # Local SSH keys for GitHub Actions (do NOT commit)
 github_action_key
