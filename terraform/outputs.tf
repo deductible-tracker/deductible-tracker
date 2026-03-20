@@ -1,5 +1,5 @@
 output "instance_public_ip" {
-  value = oci_core_instance.app_server.public_ip
+  value = oci_core_public_ip.app_server_reserved.ip_address
 }
 
 output "db_connection_string" {

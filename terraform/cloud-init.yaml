@@ -55,9 +55,9 @@ write_files:
           if [ -n "$GHCR_USERNAME_VALUE" ] && [ -n "$GHCR_TOKEN_VALUE" ]; then
             echo "$GHCR_TOKEN_VALUE" | docker login ghcr.io -u "$GHCR_USERNAME_VALUE" --password-stdin
           fi
-          
-            # 1. Pull the new image
-              if ! docker pull "$TAGS"; then
+
+          # 1. Pull the new image
+          if ! docker pull "$TAGS"; then
               echo "Failed to pull image $TAGS"
               exit 1
           fi
@@ -159,13 +159,6 @@ write_files:
 
       systemctl enable --now newrelic-infra
       systemctl restart newrelic-infra
-
-  - path: /etc/ssh/sshd_config.d/custom_port.conf
-    owner: root:root
-    permissions: '0644'
-    content: |
-      Port 2222
-
 groups:
   - docker
 
@@ -177,9 +170,8 @@ runcmd:
   - systemctl stop cockpit.socket || true
   - systemctl disable cockpit.socket || true
   - usermod -aG docker opc
-  # Configure host firewall for SSH and public web traffic.
-  - [sh, -c, 'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --add-service=ssh; firewall-cmd --permanent --add-port=2222/tcp; firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --reload; fi']
-  - [sh, -c, 'sshd -t && systemctl enable --now sshd && systemctl reload-or-restart sshd']
+  # Configure host firewall for public web traffic only.
+  - [sh, -c, 'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --remove-service=ssh || true; firewall-cmd --permanent --remove-port=2222/tcp || true; firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --reload; fi']
   # Setup OCI Logging Agent
   - [sh, -c, 'systemctl enable --now oracle-cloud-agent && systemctl restart oracle-cloud-agent-updater']
   - [sh, -c, '/usr/local/bin/configure-newrelic-infra.sh || true']

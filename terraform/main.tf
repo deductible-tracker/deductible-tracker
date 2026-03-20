@@ -56,40 +56,13 @@ resource "oci_core_security_list" "main" {
       max = 80
     }
   }
-  
+
   ingress_security_rules {
     protocol = "6" # TCP
     source   = "0.0.0.0/0"
     tcp_options {
       min = 443
       max = 443
-    }
-  }
-  
-    ingress_security_rules {
-    protocol = "6" # TCP
-    source   = "0.0.0.0/0"
-    tcp_options {
-      min = 8080
-      max = 8080
-    }
-  }
-
-  ingress_security_rules {
-    protocol = "6" # TCP
-    source   = "0.0.0.0/0"
-    tcp_options {
-      min = 22
-      max = 22
-    }
-  }
-
-  ingress_security_rules {
-    protocol = "6" # TCP
-    source   = "0.0.0.0/0"
-    tcp_options {
-      min = 2222
-      max = 2222
     }
   }
 }
@@ -159,7 +132,7 @@ resource "oci_identity_user" "app_user" {
   compartment_id = var.compartment_id
   name           = "deductible_app_user"
   description    = "Service account for Deductible Tracker App"
-  email          = "joshkraemer@gmail.com"
+  email          = var.app_user_email
 }
 
 resource "oci_identity_group" "app_group" {
@@ -177,7 +150,7 @@ resource "oci_identity_policy" "app_policy" {
   compartment_id = var.compartment_id
   name           = "deductible_app_policy"
   description    = "Allow app to manage receipts bucket"
-  statements     = [
+  statements = [
     "Allow group ${oci_identity_group.app_group.name} to manage objects in compartment id ${var.compartment_id} where target.bucket.name='${oci_objectstorage_bucket.receipts_bucket.name}'"
   ]
 }
@@ -210,6 +183,12 @@ resource "oci_core_instance" "app_server" {
   compartment_id      = var.compartment_id
   shape               = var.instance_shape
 
+  lifecycle {
+    ignore_changes = [
+      metadata,
+    ]
+  }
+
   dynamic "shape_config" {
     for_each = length(regexall("Flex", var.instance_shape)) > 0 ? [1] : []
     content {
@@ -226,7 +205,7 @@ resource "oci_core_instance" "app_server" {
 
   create_vnic_details {
     subnet_id        = oci_core_subnet.public.id
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   metadata = {
@@ -237,6 +216,33 @@ resource "oci_core_instance" "app_server" {
   defined_tags = {
     "Operations.deployed_image" = "initial"
   }
+}
+
+data "oci_core_vnic_attachments" "app_server" {
+  compartment_id = var.compartment_id
+  instance_id    = oci_core_instance.app_server.id
+}
+
+data "oci_core_vnic" "app_server_primary" {
+  vnic_id = data.oci_core_vnic_attachments.app_server.vnic_attachments[0].vnic_id
+}
+
+data "oci_core_private_ips" "app_server_primary" {
+  vnic_id = data.oci_core_vnic.app_server_primary.id
+}
+
+locals {
+  app_server_primary_private_ip_ids = [
+    for private_ip in data.oci_core_private_ips.app_server_primary.private_ips : private_ip.id
+    if private_ip.is_primary
+  ]
+}
+
+resource "oci_core_public_ip" "app_server_reserved" {
+  compartment_id = var.compartment_id
+  display_name   = "deductible-app-server-ip"
+  lifetime       = "RESERVED"
+  private_ip_id  = local.app_server_primary_private_ip_ids[0]
 }
 
 # --- IAM for Metadata Pull (Instance Principals) ---
@@ -252,7 +258,7 @@ resource "oci_identity_policy" "instance_metadata_policy" {
   compartment_id = var.compartment_id
   name           = "deductible_instance_metadata_policy"
   description    = "Allow instance to read its own metadata/tags"
-  statements     = [
+  statements = [
     "Allow dynamic-group ${oci_identity_dynamic_group.app_instances.name} to read instances in compartment id ${var.compartment_id}"
   ]
 }
