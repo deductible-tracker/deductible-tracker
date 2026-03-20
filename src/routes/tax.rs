@@ -1,10 +1,10 @@
+use crate::auth::AuthenticatedUser;
 use axum::{
     extract::Query,
-    response::{IntoResponse, Json as AxumJson},
     http::StatusCode,
+    response::{IntoResponse, Json as AxumJson},
 };
 use serde::{Deserialize, Serialize};
-use crate::auth::AuthenticatedUser;
 
 #[derive(Deserialize)]
 pub struct MarginalRateQuery {
@@ -39,40 +39,152 @@ fn normalize_filing_status(status: Option<&str>) -> &'static str {
 
 fn brackets_for_status(filing_status: &str) -> &'static [TaxBracket] {
     const SINGLE: [TaxBracket; 7] = [
-        TaxBracket { rate: 0.10, min: 0.0, max: Some(11_925.0) },
-        TaxBracket { rate: 0.12, min: 11_925.0, max: Some(48_475.0) },
-        TaxBracket { rate: 0.22, min: 48_475.0, max: Some(103_350.0) },
-        TaxBracket { rate: 0.24, min: 103_350.0, max: Some(197_300.0) },
-        TaxBracket { rate: 0.32, min: 197_300.0, max: Some(250_525.0) },
-        TaxBracket { rate: 0.35, min: 250_525.0, max: Some(626_350.0) },
-        TaxBracket { rate: 0.37, min: 626_350.0, max: None },
+        TaxBracket {
+            rate: 0.10,
+            min: 0.0,
+            max: Some(11_925.0),
+        },
+        TaxBracket {
+            rate: 0.12,
+            min: 11_925.0,
+            max: Some(48_475.0),
+        },
+        TaxBracket {
+            rate: 0.22,
+            min: 48_475.0,
+            max: Some(103_350.0),
+        },
+        TaxBracket {
+            rate: 0.24,
+            min: 103_350.0,
+            max: Some(197_300.0),
+        },
+        TaxBracket {
+            rate: 0.32,
+            min: 197_300.0,
+            max: Some(250_525.0),
+        },
+        TaxBracket {
+            rate: 0.35,
+            min: 250_525.0,
+            max: Some(626_350.0),
+        },
+        TaxBracket {
+            rate: 0.37,
+            min: 626_350.0,
+            max: None,
+        },
     ];
     const MARRIED_JOINT: [TaxBracket; 7] = [
-        TaxBracket { rate: 0.10, min: 0.0, max: Some(23_850.0) },
-        TaxBracket { rate: 0.12, min: 23_850.0, max: Some(96_950.0) },
-        TaxBracket { rate: 0.22, min: 96_950.0, max: Some(206_700.0) },
-        TaxBracket { rate: 0.24, min: 206_700.0, max: Some(394_600.0) },
-        TaxBracket { rate: 0.32, min: 394_600.0, max: Some(501_050.0) },
-        TaxBracket { rate: 0.35, min: 501_050.0, max: Some(751_600.0) },
-        TaxBracket { rate: 0.37, min: 751_600.0, max: None },
+        TaxBracket {
+            rate: 0.10,
+            min: 0.0,
+            max: Some(23_850.0),
+        },
+        TaxBracket {
+            rate: 0.12,
+            min: 23_850.0,
+            max: Some(96_950.0),
+        },
+        TaxBracket {
+            rate: 0.22,
+            min: 96_950.0,
+            max: Some(206_700.0),
+        },
+        TaxBracket {
+            rate: 0.24,
+            min: 206_700.0,
+            max: Some(394_600.0),
+        },
+        TaxBracket {
+            rate: 0.32,
+            min: 394_600.0,
+            max: Some(501_050.0),
+        },
+        TaxBracket {
+            rate: 0.35,
+            min: 501_050.0,
+            max: Some(751_600.0),
+        },
+        TaxBracket {
+            rate: 0.37,
+            min: 751_600.0,
+            max: None,
+        },
     ];
     const MARRIED_SEPARATE: [TaxBracket; 7] = [
-        TaxBracket { rate: 0.10, min: 0.0, max: Some(11_925.0) },
-        TaxBracket { rate: 0.12, min: 11_925.0, max: Some(48_475.0) },
-        TaxBracket { rate: 0.22, min: 48_475.0, max: Some(103_350.0) },
-        TaxBracket { rate: 0.24, min: 103_350.0, max: Some(197_300.0) },
-        TaxBracket { rate: 0.32, min: 197_300.0, max: Some(250_525.0) },
-        TaxBracket { rate: 0.35, min: 250_525.0, max: Some(375_800.0) },
-        TaxBracket { rate: 0.37, min: 375_800.0, max: None },
+        TaxBracket {
+            rate: 0.10,
+            min: 0.0,
+            max: Some(11_925.0),
+        },
+        TaxBracket {
+            rate: 0.12,
+            min: 11_925.0,
+            max: Some(48_475.0),
+        },
+        TaxBracket {
+            rate: 0.22,
+            min: 48_475.0,
+            max: Some(103_350.0),
+        },
+        TaxBracket {
+            rate: 0.24,
+            min: 103_350.0,
+            max: Some(197_300.0),
+        },
+        TaxBracket {
+            rate: 0.32,
+            min: 197_300.0,
+            max: Some(250_525.0),
+        },
+        TaxBracket {
+            rate: 0.35,
+            min: 250_525.0,
+            max: Some(375_800.0),
+        },
+        TaxBracket {
+            rate: 0.37,
+            min: 375_800.0,
+            max: None,
+        },
     ];
     const HEAD_HOUSEHOLD: [TaxBracket; 7] = [
-        TaxBracket { rate: 0.10, min: 0.0, max: Some(17_000.0) },
-        TaxBracket { rate: 0.12, min: 17_000.0, max: Some(64_850.0) },
-        TaxBracket { rate: 0.22, min: 64_850.0, max: Some(103_350.0) },
-        TaxBracket { rate: 0.24, min: 103_350.0, max: Some(197_300.0) },
-        TaxBracket { rate: 0.32, min: 197_300.0, max: Some(250_500.0) },
-        TaxBracket { rate: 0.35, min: 250_500.0, max: Some(626_350.0) },
-        TaxBracket { rate: 0.37, min: 626_350.0, max: None },
+        TaxBracket {
+            rate: 0.10,
+            min: 0.0,
+            max: Some(17_000.0),
+        },
+        TaxBracket {
+            rate: 0.12,
+            min: 17_000.0,
+            max: Some(64_850.0),
+        },
+        TaxBracket {
+            rate: 0.22,
+            min: 64_850.0,
+            max: Some(103_350.0),
+        },
+        TaxBracket {
+            rate: 0.24,
+            min: 103_350.0,
+            max: Some(197_300.0),
+        },
+        TaxBracket {
+            rate: 0.32,
+            min: 197_300.0,
+            max: Some(250_500.0),
+        },
+        TaxBracket {
+            rate: 0.35,
+            min: 250_500.0,
+            max: Some(626_350.0),
+        },
+        TaxBracket {
+            rate: 0.37,
+            min: 626_350.0,
+            max: None,
+        },
     ];
 
     match filing_status {
@@ -117,5 +229,6 @@ pub async fn marginal_rate(
         agi,
         selected_rate,
         brackets: brackets.to_vec(),
-    }).into_response()
+    })
+    .into_response()
 }

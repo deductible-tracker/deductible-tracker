@@ -102,6 +102,64 @@ write_files:
           fi
       fi
 
+  - path: /usr/local/bin/configure-newrelic-infra.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      APP_ENV="/home/opc/app.env"
+      REPO_FILE="/etc/yum.repos.d/newrelic-infra.repo"
+      CONFIG_FILE="/etc/newrelic-infra.yml"
+
+      if [ ! -f "$APP_ENV" ]; then
+          exit 0
+      fi
+
+      LICENSE_KEY=$(grep '^NEW_RELIC_LICENSE_KEY=' "$APP_ENV" 2>/dev/null | cut -d'=' -f2- || true)
+      if [ -z "$LICENSE_KEY" ]; then
+          if systemctl list-unit-files newrelic-infra.service >/dev/null 2>&1; then
+              systemctl disable --now newrelic-infra >/dev/null 2>&1 || true
+          fi
+          exit 0
+      fi
+
+      if ! rpm -q newrelic-infra >/dev/null 2>&1; then
+          rpm --import https://download.newrelic.com/infrastructure_agent/gpg/newrelic-infra.gpg
+          cat > "$REPO_FILE" <<'EOF'
+      [newrelic-infra]
+      name=New Relic Infrastructure
+      baseurl=https://download.newrelic.com/infrastructure_agent/linux/yum/el/9/$basearch
+      enabled=1
+      gpgcheck=1
+      repo_gpgcheck=0
+      gpgkey=https://download.newrelic.com/infrastructure_agent/gpg/newrelic-infra.gpg
+      EOF
+          dnf install -y newrelic-infra
+      fi
+
+      HOSTNAME_VALUE=$(hostnamectl --static 2>/dev/null || hostname)
+      DEPLOY_ENV=$(grep '^RUST_ENV=' "$APP_ENV" 2>/dev/null | cut -d'=' -f2- || true)
+      if [ -z "$DEPLOY_ENV" ]; then
+          DEPLOY_ENV="production"
+      fi
+
+      cat > "$CONFIG_FILE" <<EOF
+      license_key: ${LICENSE_KEY}
+      display_name: ${HOSTNAME_VALUE}
+      log:
+        level: info
+      custom_attributes:
+        service: deductible-tracker
+        environment: ${DEPLOY_ENV}
+        provider: oracle
+        runtime: docker
+      EOF
+
+      systemctl enable --now newrelic-infra
+      systemctl restart newrelic-infra
+
   - path: /etc/ssh/sshd_config.d/custom_port.conf
     owner: root:root
     permissions: '0644'
@@ -124,6 +182,8 @@ runcmd:
   - [sh, -c, 'sshd -t && systemctl enable --now sshd && systemctl reload-or-restart sshd']
   # Setup OCI Logging Agent
   - [sh, -c, 'systemctl enable --now oracle-cloud-agent && systemctl restart oracle-cloud-agent-updater']
+  - [sh, -c, '/usr/local/bin/configure-newrelic-infra.sh || true']
   # Setup cron for polling (every minute)
   - [sh, -c, '(crontab -l 2>/dev/null; echo "* * * * * /home/opc/poll-deploy.sh >> /home/opc/deploy.log 2>&1") | crontab -']
+  - [sh, -c, '(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/configure-newrelic-infra.sh >> /var/log/newrelic-infra-bootstrap.log 2>&1") | crontab -']
 

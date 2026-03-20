@@ -6,11 +6,15 @@ use std::path::{Path, PathBuf};
 fn parse_utc_from_opt_string_tests() {
     let s = Some("2020-01-02T03:04:05+00:00".to_string());
     let dt = deductible_tracker::db::oracle::donations::parse_utc_from_opt_string(s);
-    let expected = chrono::DateTime::parse_from_rfc3339("2020-01-02T03:04:05+00:00").unwrap().with_timezone(&Utc);
+    let expected = chrono::DateTime::parse_from_rfc3339("2020-01-02T03:04:05+00:00")
+        .unwrap()
+        .with_timezone(&Utc);
     assert_eq!(dt, expected);
 
     let before = Utc::now();
-    let dt2 = deductible_tracker::db::oracle::donations::parse_utc_from_opt_string(Some("not-a-date".to_string()));
+    let dt2 = deductible_tracker::db::oracle::donations::parse_utc_from_opt_string(Some(
+        "not-a-date".to_string(),
+    ));
     let after = Utc::now();
     assert!(dt2 >= before && dt2 <= after);
 
@@ -22,8 +26,8 @@ fn parse_utc_from_opt_string_tests() {
 
 // Include asset_helpers.rs in a local test module so we can test its free functions
 mod asset_helpers_test {
-    use std::path::{Path, PathBuf};
     use std::fs;
+    use std::path::{Path, PathBuf};
     include!("../src/main_sections/assets/asset_helpers.rs");
     #[test]
     fn has_fingerprint_suffix_and_relative() {
@@ -52,4 +56,3 @@ mod asset_helpers_test {
         assert!(!m.is_empty());
     }
 }
-

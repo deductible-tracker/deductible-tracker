@@ -1,11 +1,13 @@
 pub mod db;
 
 #[cfg(feature = "server")]
-mod routes;
-#[cfg(feature = "server")]
 mod auth;
 #[cfg(feature = "server")]
+mod observability;
+#[cfg(feature = "server")]
 mod ocr;
+#[cfg(feature = "server")]
+mod routes;
 #[cfg(feature = "server")]
 mod storage;
 

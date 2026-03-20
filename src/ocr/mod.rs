@@ -28,8 +28,8 @@ mod real {
     use reqwest::Client;
     use serde_json::{json, Value};
 
-    use crate::AppState;
     use super::{DonationReceiptSuggestion, ReceiptAnalysis};
+    use crate::AppState;
 
     const MAX_OCR_BYTES: usize = 10 * 1024 * 1024;
 
@@ -101,8 +101,11 @@ mod real {
         key: &str,
         hinted_content_type: Option<&str>,
     ) -> anyhow::Result<ReceiptAnalysis> {
-        let api_key = state.mistral_api_key.as_ref().ok_or_else(|| anyhow!("Mistral API key not configured"))?;
-        
+        let api_key = state
+            .mistral_api_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("Mistral API key not configured"))?;
+
         let url = crate::storage::presign_url(state, "GET", key, 300)?;
         let client = Client::new();
         let response = client
@@ -110,12 +113,15 @@ mod real {
             .send()
             .await
             .context("downloading uploaded receipt")?;
-        
+
         if !response.status().is_success() {
             return Err(anyhow!("failed to download object: {}", response.status()));
         }
 
-        let bytes = response.bytes().await.context("reading uploaded receipt bytes")?;
+        let bytes = response
+            .bytes()
+            .await
+            .context("reading uploaded receipt bytes")?;
         if bytes.is_empty() || bytes.len() > MAX_OCR_BYTES {
             return Err(anyhow!("receipt size is invalid for OCR"));
         }
@@ -162,7 +168,7 @@ mod real {
         }
 
         let ocr_result: Value = resp.json().await.context("parsing Mistral OCR response")?;
-        
+
         // Use document_annotation directly from the root
         let suggestion_val = ocr_result.get("document_annotation")
             .ok_or_else(|| {
@@ -171,19 +177,28 @@ mod real {
             })?;
 
         let suggestion: DonationReceiptSuggestion = match suggestion_val {
-            Value::String(s) => {
-                serde_json::from_str(s).map_err(|e| {
-                    tracing::error!("Failed to deserialize DonationReceiptSuggestion from string: {}. Content: {}", e, s);
-                    anyhow!("deserializing donation suggestion string: {}", e)
-                })?
+            Value::String(s) => serde_json::from_str(s).map_err(|e| {
+                tracing::error!(
+                    "Failed to deserialize DonationReceiptSuggestion from string: {}. Content: {}",
+                    e,
+                    s
+                );
+                anyhow!("deserializing donation suggestion string: {}", e)
+            })?,
+            Value::Object(_) => serde_json::from_value(suggestion_val.clone()).map_err(|e| {
+                tracing::error!(
+                    "Failed to deserialize DonationReceiptSuggestion from object: {}. Object: {:?}",
+                    e,
+                    suggestion_val
+                );
+                anyhow!("deserializing donation suggestion object: {}", e)
+            })?,
+            _ => {
+                return Err(anyhow!(
+                    "Unexpected type for document_annotation: {:?}",
+                    suggestion_val
+                ))
             }
-            Value::Object(_) => {
-                serde_json::from_value(suggestion_val.clone()).map_err(|e| {
-                    tracing::error!("Failed to deserialize DonationReceiptSuggestion from object: {}. Object: {:?}", e, suggestion_val);
-                    anyhow!("deserializing donation suggestion object: {}", e)
-                })?
-            }
-            _ => return Err(anyhow!("Unexpected type for document_annotation: {:?}", suggestion_val)),
         };
 
         let ocr_date = suggestion.date_of_donation;

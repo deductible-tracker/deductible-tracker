@@ -1,5 +1,5 @@
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDate, DateTime, Utc};
 
 #[derive(Debug, Clone)]
 pub struct UserProfileUpsert {
@@ -144,7 +144,6 @@ pub struct Donation {
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Receipt {

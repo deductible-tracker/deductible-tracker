@@ -1,6 +1,6 @@
 use deductible_tracker::db;
-use uuid::Uuid;
 use deductible_tracker::db::models::{NewCharity, NewDonation, NewReceipt};
+use uuid::Uuid;
 
 #[tokio::test]
 async fn receipt_ocr_and_audit_flow() {
@@ -32,8 +32,8 @@ async fn receipt_ocr_and_audit_flow() {
         created_at: now,
     };
     db::create_charity(&pool, &charity)
-    .await
-    .expect("create_charity");
+        .await
+        .expect("create_charity");
 
     let donation_id = format!("test-donation-{}", Uuid::new_v4());
     let donation_date = chrono::NaiveDate::from_ymd_opt(2026, 2, 18).expect("valid date");
@@ -49,8 +49,8 @@ async fn receipt_ocr_and_audit_flow() {
         created_at: now,
     };
     db::add_donation(&pool, &donation)
-    .await
-    .expect("add_donation");
+        .await
+        .expect("add_donation");
 
     let receipt = NewReceipt {
         id: receipt_id.clone(),
@@ -69,11 +69,22 @@ async fn receipt_ocr_and_audit_flow() {
     let ocr_amount = Some(12345i64);
     let ocr_status = Some("done".to_string());
 
-    let set_ok = db::set_receipt_ocr(&pool, &receipt_id, &ocr_text, &ocr_date, &ocr_amount, &ocr_status).await.expect("set_receipt_ocr");
+    let set_ok = db::set_receipt_ocr(
+        &pool,
+        &receipt_id,
+        &ocr_text,
+        &ocr_date,
+        &ocr_amount,
+        &ocr_status,
+    )
+    .await
+    .expect("set_receipt_ocr");
     assert!(set_ok, "set_receipt_ocr returned false");
 
     // Fetch receipt and validate OCR fields
-    let fetched = db::get_receipt(&pool, &user_id, &receipt_id).await.expect("get_receipt");
+    let fetched = db::get_receipt(&pool, &user_id, &receipt_id)
+        .await
+        .expect("get_receipt");
     assert!(fetched.is_some(), "receipt not found");
     let r = fetched.unwrap();
     assert_eq!(r.ocr_text.unwrap_or_default(), "Sample OCR text");
@@ -83,8 +94,20 @@ async fn receipt_ocr_and_audit_flow() {
     // Log an audit entry and ensure it's retrievable
     let audit_id = format!("audit-test-{}", Uuid::new_v4());
     let details = Some("Test audit entry".to_string());
-    db::log_audit(&pool, &audit_id, &user_id, "test_action", "receipts", &Some(receipt_id.clone()), &details).await.expect("log_audit");
+    db::log_audit(
+        &pool,
+        &audit_id,
+        &user_id,
+        "test_action",
+        "receipts",
+        &Some(receipt_id.clone()),
+        &details,
+    )
+    .await
+    .expect("log_audit");
 
-    let logs = db::list_audit_logs(&pool, &user_id, None).await.expect("list_audit_logs");
+    let logs = db::list_audit_logs(&pool, &user_id, None)
+        .await
+        .expect("list_audit_logs");
     assert!(!logs.is_empty(), "expected at least one audit log");
 }

@@ -1,8 +1,8 @@
+use crate::db::models::Charity;
+use crate::db::oracle::OracleConnectionManager;
 use anyhow::anyhow;
 use r2d2::Pool;
 use tokio::task;
-use crate::db::oracle::OracleConnectionManager;
-use crate::db::models::Charity;
 
 pub(crate) async fn list_charities(
     pool: &Pool<OracleConnectionManager>,

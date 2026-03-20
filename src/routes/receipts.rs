@@ -1,19 +1,19 @@
+use crate::auth::AuthenticatedUser;
+use crate::AppState;
 use axum::{
-    extract::{State, Json, Query},
-    response::{IntoResponse, Json as AxumJson},
+    extract::{Json, Query, State},
     http::StatusCode,
+    response::{IntoResponse, Json as AxumJson},
 };
+use chrono::Datelike;
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
-use chrono::Datelike;
-use crate::AppState;
-use crate::auth::AuthenticatedUser;
 
 use crate::db;
+use crate::db::models::NewReceipt;
 use crate::ocr;
 use serde::Serialize;
-use crate::db::models::NewReceipt;
 
 const MAX_RECEIPT_SIZE_BYTES: i64 = 10 * 1024 * 1024;
 const PRESIGN_EXPIRATION_SECS: u64 = 300;
@@ -62,7 +62,7 @@ pub struct UploadRequest {
 pub async fn generate_upload_url(
     State(state): State<AppState>,
     user: AuthenticatedUser,
-    Json(req): Json<UploadRequest>
+    Json(req): Json<UploadRequest>,
 ) -> impl IntoResponse {
     let user_id = user.id;
 
@@ -100,7 +100,7 @@ pub struct PresignReadRequest {
 pub async fn generate_read_url(
     State(state): State<AppState>,
     user: AuthenticatedUser,
-    Json(req): Json<PresignReadRequest>
+    Json(req): Json<PresignReadRequest>,
 ) -> impl IntoResponse {
     let key = crate::storage::normalize_object_key(&state.bucket_name, &req.key);
     let user_prefix = crate::storage::user_receipt_prefix(&user.id);
@@ -141,7 +141,7 @@ struct CreatedResponse {
 pub async fn confirm_receipt(
     State(state): State<AppState>,
     user: AuthenticatedUser,
-    Json(mut req): Json<ConfirmReceiptRequest>
+    Json(mut req): Json<ConfirmReceiptRequest>,
 ) -> impl IntoResponse {
     req.donation_id = req.donation_id.trim().to_string();
     req.key = crate::storage::normalize_object_key(&state.bucket_name, &req.key);
@@ -158,7 +158,11 @@ pub async fn confirm_receipt(
 
         if let Some(actual_ext) = req.key.rsplit('.').next() {
             if actual_ext != expected_ext {
-                return (StatusCode::BAD_REQUEST, "File extension/content type mismatch").into_response();
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "File extension/content type mismatch",
+                )
+                    .into_response();
             }
         }
     }
@@ -240,7 +244,7 @@ pub struct OcrResponse {
 pub async fn ocr_receipt(
     State(state): State<AppState>,
     user: AuthenticatedUser,
-    Json(req): Json<OcrRequest>
+    Json(req): Json<OcrRequest>,
 ) -> impl IntoResponse {
     let (receipt_id, receipt_key, content_type, size) = if let Some(receipt_id) = req.id.clone() {
         match crate::db::receipts::get_receipt(&state.db, &user.id, &receipt_id).await {
@@ -296,15 +300,19 @@ pub async fn ocr_receipt(
                 .await
                 {
                     tracing::error!("Failed to persist OCR analysis: {}", e);
-                    return (StatusCode::OK, AxumJson(OcrResponse {
-                        status: "failed".to_string(),
-                        id: receipt_id,
-                        ocr_text: None,
-                        ocr_date: None,
-                        ocr_amount_usd: None,
-                        suggestion: None,
-                        warning: Some("Unable to prepopulate donation data".to_string()),
-                    })).into_response();
+                    return (
+                        StatusCode::OK,
+                        AxumJson(OcrResponse {
+                            status: "failed".to_string(),
+                            id: receipt_id,
+                            ocr_text: None,
+                            ocr_date: None,
+                            ocr_amount_usd: None,
+                            suggestion: None,
+                            warning: Some("Unable to prepopulate donation data".to_string()),
+                        }),
+                    )
+                        .into_response();
                 }
 
                 let audit_id = Uuid::new_v4().to_string();
@@ -325,7 +333,11 @@ pub async fn ocr_receipt(
                 )
                 .await
                 {
-                    tracing::error!("Failed to write audit log for OCR run (audit_id={}): {}", audit_id, e);
+                    tracing::error!(
+                        "Failed to write audit log for OCR run (audit_id={}): {}",
+                        audit_id,
+                        e
+                    );
                 }
             }
 
@@ -342,15 +354,19 @@ pub async fn ocr_receipt(
         }
         Err(e) => {
             tracing::error!("OCR run failed: {}", e);
-            (StatusCode::OK, AxumJson(OcrResponse {
-                status: "failed".to_string(),
-                id: receipt_id,
-                ocr_text: None,
-                ocr_date: None,
-                ocr_amount_usd: None,
-                suggestion: None,
-                warning: Some("Unable to prepopulate donation data".to_string()),
-            })).into_response()
+            (
+                StatusCode::OK,
+                AxumJson(OcrResponse {
+                    status: "failed".to_string(),
+                    id: receipt_id,
+                    ocr_text: None,
+                    ocr_date: None,
+                    ocr_amount_usd: None,
+                    suggestion: None,
+                    warning: Some("Unable to prepopulate donation data".to_string()),
+                }),
+            )
+                .into_response()
         }
     }
 }

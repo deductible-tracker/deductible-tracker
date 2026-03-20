@@ -10,7 +10,7 @@ use base64::Engine as _;
 use std::net::SocketAddr;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_governor::GovernorLayer;
@@ -20,7 +20,6 @@ use axum::http::header;
 use std::env;
 use axum::http::{Request, header::HeaderMap};
 use axum::body::Body;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,13 +74,7 @@ pub async fn run_app() -> anyhow::Result<()> {
     // Ensure critical environment variables are set
     env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
-    // Initialize Tracing
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "deductible_tracker=info,tower_http=info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    let _observability = crate::observability::init_tracing()?;
 
     tracing::info!("Starting Deductible Tracker application...");
 
@@ -272,7 +265,12 @@ pub async fn run_app() -> anyhow::Result<()> {
         .nest_service("/fonts", ServeDir::new("static/fonts"))
         .fallback(get(spa_fallback))
         .layer(from_fn(static_cache_control))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(DefaultOnRequest::new().level(tracing::Level::INFO))
+                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO))
+                .on_failure(DefaultOnFailure::new().level(tracing::Level::ERROR)),
+        )
         .layer(CompressionLayer::new())
         .layer(SetResponseHeaderLayer::overriding(
             header::X_CONTENT_TYPE_OPTIONS,

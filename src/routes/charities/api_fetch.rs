@@ -4,8 +4,8 @@ use std::sync::OnceLock;
 
 use super::charity_enrichment::{
     clean_opt_string, derive_status, map_category_from_ntee, map_deductibility,
-    map_deductibility_from_exempt_status, map_foundation_label, map_nonprofit_type,
-    normalize_ein, normalize_i64_ein,
+    map_deductibility_from_exempt_status, map_foundation_label, map_nonprofit_type, normalize_ein,
+    normalize_i64_ein,
 };
 
 static SEARCH_HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -79,7 +79,9 @@ pub(super) enum SearchError {
     Transport,
 }
 
-pub(super) async fn search_charities_by_query(query: &str) -> Result<Vec<CharitySearchHit>, SearchError> {
+pub(super) async fn search_charities_by_query(
+    query: &str,
+) -> Result<Vec<CharitySearchHit>, SearchError> {
     let Some(base) = propublica_base_url() else {
         return Err(SearchError::MissingConfig);
     };
@@ -179,12 +181,15 @@ pub(super) async fn fetch_charity_from_propublica(name: &str) -> Option<Enriched
                         .await
                     {
                         if org_resp.status().is_success() {
-                            if let Ok(org_payload) = org_resp.json::<ProPublicaOrganizationResponse>().await {
+                            if let Ok(org_payload) =
+                                org_resp.json::<ProPublicaOrganizationResponse>().await
+                            {
                                 let org = org_payload.organization;
                                 let org_ein = propublica_ein_from_org(&org);
                                 let org_nonprofit_type = map_nonprofit_type(org.subsection_code);
                                 return Some(EnrichedCharityData {
-                                    name: clean_opt_string(org.name).or_else(|| fallback.name.clone()),
+                                    name: clean_opt_string(org.name)
+                                        .or_else(|| fallback.name.clone()),
                                     ein: org_ein.or_else(|| fallback.ein.clone()),
                                     category: map_category_from_ntee(org.ntee_code.as_deref())
                                         .or_else(|| fallback.category.clone()),
@@ -199,8 +204,10 @@ pub(super) async fn fetch_charity_from_propublica(name: &str) -> Option<Enriched
                                     )
                                     .or_else(|| map_deductibility(org.deductibility_code)),
                                     street: clean_opt_string(org.address),
-                                    city: clean_opt_string(org.city).or_else(|| fallback.city.clone()),
-                                    state: clean_opt_string(org.state).or_else(|| fallback.state.clone()),
+                                    city: clean_opt_string(org.city)
+                                        .or_else(|| fallback.city.clone()),
+                                    state: clean_opt_string(org.state)
+                                        .or_else(|| fallback.state.clone()),
                                     zip: clean_opt_string(org.zipcode),
                                 });
                             }

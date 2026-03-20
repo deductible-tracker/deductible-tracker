@@ -1,5 +1,5 @@
+use crate::db::models::{NewReceipt, Receipt};
 use crate::db::DbPool;
-use crate::db::models::{Receipt, NewReceipt};
 
 pub async fn list_receipts(
     pool: &DbPool,
@@ -17,10 +17,7 @@ pub async fn get_receipt(
     super::get_receipt(pool, user_id, receipt_id).await
 }
 
-pub async fn add_receipt(
-    pool: &DbPool,
-    input: &NewReceipt,
-) -> anyhow::Result<()> {
+pub async fn add_receipt(pool: &DbPool, input: &NewReceipt) -> anyhow::Result<()> {
     super::add_receipt(pool, input).await
 }
 

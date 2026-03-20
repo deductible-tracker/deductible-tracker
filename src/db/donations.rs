@@ -1,11 +1,8 @@
-use crate::db::DbPool;
 use crate::db::models::Donation as DonationModel;
 use crate::db::models::{DonationPatch, NewDonation};
+use crate::db::DbPool;
 
-pub async fn add_donation(
-    pool: &DbPool,
-    input: &NewDonation,
-) -> anyhow::Result<()> {
+pub async fn add_donation(pool: &DbPool, input: &NewDonation) -> anyhow::Result<()> {
     super::add_donation(pool, input).await
 }
 
@@ -25,10 +22,7 @@ pub async fn list_donations_since(
     super::list_donations_since(pool, user_id, since).await
 }
 
-pub async fn update_donation(
-    pool: &DbPool,
-    patch: &DonationPatch,
-) -> anyhow::Result<bool> {
+pub async fn update_donation(pool: &DbPool, patch: &DonationPatch) -> anyhow::Result<bool> {
     super::update_donation(pool, patch).await
 }
 
@@ -39,4 +33,3 @@ pub async fn soft_delete_donation(
 ) -> anyhow::Result<bool> {
     super::soft_delete_donation(pool, user_id, donation_id).await
 }
-

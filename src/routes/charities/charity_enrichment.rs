@@ -1,5 +1,8 @@
 pub(super) fn normalize_ein(value: &str) -> String {
-    value.chars().filter(|c| c.is_ascii_digit()).collect::<String>()
+    value
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect::<String>()
 }
 
 pub(super) fn normalize_i64_ein(value: i64) -> String {
@@ -34,7 +37,9 @@ pub(super) fn map_deductibility(code: Option<i64>) -> Option<String> {
     }
 }
 
-pub(super) fn map_deductibility_from_exempt_status(exempt_status_code: Option<i64>) -> Option<String> {
+pub(super) fn map_deductibility_from_exempt_status(
+    exempt_status_code: Option<i64>,
+) -> Option<String> {
     match exempt_status_code {
         Some(1) => Some("Deductible".to_string()),
         Some(2) | Some(3) | Some(4) => Some("May not be deductible".to_string()),
@@ -44,7 +49,9 @@ pub(super) fn map_deductibility_from_exempt_status(exempt_status_code: Option<i6
 }
 
 pub(super) fn map_nonprofit_type(subsection_code: Option<i64>) -> Option<String> {
-    subsection_code.and_then(map_tax_section).map(|s| s.to_string())
+    subsection_code
+        .and_then(map_tax_section)
+        .map(|s| s.to_string())
 }
 
 pub(super) fn map_tax_section(subsection_code: i64) -> Option<&'static str> {
@@ -89,9 +96,12 @@ pub(super) fn map_category_from_ntee(ntee_code: Option<&str>) -> Option<String> 
         Some('B') => "Education",
         Some('C') | Some('D') => "Environment and Animals",
         Some('E') | Some('F') | Some('G') | Some('H') => "Health",
-        Some('I') | Some('J') | Some('K') | Some('L') | Some('M') | Some('N') | Some('O') | Some('P') => "Human Services",
+        Some('I') | Some('J') | Some('K') | Some('L') | Some('M') | Some('N') | Some('O')
+        | Some('P') => "Human Services",
         Some('Q') => "International, Foreign Affairs",
-        Some('R') | Some('S') | Some('T') | Some('U') | Some('V') | Some('W') => "Public, Societal Benefit",
+        Some('R') | Some('S') | Some('T') | Some('U') | Some('V') | Some('W') => {
+            "Public, Societal Benefit"
+        }
         Some('X') => "Religion Related",
         Some('Y') => "Mutual/Membership Benefit",
         _ => "Unknown, Unclassified",

@@ -20,7 +20,12 @@ pub fn user_receipt_prefix(user_id: &str) -> String {
     format!("receipts/{}/", user_id)
 }
 
-pub fn presign_url(state: &AppState, method: &str, key: &str, expires_in_secs: u64) -> Result<String> {
+pub fn presign_url(
+    state: &AppState,
+    method: &str,
+    key: &str,
+    expires_in_secs: u64,
+) -> Result<String> {
     let normalized_key = normalize_object_key(&state.bucket_name, key);
     if normalized_key.is_empty() {
         return Err(anyhow!("storage key cannot be empty"));
@@ -49,33 +54,39 @@ pub fn presign_url(state: &AppState, method: &str, key: &str, expires_in_secs: u
     let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, state.storage_region);
     let credential = format!("{}/{}", state.storage_access_key_id, credential_scope);
 
-    let mut query_params = [("X-Amz-Algorithm".to_string(), "AWS4-HMAC-SHA256".to_string()),
+    let mut query_params = [
+        (
+            "X-Amz-Algorithm".to_string(),
+            "AWS4-HMAC-SHA256".to_string(),
+        ),
         ("X-Amz-Credential".to_string(), credential),
         ("X-Amz-Date".to_string(), amz_date.clone()),
         ("X-Amz-Expires".to_string(), expires_in_secs.to_string()),
-        ("X-Amz-SignedHeaders".to_string(), "host".to_string())];
+        ("X-Amz-SignedHeaders".to_string(), "host".to_string()),
+    ];
     query_params.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
     let canonical_query = query_params
         .iter()
-        .map(|(k, v)| format!("{}={}", encode_query_component(k), encode_query_component(v)))
+        .map(|(k, v)| {
+            format!(
+                "{}={}",
+                encode_query_component(k),
+                encode_query_component(v)
+            )
+        })
         .collect::<Vec<_>>()
         .join("&");
 
     let canonical_headers = format!("host:{}\n", host);
     let canonical_request = format!(
         "{}\n{}\n{}\n{}\nhost\nUNSIGNED-PAYLOAD",
-        method,
-        canonical_uri,
-        canonical_query,
-        canonical_headers,
+        method, canonical_uri, canonical_query, canonical_headers,
     );
     let canonical_request_hash = hex_encode(&sha256(canonical_request.as_bytes()));
     let string_to_sign = format!(
         "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-        amz_date,
-        credential_scope,
-        canonical_request_hash,
+        amz_date, credential_scope, canonical_request_hash,
     );
 
     let signing_key = signing_key(
@@ -88,12 +99,23 @@ pub fn presign_url(state: &AppState, method: &str, key: &str, expires_in_secs: u
 
     let mut final_url = endpoint;
     final_url.set_path(&object_path);
-    final_url.set_query(Some(&format!("{}&X-Amz-Signature={}", canonical_query, signature)));
+    final_url.set_query(Some(&format!(
+        "{}&X-Amz-Signature={}",
+        canonical_query, signature
+    )));
     Ok(final_url.to_string())
 }
 
-fn signing_key(secret_access_key: &str, date_stamp: &str, region: &str, service: &str) -> Result<Vec<u8>> {
-    let k_date = hmac_sha256(format!("AWS4{}", secret_access_key).as_bytes(), date_stamp.as_bytes())?;
+fn signing_key(
+    secret_access_key: &str,
+    date_stamp: &str,
+    region: &str,
+    service: &str,
+) -> Result<Vec<u8>> {
+    let k_date = hmac_sha256(
+        format!("AWS4{}", secret_access_key).as_bytes(),
+        date_stamp.as_bytes(),
+    )?;
     let k_region = hmac_sha256(&k_date, region.as_bytes())?;
     let k_service = hmac_sha256(&k_region, service.as_bytes())?;
     hmac_sha256(&k_service, b"aws4_request")
@@ -101,9 +123,14 @@ fn signing_key(secret_access_key: &str, date_stamp: &str, region: &str, service:
 
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
     let pkey = PKey::hmac(key).context("failed to create HMAC key")?;
-    let mut signer = Signer::new(MessageDigest::sha256(), &pkey).context("failed to create HMAC signer")?;
-    signer.update(data).context("failed to update HMAC signer")?;
-    signer.sign_to_vec().context("failed to finalize HMAC signer")
+    let mut signer =
+        Signer::new(MessageDigest::sha256(), &pkey).context("failed to create HMAC signer")?;
+    signer
+        .update(data)
+        .context("failed to update HMAC signer")?;
+    signer
+        .sign_to_vec()
+        .context("failed to finalize HMAC signer")
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -125,7 +152,8 @@ fn encode_path(input: &str) -> String {
 fn percent_encode(input: &[u8], preserve_slash: bool) -> String {
     let mut encoded = String::new();
     for &byte in input {
-        let is_unreserved = byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~');
+        let is_unreserved =
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~');
         if is_unreserved || (preserve_slash && byte == b'/') {
             encoded.push(byte as char);
         } else {

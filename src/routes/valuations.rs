@@ -1,6 +1,10 @@
-use axum::{extract::{State, Json}, response::{IntoResponse, Json as AxumJson}, http::StatusCode};
-use serde::Deserialize;
 use crate::AppState;
+use axum::{
+    extract::{Json, State},
+    http::StatusCode,
+    response::{IntoResponse, Json as AxumJson},
+};
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct ValRequest {
@@ -9,11 +13,14 @@ pub struct ValRequest {
 
 pub async fn suggest(
     State(state): State<AppState>,
-    Json(req): Json<ValRequest>
+    Json(req): Json<ValRequest>,
 ) -> impl IntoResponse {
     match crate::db::valuations::suggest_valuations(&state.db, &req.query).await {
         Ok(list) => {
-            let out: Vec<_> = list.into_iter().map(|(name, min, max)| serde_json::json!({"name": name, "min": min, "max": max})).collect();
+            let out: Vec<_> = list
+                .into_iter()
+                .map(|(name, min, max)| serde_json::json!({"name": name, "min": min, "max": max}))
+                .collect();
             AxumJson(serde_json::json!({"suggestions": out})).into_response()
         }
         Err(e) => {
@@ -23,9 +30,7 @@ pub async fn suggest(
     }
 }
 
-pub async fn seed(
-    State(state): State<AppState>
-) -> impl IntoResponse {
+pub async fn seed(State(state): State<AppState>) -> impl IntoResponse {
     match crate::db::valuations::seed_valuations(&state.db).await {
         Ok(_) => (axum::http::StatusCode::OK, "seeded").into_response(),
         Err(e) => {
@@ -35,9 +40,7 @@ pub async fn seed(
     }
 }
 
-pub async fn tree(
-    State(state): State<AppState>
-) -> impl IntoResponse {
+pub async fn tree(State(state): State<AppState>) -> impl IntoResponse {
     match crate::db::valuations::list_valuation_tree(&state.db).await {
         Ok(t) => AxumJson(t).into_response(),
         Err(e) => {

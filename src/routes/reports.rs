@@ -1,12 +1,12 @@
-use axum::{
-    extract::{State, Query},
-    response::IntoResponse,
-};
-use crate::AppState;
 use crate::auth::AuthenticatedUser;
 use crate::db;
-use axum::http::{HeaderValue, header};
+use crate::AppState;
+use axum::http::{header, HeaderValue};
 use axum::response::Response;
+use axum::{
+    extract::{Query, State},
+    response::IntoResponse,
+};
 use std::collections::BTreeSet;
 
 #[derive(serde::Deserialize)]
@@ -53,7 +53,11 @@ pub async fn list_available_years(
             years.reverse();
             axum::Json(YearsResponse { years }).into_response()
         }
-        Err(_) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response(),
+        Err(_) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database Error",
+        )
+            .into_response(),
     }
 }
 
@@ -71,7 +75,8 @@ pub async fn export_csv(
                 let category = d.category.clone().unwrap_or_default();
                 let amount = format!("{:.2}", d.amount.unwrap_or(0.0));
                 let notes = d.notes.clone().unwrap_or_default();
-                w.push_str(&format!("{},{},{},{},{},{},{}\n",
+                w.push_str(&format!(
+                    "{},{},{},{},{},{},{}\n",
                     csv_escape(&d.id),
                     csv_escape(&date),
                     csv_escape(&category),
@@ -84,11 +89,21 @@ pub async fn export_csv(
 
             let mut resp = Response::new(w.into());
             let headers = resp.headers_mut();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv; charset=utf-8"));
-            headers.insert(header::CONTENT_DISPOSITION, HeaderValue::from_static("attachment; filename=donations.csv"));
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/csv; charset=utf-8"),
+            );
+            headers.insert(
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_static("attachment; filename=donations.csv"),
+            );
             resp
         }
-        Err(_) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response(),
+        Err(_) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database Error",
+        )
+            .into_response(),
     }
 }
 
@@ -133,11 +148,21 @@ pub async fn export_tax_txf(
 
             let mut resp = Response::new(out.into());
             let headers = resp.headers_mut();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"));
-            headers.insert(header::CONTENT_DISPOSITION, HeaderValue::from_static("attachment; filename=donations-tax-export.txf"));
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/octet-stream"),
+            );
+            headers.insert(
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_static("attachment; filename=donations-tax-export.txf"),
+            );
             resp
         }
-        Err(_) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response(),
+        Err(_) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database Error",
+        )
+            .into_response(),
     }
 }
 
@@ -151,7 +176,11 @@ pub async fn export_audit_csv(
     user: AuthenticatedUser,
     Query(params): Query<AuditExportParams>,
 ) -> impl IntoResponse {
-    let since_dt = params.since.as_ref().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.with_timezone(&chrono::Utc));
+    let since_dt = params
+        .since
+        .as_ref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc));
     match crate::db::list_audit_logs(&state.db, &user.id, since_dt).await {
         Ok(list) => {
             let mut w = String::new();
@@ -160,7 +189,8 @@ pub async fn export_audit_csv(
                 let record_id = a.record_id.unwrap_or_default();
                 let details = a.details.unwrap_or_default();
                 let created = a.created_at.to_rfc3339();
-                w.push_str(&format!("{},{},{},{},{},{},{}\n",
+                w.push_str(&format!(
+                    "{},{},{},{},{},{},{}\n",
                     csv_escape(&a.id),
                     csv_escape(&a.user_id),
                     csv_escape(&a.action),
@@ -173,10 +203,20 @@ pub async fn export_audit_csv(
 
             let mut resp = Response::new(w.into());
             let headers = resp.headers_mut();
-            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv; charset=utf-8"));
-            headers.insert(header::CONTENT_DISPOSITION, HeaderValue::from_static("attachment; filename=audit_logs.csv"));
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/csv; charset=utf-8"),
+            );
+            headers.insert(
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_static("attachment; filename=audit_logs.csv"),
+            );
             resp
         }
-        Err(_) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response(),
+        Err(_) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database Error",
+        )
+            .into_response(),
     }
 }

@@ -1,5 +1,5 @@
-use crate::db::DbPool;
 use crate::db::models::UserProfileUpsert;
+use crate::db::DbPool;
 use crate::db::UserProfileRow;
 
 pub async fn get_user_profile(
@@ -16,17 +16,11 @@ pub async fn get_user_profile_by_email(
     super::get_user_profile_by_email(pool, email).await
 }
 
-pub async fn upsert_user_profile(
-    pool: &DbPool,
-    input: &UserProfileUpsert,
-) -> anyhow::Result<()> {
+pub async fn upsert_user_profile(pool: &DbPool, input: &UserProfileUpsert) -> anyhow::Result<()> {
     super::upsert_user_profile(pool, input).await
 }
 
-pub async fn delete_user_data(
-    pool: &DbPool,
-    user_id: &str,
-) -> anyhow::Result<()> {
+pub async fn delete_user_data(pool: &DbPool, user_id: &str) -> anyhow::Result<()> {
     super::delete_user_data(pool, user_id).await
 }
 

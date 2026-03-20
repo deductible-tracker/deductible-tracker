@@ -123,6 +123,8 @@ jobs:
           MISTRAL_API_ENDPOINT: ${{ secrets.MISTRAL_API_ENDPOINT }}
           MISTRAL_MODEL: ${{ secrets.MISTRAL_MODEL }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          NEW_RELIC_OTLP_ENDPOINT: ${{ secrets.NEW_RELIC_OTLP_ENDPOINT }}
         run: |
           IMAGE_REF="${{ needs.build.outputs.image_ref }}"
           
@@ -169,6 +171,10 @@ jobs:
           MISTRAL_API_ENDPOINT=$MISTRAL_API_ENDPOINT
           MISTRAL_MODEL=$MISTRAL_MODEL
           MISTRAL_API_KEY=$MISTRAL_API_KEY
+          NEW_RELIC_LICENSE_KEY=$NEW_RELIC_LICENSE_KEY
+          NEW_RELIC_OTLP_ENDPOINT=$NEW_RELIC_OTLP_ENDPOINT
+          NEW_RELIC_APP_NAME=deductible-tracker
+          OTEL_SERVICE_NAME=deductible-tracker
           SITE_DOMAIN=dd.joshkraemer.com
           EOF
           )

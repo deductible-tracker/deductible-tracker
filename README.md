@@ -109,3 +109,11 @@ Pushing to the `main` branch triggers the GitHub Actions workflow, which:
 1. Builds a hardened Docker image (Oracle Linux 9 slim base).
 2. Pushes the image to GitHub Container Registry (GHCR).
 3. Deploys the image to the target OCI VM and executes database migrations.
+
+### Observability
+
+- The Rust backend exports traces to New Relic over OTLP when `NEW_RELIC_LICENSE_KEY` is present in the deployment environment.
+- `NEW_RELIC_OTLP_ENDPOINT` is optional and can be used for non-default New Relic regions or a custom OTLP endpoint.
+- The deploy workflow writes these values into the OCI instance metadata payload, which becomes `/home/opc/app.env` on the VM.
+- The OCI cloud-init bootstrap installs and configures `newrelic-infra` automatically when `NEW_RELIC_LICENSE_KEY` is present.
+- Docker container monitoring comes from the New Relic infrastructure agent on the VM, so container metrics appear without changing the application container image.

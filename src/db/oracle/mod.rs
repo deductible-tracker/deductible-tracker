@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use oracle::{ConnStatus, Connection, Connector, Error, InitParams};
-use r2d2::Pool;
 use r2d2::ManageConnection;
+use r2d2::Pool;
 use std::env;
 use std::sync::Arc;
 use tokio::task;
@@ -9,9 +9,9 @@ use tokio::task;
 use crate::db::core::{DbPool, DbPoolEnum, RuntimeMode, UserProfileRow};
 use crate::db::models::UserProfileUpsert;
 
+pub(crate) mod charities;
 pub mod donations;
 pub(crate) mod receipts;
-pub(crate) mod charities;
 
 fn first_present_env(keys: &[&str]) -> Option<String> {
     keys.iter()
@@ -90,7 +90,7 @@ pub fn load_config(runtime_mode: RuntimeMode) -> anyhow::Result<OracleConfig> {
                 anyhow!("In development, set DEV_ORACLE_CONNECT_STRING or ORACLE_PDB_CONNECT_STRING environment variable")
             })?;
             (username, password, connect_string)
-        },
+        }
     };
 
     let tns_admin = match runtime_mode {
@@ -147,7 +147,10 @@ pub(crate) async fn init_pool(
 
     eprintln!("[DB] Initializing Oracle connection pool");
     eprintln!("[DB] Using configured database user");
-    eprintln!("[DB] Connect string length: {} chars", config.connect_string.len());
+    eprintln!(
+        "[DB] Connect string length: {} chars",
+        config.connect_string.len()
+    );
 
     if let Some(tns_admin) = config.tns_admin.clone() {
         eprintln!("[DB] TNS_ADMIN is set: {}", tns_admin);
@@ -156,11 +159,18 @@ pub(crate) async fn init_pool(
                 eprintln!("[DB] Wallet directory contents:");
                 for entry in entries.flatten() {
                     let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                    eprintln!("[DB]   {} ({} bytes)", entry.file_name().to_string_lossy(), size);
+                    eprintln!(
+                        "[DB]   {} ({} bytes)",
+                        entry.file_name().to_string_lossy(),
+                        size
+                    );
                 }
             }
             Err(e) => {
-                eprintln!("[DB] ERROR: Cannot read wallet directory '{}': {}", tns_admin, e);
+                eprintln!(
+                    "[DB] ERROR: Cannot read wallet directory '{}': {}",
+                    tns_admin, e
+                );
             }
         }
     } else {
@@ -168,7 +178,8 @@ pub(crate) async fn init_pool(
     }
 
     eprintln!("[DB] Creating connection manager...");
-    let manager = OracleConnectionManager::new(&config.username, &config.password, &config.connect_string);
+    let manager =
+        OracleConnectionManager::new(&config.username, &config.password, &config.connect_string);
 
     eprintln!("[DB] Building pool...");
     let pool = Pool::builder()

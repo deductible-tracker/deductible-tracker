@@ -1,3 +1,4 @@
+use crate::db::models::{CharityPatch, NewCharity};
 use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
@@ -7,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::db::models::{CharityPatch, NewCharity};
 
 use crate::{auth::AuthenticatedUser, AppState};
 
@@ -106,7 +106,9 @@ pub async fn search_charities(
             )
                 .into_response()
         }
-        Err(SearchError::Upstream) => (StatusCode::BAD_GATEWAY, "Upstream API error").into_response(),
+        Err(SearchError::Upstream) => {
+            (StatusCode::BAD_GATEWAY, "Upstream API error").into_response()
+        }
         Err(SearchError::Transport) => {
             tracing::error!("Charity Search Error: request failed");
             (StatusCode::INTERNAL_SERVER_ERROR, "Search Error").into_response()
@@ -114,7 +116,10 @@ pub async fn search_charities(
     }
 }
 
-pub async fn lookup_charity_by_ein(Path(ein): Path<String>, _user: AuthenticatedUser) -> impl IntoResponse {
+pub async fn lookup_charity_by_ein(
+    Path(ein): Path<String>,
+    _user: AuthenticatedUser,
+) -> impl IntoResponse {
     let normalized_ein = normalize_ein(&ein);
     if normalized_ein.is_empty() {
         return (StatusCode::BAD_REQUEST, "Valid EIN required").into_response();
@@ -126,7 +131,10 @@ pub async fn lookup_charity_by_ein(Path(ein): Path<String>, _user: Authenticated
     }
 }
 
-pub async fn list_charities(State(state): State<AppState>, user: AuthenticatedUser) -> impl IntoResponse {
+pub async fn list_charities(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> impl IntoResponse {
     match crate::db::charities::list_charities(&state.db, &user.id).await {
         Ok(list) => {
             let out: Vec<CharityResponse> = list
@@ -194,10 +202,20 @@ pub async fn create_charity(
     let mut resolved_zip: Option<String> = clean_opt_string(req.zip);
 
     if let Some(org) = fetched {
-        if let Some(n) = org.name.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if let Some(n) = org
+            .name
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             resolved_name = n.to_string();
         }
-        if let Some(ein) = org.ein.as_ref().map(|s| normalize_ein(s)).filter(|s| !s.is_empty()) {
+        if let Some(ein) = org
+            .ein
+            .as_ref()
+            .map(|s| normalize_ein(s))
+            .filter(|s| !s.is_empty())
+        {
             resolved_ein = Some(ein);
         }
         if resolved_category.is_none() {
@@ -285,8 +303,7 @@ pub async fn create_charity(
         created_at: chrono::Utc::now(),
     };
 
-    if let Err(e) = crate::db::charities::create_charity(&state.db, &new_charity).await
-    {
+    if let Err(e) = crate::db::charities::create_charity(&state.db, &new_charity).await {
         tracing::error!("Charity create error: {}", e);
         return (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response();
     }
@@ -317,7 +334,8 @@ pub async fn delete_charity(
     State(state): State<AppState>,
     user: AuthenticatedUser,
 ) -> impl IntoResponse {
-    match crate::db::charities::count_donations_for_charity(&state.db, &user.id, &charity_id).await {
+    match crate::db::charities::count_donations_for_charity(&state.db, &user.id, &charity_id).await
+    {
         Ok(count) if count > 0 => {
             return (StatusCode::CONFLICT, "Charity has donations").into_response();
         }
@@ -330,8 +348,16 @@ pub async fn delete_charity(
 
     match crate::db::charities::delete_charity(&state.db, &user.id, &charity_id).await {
         Ok(true) => (StatusCode::OK, "Deleted").into_response(),
-        Ok(false) => match crate::db::charities::count_donations_for_charity(&state.db, &user.id, &charity_id).await {
-            Ok(count) if count > 0 => (StatusCode::CONFLICT, "Charity has donations").into_response(),
+        Ok(false) => match crate::db::charities::count_donations_for_charity(
+            &state.db,
+            &user.id,
+            &charity_id,
+        )
+        .await
+        {
+            Ok(count) if count > 0 => {
+                (StatusCode::CONFLICT, "Charity has donations").into_response()
+            }
             Ok(_) => (StatusCode::NOT_FOUND, "Not found").into_response(),
             Err(e) => {
                 tracing::error!("Charity delete recheck error: {}", e);
@@ -394,8 +420,7 @@ pub async fn update_charity(
         updated_at: chrono::Utc::now(),
     };
 
-    match crate::db::charities::update_charity(&state.db, &patch).await
-    {
+    match crate::db::charities::update_charity(&state.db, &patch).await {
         Ok(true) => {
             let payload = CharityResponse {
                 id: charity_id,

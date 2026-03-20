@@ -9,5 +9,9 @@ fn javascript_jest_suite_passes() {
         .status()
         .expect("failed to execute npm; ensure Node.js and npm are installed");
 
-    assert!(status.success(), "Jest tests failed with status: {:?}", status.code());
+    assert!(
+        status.success(),
+        "Jest tests failed with status: {:?}",
+        status.code()
+    );
 }

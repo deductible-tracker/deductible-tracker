@@ -1,12 +1,12 @@
-use axum::{
-    extract::{State, Json},
-    response::IntoResponse,
-    http::StatusCode,
-};
-use crate::AppState;
 use crate::auth::AuthenticatedUser;
 use crate::db;
 use crate::db::models::{BatchSyncRequest, DonationSyncItem, ReceiptSyncItem};
+use crate::AppState;
+use axum::{
+    extract::{Json, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
 
 fn validate_donation_sync_item(item: &DonationSyncItem) -> Result<(), &'static str> {
     let action = item.action.trim();

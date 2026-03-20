@@ -3,9 +3,9 @@ use chrono::Utc;
 use r2d2::Pool;
 use tokio::task;
 
-use crate::db::oracle::OracleConnectionManager;
-use crate::db::models::Receipt;
 use crate::db::models::NewReceipt;
+use crate::db::models::Receipt;
+use crate::db::oracle::OracleConnectionManager;
 
 fn parse_utc_or_now(value: Option<String>) -> chrono::DateTime<Utc> {
     value
