@@ -32,9 +32,22 @@ jobs:
         env:
           WALLET_ZIP_BASE64: ${{ secrets.WALLET_ZIP_BASE64 }}
         run: |
+          set -o pipefail
           if [ -n "$WALLET_ZIP_BASE64" ]; then
             mkdir -p Wallet_deductibledb
-            echo "$WALLET_ZIP_BASE64" | base64 --decode > /tmp/wallet.bin
+            # Safe diagnostics (do not echo the secret)
+            echo "WALLET_ZIP_BASE64 length (chars):" "$(echo -n "$WALLET_ZIP_BASE64" | wc -c)"
+            # Sanitize CRLFs and write base64 payload to a temporary file
+            printf '%s' "$WALLET_ZIP_BASE64" | tr -d '\r' > /tmp/wallet.b64
+            # Attempt to decode (support different base64 implementations)
+            if ! (base64 --decode /tmp/wallet.b64 > /tmp/wallet.bin 2>/dev/null) && ! (base64 -d /tmp/wallet.b64 > /tmp/wallet.bin 2>/dev/null); then
+              echo "Failed to base64-decode WALLET_ZIP_BASE64" >&2
+              exit 1
+            fi
+            echo "Decoded to /tmp/wallet.bin (bytes):" "$(stat -c%s /tmp/wallet.bin 2>/dev/null || wc -c < /tmp/wallet.bin)"
+            file -b /tmp/wallet.bin || true
+            hexdump -C -n 16 /tmp/wallet.bin || true
+            # Try ZIP/TAR extraction
             if command -v unzip >/dev/null 2>&1 && unzip -t /tmp/wallet.bin >/dev/null 2>&1; then
               unzip -qq /tmp/wallet.bin -d Wallet_deductibledb
               echo "Extracted wallet as zip"
@@ -45,6 +58,31 @@ jobs:
               tar xf /tmp/wallet.bin -C Wallet_deductibledb
               echo "Extracted wallet as tar (uncompressed)"
             else
+              # If decoded payload looks like text, attempt a second decode (double-encoded)
+              if file -b /tmp/wallet.bin | grep -qi 'text'; then
+                echo "Decoded payload looks like text; attempting double-decode..."
+                if (base64 --decode /tmp/wallet.bin > /tmp/wallet2.bin 2>/dev/null) || (base64 -d /tmp/wallet.bin > /tmp/wallet2.bin 2>/dev/null); then
+                  mv /tmp/wallet2.bin /tmp/wallet.bin
+                  echo "Double-decoded; new size (bytes):" "$(stat -c%s /tmp/wallet.bin 2>/dev/null || wc -c < /tmp/wallet.bin)"
+                  file -b /tmp/wallet.bin || true
+                  hexdump -C -n 16 /tmp/wallet.bin || true
+                  if command -v unzip >/dev/null 2>&1 && unzip -t /tmp/wallet.bin >/dev/null 2>&1; then
+                    unzip -qq /tmp/wallet.bin -d Wallet_deductibledb
+                    echo "Extracted wallet as zip (after double-decode)"
+                    exit 0
+                  elif tar -tzf /tmp/wallet.bin >/dev/null 2>&1; then
+                    tar xzf /tmp/wallet.bin -C Wallet_deductibledb
+                    echo "Extracted wallet as tar.gz (after double-decode)"
+                    exit 0
+                  elif tar -tf /tmp/wallet.bin >/dev/null 2>&1; then
+                    tar xf /tmp/wallet.bin -C Wallet_deductibledb
+                    echo "Extracted wallet as tar (uncompressed) (after double-decode)"
+                    exit 0
+                  fi
+                else
+                  echo "Double-decode attempt failed." >&2
+                fi
+              fi
               echo "Failed to extract wallet archive" >&2
               exit 1
             fi
