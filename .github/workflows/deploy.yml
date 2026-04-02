@@ -28,6 +28,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Prepare DB wallet from secret
+        env:
+          WALLET_ZIP_BASE64: ${{ secrets.WALLET_ZIP_BASE64 }}
+        run: |
+          if [ -n "$WALLET_ZIP_BASE64" ]; then
+            mkdir -p Wallet_deductibledb
+            echo "$WALLET_ZIP_BASE64" | base64 --decode > /tmp/wallet.bin
+            if command -v unzip >/dev/null 2>&1 && unzip -t /tmp/wallet.bin >/dev/null 2>&1; then
+              unzip -qq /tmp/wallet.bin -d Wallet_deductibledb
+              echo "Extracted wallet as zip"
+            elif tar -tzf /tmp/wallet.bin >/dev/null 2>&1; then
+              tar xzf /tmp/wallet.bin -C Wallet_deductibledb
+              echo "Extracted wallet as tar.gz"
+            elif tar -tf /tmp/wallet.bin >/dev/null 2>&1; then
+              tar xf /tmp/wallet.bin -C Wallet_deductibledb
+              echo "Extracted wallet as tar (uncompressed)"
+            else
+              echo "Failed to extract wallet archive" >&2
+              exit 1
+            fi
+          else
+            echo "No WALLET_ZIP_BASE64 secret found; creating empty Wallet_deductibledb folder"
+            mkdir -p Wallet_deductibledb
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
