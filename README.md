@@ -131,4 +131,29 @@ Pushing to the `main` branch triggers the GitHub Actions workflow, which:
 - `NEW_RELIC_OTLP_ENDPOINT` is optional and can be used for non-default New Relic regions or a custom OTLP endpoint.
 - The deploy workflow writes these values into the OCI instance metadata payload, which becomes `/home/opc/app.env` on the VM.
 - The OCI cloud-init bootstrap installs and configures `newrelic-infra` automatically when `NEW_RELIC_LICENSE_KEY` is present.
+## Git submodules
+
+This repository includes an embedded skill at `.agents/skills/gstack` which is managed as a git submodule.
+
+If you clone the repository fresh or run CI, initialize submodules by running:
+
+```bash
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+To fetch only the gstack submodule (shallow):
+
+```bash
+git submodule update --init --recursive --depth 1 .agents/skills/gstack
+```
+
+If you see CI errors mentioning "No url found for submodule path '.agents/skills/gstack'", ensure `.gitmodules` is present (it should be) and re-run the commands above. If the problem persists, remove any embedded `.git` inside `.agents/skills/gstack` and re-add the submodule with:
+
+```bash
+git rm -f .agents/skills/gstack
+git submodule add https://github.com/garrytan/gstack .agents/skills/gstack
+git commit -m "chore: add gstack as submodule"
+```
+
 - Docker container monitoring comes from the New Relic infrastructure agent on the VM, so container metrics appear without changing the application container image.
