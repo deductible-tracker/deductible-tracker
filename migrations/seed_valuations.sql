@@ -51,7 +51,7 @@ INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALU
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('furn_sofa', 'cat_furniture', 'Sofa', 36, 395);
 
 -- Household Goods
-INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('house_blanket', 'cat_household_goods', 'Blanket', 3, 14);
+INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('house_blanket', 'cat_household_goods', 'Blanket', 3, 16);
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('house_curtains', 'cat_household_goods', 'Curtains', 2, 12);
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('house_lamp_floor', 'cat_household_goods', 'Lamp, Floor', 6, 52);
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('house_lamp_table', 'cat_household_goods', 'Lamp, Table', 3, 20);
@@ -86,7 +86,7 @@ INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALU
 -- Miscellaneous
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('misc_bicycle', 'cat_miscellaneous', 'Bicycle', 5, 83);
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('misc_books_hard', 'cat_miscellaneous', 'Book (hardback)', 1, 3);
-INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('misc_books_paper', 'cat_miscellaneous', 'Book (paperback)', 0.59, 2);
+INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('misc_books_paper', 'cat_miscellaneous', 'Book (paperback)', 1, 2);
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('misc_luggage', 'cat_miscellaneous', 'Luggage', 5, 16);
 INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES ('misc_vacuum', 'cat_miscellaneous', 'Vacuum Cleaner', 5, 67);
 
