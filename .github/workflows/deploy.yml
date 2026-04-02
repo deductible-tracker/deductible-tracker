@@ -31,80 +31,71 @@ jobs:
       - name: Prepare DB wallet from secret
         env:
           WALLET_ZIP_BASE64: ${{ secrets.WALLET_ZIP_BASE64 }}
+          WALLET_ZIP_SHA256: ${{ secrets.WALLET_ZIP_SHA256 }}
         run: |
-          set -o pipefail
+          set -euo pipefail
           if [ -n "$WALLET_ZIP_BASE64" ]; then
-            mkdir -p Wallet_deductibledb
-            # Ensure unzip is available; install if missing
+            rm -rf Wallet_deductibledb
+            mkdir -p Wallet_deductibledb /tmp/wallet-extract
+
             if ! command -v unzip >/dev/null 2>&1; then
               echo "unzip not found; installing unzip"
               sudo apt-get update
               sudo apt-get install -y unzip
             fi
-            echo "unzip version:"
-            if command -v unzip >/dev/null 2>&1; then unzip -v | head -n 1; fi
-            # Safe diagnostics (do not echo the secret)
+
             echo "WALLET_ZIP_BASE64 length (chars):" "$(echo -n "$WALLET_ZIP_BASE64" | wc -c)"
-            # Sanitize CRLFs and write base64 payload to a temporary file
             printf '%s' "$WALLET_ZIP_BASE64" | tr -d '\r' > /tmp/wallet.b64
-            # Attempt to decode (support different base64 implementations)
-            if ! (base64 --decode /tmp/wallet.b64 > /tmp/wallet.bin 2>/dev/null) && ! (base64 -d /tmp/wallet.b64 > /tmp/wallet.bin 2>/dev/null); then
+
+            if ! (base64 --decode /tmp/wallet.b64 > /tmp/wallet.zip 2>/dev/null) && ! (base64 -d /tmp/wallet.b64 > /tmp/wallet.zip 2>/dev/null); then
               echo "Failed to base64-decode WALLET_ZIP_BASE64" >&2
               exit 1
             fi
-            echo "Decoded to /tmp/wallet.bin (bytes):" "$(stat -c%s /tmp/wallet.bin 2>/dev/null || wc -c < /tmp/wallet.bin)"
-            file -b /tmp/wallet.bin || true
-            hexdump -C -n 16 /tmp/wallet.bin || true
-            # Diagnostic listing using unzip if available
-            if command -v unzip >/dev/null 2>&1; then
-              echo "Archive listing (unzip -l):"
-              unzip -l /tmp/wallet.bin || echo "unzip -l exit:$?"
+
+            echo "Decoded wallet zip bytes:" "$(stat -c%s /tmp/wallet.zip 2>/dev/null || wc -c < /tmp/wallet.zip)"
+            file -b /tmp/wallet.zip || true
+
+            if [ -n "${WALLET_ZIP_SHA256:-}" ]; then
+              wallet_sha=$(sha256sum /tmp/wallet.zip | awk '{print $1}')
+              if [ "$wallet_sha" != "$WALLET_ZIP_SHA256" ]; then
+                echo "Wallet SHA256 mismatch. Expected $WALLET_ZIP_SHA256 but decoded $wallet_sha" >&2
+                exit 1
+              fi
+              echo "Wallet SHA256 verified"
             fi
-            # Try ZIP/TAR extraction (prefer unzip; attempt extraction even if tests fail)
-            if command -v unzip >/dev/null 2>&1; then
-              if unzip -t /tmp/wallet.bin >/dev/null 2>&1; then
-                unzip -qq /tmp/wallet.bin -d Wallet_deductibledb || { echo "unzip extraction failed with exit:$?"; unzip -l /tmp/wallet.bin || true; exit 1; }
-                echo "Extracted wallet as zip"
-              else
-                echo "unzip -t failed; attempting extraction anyway"
-                unzip /tmp/wallet.bin -d Wallet_deductibledb || { echo "unzip extraction failed with exit:$?"; unzip -l /tmp/wallet.bin || true; exit 1; }
-                echo "Extracted wallet as zip (forced)"
-              fi
-            elif tar -tzf /tmp/wallet.bin >/dev/null 2>&1; then
-              tar xzf /tmp/wallet.bin -C Wallet_deductibledb
-              echo "Extracted wallet as tar.gz"
-            elif tar -tf /tmp/wallet.bin >/dev/null 2>&1; then
-              tar xf /tmp/wallet.bin -C Wallet_deductibledb
-              echo "Extracted wallet as tar (uncompressed)"
-            else
-              # If decoded payload looks like text, attempt a second decode (double-encoded)
-              if file -b /tmp/wallet.bin | grep -qi 'text'; then
-                echo "Decoded payload looks like text; attempting double-decode..."
-                if (base64 --decode /tmp/wallet.bin > /tmp/wallet2.bin 2>/dev/null) || (base64 -d /tmp/wallet.bin > /tmp/wallet2.bin 2>/dev/null); then
-                  mv /tmp/wallet2.bin /tmp/wallet.bin
-                  echo "Double-decoded; new size (bytes):" "$(stat -c%s /tmp/wallet.bin 2>/dev/null || wc -c < /tmp/wallet.bin)"
-                  file -b /tmp/wallet.bin || true
-                  hexdump -C -n 16 /tmp/wallet.bin || true
-                  if command -v unzip >/dev/null 2>&1 && unzip -t /tmp/wallet.bin >/dev/null 2>&1; then
-                    unzip -qq /tmp/wallet.bin -d Wallet_deductibledb
-                    echo "Extracted wallet as zip (after double-decode)"
-                    exit 0
-                  elif tar -tzf /tmp/wallet.bin >/dev/null 2>&1; then
-                    tar xzf /tmp/wallet.bin -C Wallet_deductibledb
-                    echo "Extracted wallet as tar.gz (after double-decode)"
-                    exit 0
-                  elif tar -tf /tmp/wallet.bin >/dev/null 2>&1; then
-                    tar xf /tmp/wallet.bin -C Wallet_deductibledb
-                    echo "Extracted wallet as tar (uncompressed) (after double-decode)"
-                    exit 0
-                  fi
-                else
-                  echo "Double-decode attempt failed." >&2
-                fi
-              fi
-              echo "Failed to extract wallet archive" >&2
+
+            if ! unzip -t /tmp/wallet.zip >/dev/null 2>&1; then
+              echo "WALLET_ZIP_BASE64 decoded successfully but the resulting zip is corrupt." >&2
+              echo "Recreate the secret from a file or with scripts/prepare-wallet-secret.sh instead of copying from terminal output." >&2
+              unzip -l /tmp/wallet.zip || true
               exit 1
             fi
+
+            unzip -qq /tmp/wallet.zip -d /tmp/wallet-extract
+
+            if [ -d /tmp/wallet-extract/__MACOSX ]; then
+              rm -rf /tmp/wallet-extract/__MACOSX
+            fi
+
+            shopt -s dotglob nullglob
+            extracted_entries=(/tmp/wallet-extract/*)
+            if [ "${#extracted_entries[@]}" -eq 1 ] && [ -d "${extracted_entries[0]}" ]; then
+              cp -R "${extracted_entries[0]}"/* Wallet_deductibledb/
+            else
+              cp -R /tmp/wallet-extract/* Wallet_deductibledb/
+            fi
+            shopt -u dotglob nullglob
+
+            for required_file in cwallet.sso tnsnames.ora sqlnet.ora ojdbc.properties; do
+              if [ ! -f "Wallet_deductibledb/$required_file" ]; then
+                echo "Decoded wallet archive is missing required file: $required_file" >&2
+                find Wallet_deductibledb -maxdepth 2 -type f | sort
+                exit 1
+              fi
+            done
+
+            echo "Prepared wallet files:"
+            find Wallet_deductibledb -maxdepth 1 -type f | sort
           else
             echo "No WALLET_ZIP_BASE64 secret found; creating empty Wallet_deductibledb folder"
             mkdir -p Wallet_deductibledb
