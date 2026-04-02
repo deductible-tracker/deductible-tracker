@@ -2,14 +2,16 @@
 package_update: true
 package_upgrade: true
 packages:
-  - docker
+  - curl
   - git
   - jq
   - oracle-cloud-agent
+  - podman
+  - podman-docker
 
 write_files:
-  - path: /home/opc/poll-deploy.sh
-    owner: opc:opc
+  - path: /usr/local/bin/poll-deploy.sh
+    owner: root:root
     permissions: '0755'
     content: |
       #!/bin/bash
@@ -21,6 +23,22 @@ write_files:
 
       # Path to state file
       STATE_FILE="/home/opc/.last_deployed_image"
+      REPO_URL="https://github.com/deductible-tracker/deductible-tracker.git"
+      REPO_DIR="/home/opc/deductible-tracker-src"
+
+      build_image_from_source() {
+          local revision
+          revision="${TAGS##*:}"
+
+          echo "Building $TAGS from source at $revision"
+          if [ ! -d "$REPO_DIR/.git" ]; then
+              git clone "$REPO_URL" "$REPO_DIR" || return 1
+          fi
+
+          git -C "$REPO_DIR" fetch --depth 1 origin "$revision" || return 1
+          git -C "$REPO_DIR" checkout --force "$revision" || return 1
+          docker build -t "$TAGS" "$REPO_DIR"
+      }
 
       # Fetch latest deployment data from instance metadata.
       # Fall back to defined tags so older instances continue to work.
@@ -39,6 +57,7 @@ write_files:
           echo "$SECRETS_BASE64" | base64 -d > /home/opc/app.env
           chmod 600 /home/opc/app.env
           chown opc:opc /home/opc/app.env
+          /usr/local/bin/configure-newrelic-infra.sh || true
       fi
 
       # Compare with last deployed
@@ -58,8 +77,11 @@ write_files:
 
           # 1. Pull the new image
           if ! docker pull "$TAGS"; then
-              echo "Failed to pull image $TAGS"
-              exit 1
+              echo "Failed to pull image $TAGS; attempting source build fallback"
+              if ! build_image_from_source; then
+                echo "Failed to build fallback image $TAGS"
+                exit 1
+              fi
           fi
 
           # 2. Blue/Green style swap (simple version)
@@ -159,6 +181,33 @@ write_files:
 
       systemctl enable --now newrelic-infra
       systemctl restart newrelic-infra
+  - path: /etc/systemd/system/deductible-deploy.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Deductible Tracker deploy poller
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/poll-deploy.sh
+
+  - path: /etc/systemd/system/deductible-deploy.timer
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Poll OCI metadata for Deductible Tracker deployments
+
+      [Timer]
+      OnBootSec=30s
+      OnUnitActiveSec=60s
+      Unit=deductible-deploy.service
+
+      [Install]
+      WantedBy=timers.target
 groups:
   - docker
 
@@ -170,12 +219,20 @@ runcmd:
   - systemctl stop cockpit.socket || true
   - systemctl disable cockpit.socket || true
   - usermod -aG docker opc
+  - touch /etc/containers/nodocker
   # Configure host firewall for public web traffic only.
-  - [sh, -c, 'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --remove-service=ssh || true; firewall-cmd --permanent --remove-port=2222/tcp || true; firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --reload; fi']
+  - [
+      sh,
+      -c,
+      'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --remove-service=ssh || true; firewall-cmd --permanent --remove-port=2222/tcp || true; firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --reload; fi',
+    ]
   # Setup OCI Logging Agent
-  - [sh, -c, 'systemctl enable --now oracle-cloud-agent && systemctl restart oracle-cloud-agent-updater']
+  - [
+      sh,
+      -c,
+      'systemctl enable --now oracle-cloud-agent && systemctl restart oracle-cloud-agent-updater',
+    ]
   - [sh, -c, '/usr/local/bin/configure-newrelic-infra.sh || true']
-  # Setup cron for polling (every minute)
-  - [sh, -c, '(crontab -l 2>/dev/null; echo "* * * * * /home/opc/poll-deploy.sh >> /home/opc/deploy.log 2>&1") | crontab -']
-  - [sh, -c, '(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/configure-newrelic-infra.sh >> /var/log/newrelic-infra-bootstrap.log 2>&1") | crontab -']
-
+  - systemctl daemon-reload
+  - systemctl enable --now deductible-deploy.timer
+  - systemctl start deductible-deploy.service

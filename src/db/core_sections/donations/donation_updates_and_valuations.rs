@@ -1,70 +1,67 @@
 pub async fn batch_sync(pool: &DbPool, user_id: &str, req: crate::db::models::BatchSyncRequest) -> anyhow::Result<()> {
-    let p = pool.clone();
     let user_id = user_id.to_string();
     let req = req.clone();
 
-    match &*p {
+    match &**pool {
         DbPoolEnum::Oracle(pool_inner) => {
-            let pool_inner = pool_inner.clone();
-            task::spawn_blocking(move || -> anyhow::Result<()> {
-                let conn = pool_inner.get()?;
+            let conn = pool_inner.get().await?;
 
-                for donation in req.donations {
-                    let id = donation.id.clone();
-                    let action = donation.action.clone();
+            for donation in req.donations {
+                let id = donation.id.clone();
+                let action = donation.action.clone();
 
-                    if action == "delete" {
-                        let sql = "UPDATE donations SET deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = :1 AND user_id = :2";
-                        conn.execute(sql, &[&id, &user_id])?;
-                        continue;
-                    }
-
-                    // check existing
-                    let mut rows = conn.query("SELECT updated_at FROM donations WHERE id = :1 AND user_id = :2", &[&id, &user_id])?;
-                    if let Some(row) = rows.next().transpose()? {
-                        let existing_updated_str: Option<String> = row.get(0).ok();
-                        let existing_updated = existing_updated_str.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&chrono::Utc)));
-                        
-                        if let (Some(inc), Some(ex)) = (donation.updated_at, existing_updated) {
-                            if inc <= ex {
-                                // skip stale update
-                                continue;
-                            }
-                        }
-
-                        // update
-                        let updated_at_str = donation.updated_at.map(|dt| dt.to_rfc3339());
-                        let sql = "UPDATE donations SET donation_date = :1, donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, updated_at = TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'), deleted = 0 WHERE id = :8 AND user_id = :9";
-                        let d_date = donation.date.unwrap_or_else(|| chrono::Utc::now().date_naive());
-                        let d_year = donation.year.unwrap_or(d_date.year());
-                        conn.execute(sql, &[&d_date, &d_year, &donation.category, &donation.amount, &donation.charity_id, &donation.notes, &updated_at_str, &id, &user_id])?;
-                    } else {
-                        // insert
-                        let sql = "INSERT INTO donations (id, user_id, donation_date, donation_year, donation_category, donation_amount, charity_id, notes, created_at, updated_at, deleted) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'), TO_TIMESTAMP_TZ(:10, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'), 0)";
-                        let now = chrono::Utc::now();
-                        let created_at_str = now.to_rfc3339();
-                        let updated_at_str = donation.updated_at.unwrap_or(now).to_rfc3339();
-                        let d_date = donation.date.unwrap_or_else(|| now.date_naive());
-                        let d_year = donation.year.unwrap_or(d_date.year());
-                        conn.execute(sql, &[&id, &user_id, &d_date, &d_year, &donation.category, &donation.amount, &donation.charity_id, &donation.notes, &created_at_str, &updated_at_str])?;
-                    }
+                if action == "delete" {
+                    let sql = "UPDATE donations SET deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = :1 AND user_id = :2";
+                    conn.execute(sql, &crate::oracle_params![id, user_id.clone()]).await?;
+                    continue;
                 }
 
-                for receipt in req.receipts {
-                     let id = receipt.id.clone();
-                     // Simple existence check
-                     let mut rows = conn.query("SELECT 1 FROM receipts WHERE id = :1", &[&id])?;
-                     if rows.next().transpose()?.is_none() {
-                        let sql = "INSERT INTO receipts (id, donation_id, key, file_name, content_type, size, created_at) VALUES (:1, :2, :3, :4, :5, :6, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
-                        let now = chrono::Utc::now();
-                        let created_at_str = now.to_rfc3339();
-                        conn.execute(sql, &[&id, &receipt.donation_id, &receipt.key, &receipt.file_name, &receipt.content_type, &receipt.size, &created_at_str])?;
-                     }
+                let now = chrono::Utc::now();
+                let donation_date = donation.date.unwrap_or_else(|| now.date_naive());
+                let donation_year = donation.year.unwrap_or(donation_date.year());
+                let incoming_updated_at = donation.updated_at.unwrap_or(now).to_rfc3339();
+                let created_at = now.to_rfc3339();
+                let sql = "MERGE INTO donations d USING (SELECT :1 AS id, :2 AS user_id, TO_DATE(:3, 'YYYY-MM-DD') AS donation_date, :4 AS donation_year, :5 AS donation_category, :6 AS donation_amount, :7 AS charity_id, :8 AS notes, TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS incoming_updated_at, TO_TIMESTAMP_TZ(:10, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS incoming_created_at FROM dual) s ON (d.id = s.id AND d.user_id = s.user_id) WHEN MATCHED THEN UPDATE SET d.donation_date = s.donation_date, d.donation_year = s.donation_year, d.donation_category = s.donation_category, d.donation_amount = s.donation_amount, d.charity_id = s.charity_id, d.notes = s.notes, d.updated_at = s.incoming_updated_at, d.deleted = 0 WHERE d.updated_at IS NULL OR d.updated_at < s.incoming_updated_at OR s.incoming_updated_at IS NULL WHEN NOT MATCHED THEN INSERT (id, user_id, donation_date, donation_year, donation_category, donation_amount, charity_id, notes, created_at, updated_at, deleted) VALUES (s.id, s.user_id, s.donation_date, s.donation_year, s.donation_category, s.donation_amount, s.charity_id, s.notes, s.incoming_created_at, s.incoming_updated_at, 0)";
+                conn.execute(
+                    sql,
+                    &crate::oracle_params![
+                        id,
+                        user_id.clone(),
+                        donation_date.format("%Y-%m-%d").to_string(),
+                        donation_year,
+                        donation.category,
+                        donation.amount,
+                        donation.charity_id,
+                        donation.notes,
+                        incoming_updated_at,
+                        created_at,
+                    ],
+                )
+                .await?;
+            }
+
+            for receipt in req.receipts {
+                if receipt.action != "create" {
+                    continue;
                 }
 
-                let _ = conn.commit();
-                Ok(())
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+                let sql = "MERGE INTO receipts r USING (SELECT :1 AS id, :2 AS donation_id, :3 AS receipt_key, :4 AS file_name, :5 AS content_type, :6 AS receipt_size, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS created_at FROM dual) s ON (r.id = s.id) WHEN NOT MATCHED THEN INSERT (id, donation_id, receipt_key, file_name, content_type, receipt_size, created_at) VALUES (s.id, s.donation_id, s.receipt_key, s.file_name, s.content_type, s.receipt_size, s.created_at)";
+                conn.execute(
+                    sql,
+                    &crate::oracle_params![
+                        receipt.id,
+                        receipt.donation_id,
+                        receipt.key,
+                        receipt.file_name,
+                        receipt.content_type,
+                        receipt.size,
+                        chrono::Utc::now().to_rfc3339(),
+                    ],
+                )
+                .await?;
+            }
+
+            conn.commit().await?;
         }
     }
 
@@ -79,7 +76,7 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
 
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
+            let conn = p.get().await?;
             let user_id = patch.user_id.clone();
             let donation_id = patch.donation_id.clone();
             let donation_id_for_revision = donation_id.clone();
@@ -88,23 +85,92 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
             let year_opt = patch.year_opt;
             let amount_opt = patch.amount_opt;
             let notes_cloned = patch.notes.clone();
-            let revision_payload = task::spawn_blocking(move || -> anyhow::Result<Option<(String, String)>> {
-                let conn = p.get()?;
-                // fetch existing row
-                let mut rows = conn.query("SELECT donation_date, donation_year, donation_category, donation_amount, charity_id, notes, updated_at FROM donations WHERE id = :1 AND user_id = :2", &[&donation_id, &user_id])?;
-                if let Some(row) = rows.next().transpose()? {
-                    let existing_updated: Option<String> = row.get(6).ok();
-                    if let (Some(inc), Some(ex)) = (incoming.clone(), existing_updated.clone()) {
-                        if inc <= ex { return Ok(None); }
-                    }
+            let rows = conn
+                .query(
+                    "SELECT donation_date, donation_year, donation_category, donation_amount, charity_id, notes, updated_at FROM donations WHERE id = :1 AND user_id = :2",
+                    &crate::oracle_params![donation_id.clone(), user_id.clone()],
+                )
+                .await?;
+            let revision_payload = if let Some(row) = rows.first() {
+                let existing_updated = crate::db::oracle::row_opt_string(row, 6);
+                if let (Some(inc), Some(ex)) = (incoming.clone(), existing_updated.clone()) {
+                    if inc <= ex {
+                        None
+                    } else {
+                        let existing_date = crate::db::oracle::row_naive_date(row, 0);
+                        let existing_year = crate::db::oracle::row_i64(row, 1).map(|value| value as i32);
+                        let existing_category = crate::db::oracle::row_opt_string(row, 2);
+                        let existing_amount = crate::db::oracle::row_f64(row, 3);
+                        let existing_charity_id = crate::db::oracle::row_opt_string(row, 4);
+                        let existing_notes = crate::db::oracle::row_opt_string(row, 5);
 
-                    // determine new values
-                    let existing_date: Option<chrono::NaiveDate> = row.get(0).ok();
-                    let existing_year: Option<i32> = row.get(1).ok();
-                    let existing_category: Option<String> = row.get(2).ok();
-                    let existing_amount: Option<f64> = row.get(3).ok();
-                    let existing_charity_id: Option<String> = row.get(4).ok();
-                    let existing_notes: Option<String> = row.get(5).ok();
+                        let new_date = date_opt.unwrap_or(existing_date.unwrap_or_else(|| chrono::Utc::now().date_naive()));
+                        let new_year = year_opt.unwrap_or(existing_year.unwrap_or(new_date.year()));
+                        let new_category = category_owned.clone().or(existing_category.clone());
+                        let new_amount = amount_opt.or(existing_amount);
+                        let new_charity_id = charity_id_owned.clone().or(existing_charity_id.clone()).unwrap_or_default();
+                        let new_notes = notes_cloned.clone().or(existing_notes.clone());
+                        let new_updated_at = incoming.clone().unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+                        let existing_date_str = existing_date
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| chrono::Utc::now().date_naive().format("%Y-%m-%d").to_string());
+                        let old_values = build_donation_revision_json(&DonationRevisionSnapshot {
+                            donation_id: donation_id.clone(),
+                            user_id: user_id.clone(),
+                            donation_date: existing_date_str,
+                            donation_year: existing_year.unwrap_or(0),
+                            donation_category: existing_category.clone(),
+                            donation_amount: existing_amount,
+                            charity_id: existing_charity_id.clone().unwrap_or_default(),
+                            notes: existing_notes.clone(),
+                            deleted: false,
+                            updated_at: existing_updated,
+                        });
+                        let new_values = build_donation_revision_json(&DonationRevisionSnapshot {
+                            donation_id: donation_id.clone(),
+                            user_id: user_id.clone(),
+                            donation_date: new_date.format("%Y-%m-%d").to_string(),
+                            donation_year: new_year,
+                            donation_category: new_category.clone(),
+                            donation_amount: new_amount,
+                            charity_id: new_charity_id.clone(),
+                            notes: new_notes.clone(),
+                            deleted: false,
+                            updated_at: Some(new_updated_at.clone()),
+                        });
+
+                        let sql = "UPDATE donations SET donation_date = TO_DATE(:1, 'YYYY-MM-DD'), donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, updated_at = TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :8 AND user_id = :9";
+                        if let Err(e) = conn
+                            .execute(
+                                sql,
+                                &crate::oracle_params![
+                                    new_date.format("%Y-%m-%d").to_string(),
+                                    new_year,
+                                    new_category,
+                                    new_amount,
+                                    new_charity_id,
+                                    new_notes,
+                                    new_updated_at,
+                                    donation_id.clone(),
+                                    user_id.clone(),
+                                ],
+                            )
+                            .await
+                        {
+                            tracing::error!("Failed to update donation: {}. SQL: {}", e, sql);
+                            return Err(anyhow::anyhow!("Donation update failed: {}", e));
+                        }
+                        conn.commit().await?;
+                        Some((old_values, new_values))
+                    }
+                } else {
+                    let existing_date = crate::db::oracle::row_naive_date(row, 0);
+                    let existing_year = crate::db::oracle::row_i64(row, 1).map(|value| value as i32);
+                    let existing_category = crate::db::oracle::row_opt_string(row, 2);
+                    let existing_amount = crate::db::oracle::row_f64(row, 3);
+                    let existing_charity_id = crate::db::oracle::row_opt_string(row, 4);
+                    let existing_notes = crate::db::oracle::row_opt_string(row, 5);
 
                     let new_date = date_opt.unwrap_or(existing_date.unwrap_or_else(|| chrono::Utc::now().date_naive()));
                     let new_year = year_opt.unwrap_or(existing_year.unwrap_or(new_date.year()));
@@ -112,7 +178,7 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                     let new_amount = amount_opt.or(existing_amount);
                     let new_charity_id = charity_id_owned.clone().or(existing_charity_id.clone()).unwrap_or_default();
                     let new_notes = notes_cloned.clone().or(existing_notes.clone());
-                    let new_updated_at = incoming.unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+                    let new_updated_at = incoming.clone().unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
                     let existing_date_str = existing_date
                         .map(|d| d.format("%Y-%m-%d").to_string())
@@ -142,16 +208,33 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                         updated_at: Some(new_updated_at.clone()),
                     });
 
-                    let sql = "UPDATE donations SET donation_date = :1, donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, updated_at = TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :8 AND user_id = :9";
-                    if let Err(e) = conn.execute(sql, &[&new_date, &new_year, &new_category, &new_amount, &new_charity_id, &new_notes, &new_updated_at, &donation_id, &user_id]) {
+                    let sql = "UPDATE donations SET donation_date = TO_DATE(:1, 'YYYY-MM-DD'), donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, updated_at = TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :8 AND user_id = :9";
+                    if let Err(e) = conn
+                        .execute(
+                            sql,
+                            &crate::oracle_params![
+                                new_date.format("%Y-%m-%d").to_string(),
+                                new_year,
+                                new_category,
+                                new_amount,
+                                new_charity_id,
+                                new_notes,
+                                new_updated_at,
+                                donation_id.clone(),
+                                user_id.clone(),
+                            ],
+                        )
+                        .await
+                    {
                         tracing::error!("Failed to update donation: {}. SQL: {}", e, sql);
                         return Err(anyhow::anyhow!("Donation update failed: {}", e));
                     }
-                    let _ = conn.commit();
-                    return Ok(Some((old_values, new_values)));
+                    conn.commit().await?;
+                    Some((old_values, new_values))
                 }
-                Ok(None)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+            } else {
+                None
+            };
             if let Some((old_values, new_values)) = revision_payload {
                 let revision = RevisionLogEntry {
                     id: Uuid::new_v4().to_string(),
@@ -174,24 +257,29 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
 pub type ValuationSuggestion = (String, Option<i64>, Option<i64>);
 
 pub async fn suggest_valuations(pool: &DbPool, query: &str) -> anyhow::Result<Vec<ValuationSuggestion>> {
-    let pattern = format!("%{}%", query.to_lowercase());
+    let normalized_query = query.trim().to_ascii_lowercase();
+    if normalized_query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let pattern = format!("{}%", escape_like_pattern(&normalized_query));
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let pat = pattern.clone();
-            let suggestions = task::spawn_blocking(move || -> anyhow::Result<Vec<ValuationSuggestion>> {
-                let conn = p.get()?;
-                let mut out = Vec::new();
-                let rows = conn.query("SELECT name, suggested_min, suggested_max FROM val_items WHERE LOWER(name) LIKE :1 ORDER BY name", &[&pat])?;
-                for row in rows.flatten() {
-                    let name: String = row.get::<_, String>(0).unwrap_or_default();
-                    let min: Option<f64> = row.get::<_, Option<f64>>(1).ok().flatten();
-                    let max: Option<f64> = row.get::<_, Option<f64>>(2).ok().flatten();
-                    out.push((name, min.map(|v| v as i64), max.map(|v| v as i64)));
-                }
-                Ok(out)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(suggestions)
+            let conn = p.get().await?;
+            let rows = conn
+                .query(
+                    "SELECT name, suggested_min, suggested_max FROM val_items WHERE LOWER(name) LIKE :1 ESCAPE '\\' ORDER BY name FETCH FIRST 20 ROWS ONLY",
+                    &crate::oracle_params![pattern],
+                )
+                .await?;
+            let mut out = Vec::new();
+            for row in &rows.rows {
+                out.push((
+                    crate::db::oracle::row_string(row, 0),
+                    crate::db::oracle::row_f64(row, 1).map(|value| value as i64),
+                    crate::db::oracle::row_f64(row, 2).map(|value| value as i64),
+                ));
+            }
+            Ok(out)
         }
     }
 }
@@ -206,32 +294,51 @@ pub async fn list_donations_since(pool: &DbPool, user_id: &str, since: chrono::D
 pub async fn list_valuation_tree(pool: &DbPool) -> anyhow::Result<serde_json::Value> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let tree = task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-                let conn = p.get()?;
-                let mut categories = Vec::new();
-                let cat_rows = conn.query("SELECT id, name FROM val_categories ORDER BY name", &[])?;
-                for cat_row in cat_rows.flatten() {
-                    let cat_id: String = cat_row.get(0).unwrap_or_default();
-                    let cat_name: String = cat_row.get(1).unwrap_or_default();
-                    let mut items = Vec::new();
-                    let item_rows = conn.query("SELECT name, suggested_min, suggested_max FROM val_items WHERE category_id = :1 ORDER BY name", &[&cat_id])?;
-                    for item_row in item_rows.flatten() {
-                        items.push(json!({
-                            "name": item_row.get::<_, String>(0).unwrap_or_default(),
-                            "min": item_row.get::<_, Option<f64>>(1).ok(),
-                            "max": item_row.get::<_, Option<f64>>(2).ok(),
+            let conn = p.get().await?;
+            let mut categories = Vec::new();
+            let rows = conn
+                .query(
+                    "SELECT c.id, c.name, i.name, i.suggested_min, i.suggested_max FROM val_categories c LEFT JOIN val_items i ON i.category_id = c.id ORDER BY c.name, i.name",
+                    &[],
+                )
+                .await?;
+            let mut current_category_id = None::<String>;
+            let mut current_category_name = String::new();
+            let mut current_items = Vec::new();
+
+            for row in &rows.rows {
+                let category_id = crate::db::oracle::row_string(row, 0);
+                let category_name = crate::db::oracle::row_string(row, 1);
+
+                if current_category_id.as_deref() != Some(category_id.as_str()) {
+                    if let Some(previous_category_id) = current_category_id.replace(category_id.clone()) {
+                        categories.push(json!({
+                            "id": previous_category_id,
+                            "name": current_category_name,
+                            "items": current_items,
                         }));
+                        current_items = Vec::new();
                     }
-                    categories.push(json!({
-                        "id": cat_id,
-                        "name": cat_name,
-                        "items": items
+                    current_category_name = category_name;
+                }
+
+                if let Some(item_name) = crate::db::oracle::row_opt_string(row, 2) {
+                    current_items.push(json!({
+                        "name": item_name,
+                        "min": crate::db::oracle::row_f64(row, 3),
+                        "max": crate::db::oracle::row_f64(row, 4),
                     }));
                 }
-                Ok(json!(categories))
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(tree)
+            }
+
+            if let Some(category_id) = current_category_id {
+                categories.push(json!({
+                    "id": category_id,
+                    "name": current_category_name,
+                    "items": current_items,
+                }));
+            }
+            Ok(json!(categories))
         }
     }
 }
@@ -239,32 +346,34 @@ pub async fn list_valuation_tree(pool: &DbPool) -> anyhow::Result<serde_json::Va
 pub async fn seed_valuations(pool: &DbPool) -> anyhow::Result<()> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            task::spawn_blocking(move || -> anyhow::Result<()> {
-                let conn = p.get()?;
-                // If there are already items, do nothing
-                if let Ok(row) = conn.query_row("SELECT COUNT(1) FROM val_items", &[]) {
-                    let count: i64 = row.get(0).unwrap_or(0);
-                    if count > 0 {
-                        return Ok(());
-                    }
-                }
-                // Insert categories
-                let cats = vec![
-                    ("cat_appliances", "Appliances"),
-                    ("cat_childrens_clothing", "Children's Clothing"),
-                    ("cat_furniture", "Furniture"),
-                    ("cat_household_goods", "Household Goods"),
-                    ("cat_mens_clothing", "Men's Clothing"),
-                    ("cat_womens_clothing", "Women's Clothing"),
-                    ("cat_electronics", "Electronics & Computers"),
-                    ("cat_miscellaneous", "Miscellaneous"),
-                ];
-                for (id, name) in cats {
-                    let _ = conn.execute("INSERT INTO val_categories (id, name) VALUES (:1, :2)", &[&id, &name]);
-                }
-                // Insert items
-                let items = vec![
+            let conn = p.get().await?;
+            let rows = conn
+                .query("SELECT 1 FROM val_items FETCH FIRST 1 ROWS ONLY", &[])
+                .await?;
+            if rows.first().is_some() {
+                return Ok(());
+            }
+
+            let cats = vec![
+                ("cat_appliances", "Appliances"),
+                ("cat_childrens_clothing", "Children's Clothing"),
+                ("cat_furniture", "Furniture"),
+                ("cat_household_goods", "Household Goods"),
+                ("cat_mens_clothing", "Men's Clothing"),
+                ("cat_womens_clothing", "Women's Clothing"),
+                ("cat_electronics", "Electronics & Computers"),
+                ("cat_miscellaneous", "Miscellaneous"),
+            ];
+            for (id, name) in cats {
+                let _ = conn
+                    .execute(
+                        "INSERT INTO val_categories (id, name) VALUES (:1, :2)",
+                        &crate::oracle_params![id.to_string(), name.to_string()],
+                    )
+                    .await;
+            }
+
+            let items = vec![
                     // Appliances
                     ("app_ac", "cat_appliances", "Air Conditioner", 21, 93),
                     ("app_dryer", "cat_appliances", "Dryer", 47, 93),
@@ -343,13 +452,37 @@ pub async fn seed_valuations(pool: &DbPool) -> anyhow::Result<()> {
                     ("misc_books_paper", "cat_miscellaneous", "Book (paperback)", 1, 2),
                     ("misc_luggage", "cat_miscellaneous", "Luggage", 5, 16),
                     ("misc_vacuum", "cat_miscellaneous", "Vacuum Cleaner", 5, 67),
-                ];
-                for (id, cat, name, low, high) in items {
-                    let _ = conn.execute("INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES (:1,:2,:3,:4,:5)", &[&id, &cat, &name, &low, &high]);
-                }
-                Ok(())
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+            ];
+            for (id, cat, name, low, high) in items {
+                let _ = conn
+                    .execute(
+                        "INSERT INTO val_items (id, category_id, name, suggested_min, suggested_max) VALUES (:1,:2,:3,:4,:5)",
+                        &crate::oracle_params![
+                            id.to_string(),
+                            cat.to_string(),
+                            name.to_string(),
+                            low,
+                            high,
+                        ],
+                    )
+                    .await;
+            }
+            conn.commit().await?;
             Ok(())
         }
     }
+}
+
+fn escape_like_pattern(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '%' | '_' | '\\' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }

@@ -14,7 +14,17 @@ cp .env.example .env
 docker compose up --build
 ```
 
-This starts the local Oracle Free container, runs the migration job once, and then starts the web server on port `8080`.
+This starts the local Oracle Free container and then starts the web server on port `8080` once Oracle is healthy.
+
+The checked-in local Oracle stack now uses `gvenzl/oracle-free:slim` with a dedicated app user. By default:
+
+- `LOCAL_ORACLE_USER=dtapp`
+- `ORACLE_PWD=ChangeMe123`
+- `ORACLE_PDB=FREEPDB1`
+- host-side connect string: `localhost:1521/FREEPDB1`
+- container-side connect string: `//oracle-dev:1521/FREEPDB1`
+
+Schema and valuation seed data are loaded during first-time Oracle container initialization by `scripts/oracle-dev-startup/10-init-gvenzl.sh`.
 
 If the logs stop after Oracle prints `DATABASE IS READY TO USE!`, the next gate is the container healthcheck. The checked-in Compose file now probes the PDB from inside the container, so `migrate` and `app` should continue automatically once `FREEPDB1` is reachable.
 
@@ -99,14 +109,15 @@ If `ALLOW_DEV_LOGIN=true` and the server runs with `RUST_ENV=development`, you c
 
 ### Docker Compose & local Oracle credentials
 
-- Populate the following variables in your local `.env` (examples in `.env.example`): `ORACLE_PDB`, `ORACLE_PWD`, `ORACLE_CHARACTERSET`, `ENABLE_ARCHIVELOG`, `ENABLE_FORCE_LOGGING`, `ORACLE_PDB_USER`, and `ORACLE_PDB_CONNECT_STRING`.
-- The Compose app and migration services automatically use the internal hostname `oracle-dev` to reach the database, so you do not need a separate Compose-specific connect string.
+- Populate the following variables in your local `.env` (examples in `.env.example`): `LOCAL_ORACLE_USER`, `ORACLE_PWD`, `ORACLE_PDB`, and optionally `ORACLE_SYSTEM_PASSWORD`.
+- The Compose app service uses the internal hostname `oracle-dev`, while host-side `cargo run` and `cargo test` should use `localhost:1521/FREEPDB1`.
+- If you do not set `LOCAL_ORACLE_USER`, Compose defaults to `dtapp`.
 - Do NOT commit your `.env` file; keep secrets out of version control. Use `.env.example` as the committed reference with placeholder values.
 
 ## Notes & troubleshooting
 
 - If you see errors about missing `OBJECT_STORAGE_*` envs when running locally, either set them to point at a local MinIO deployment or export placeholder values until you implement a local storage shim.
-- Development uses the checked-in Oracle schema in `migrations/init.sql`; the default Compose stack runs the migration service automatically before the app starts.
+- Development uses the checked-in Oracle schema in `migrations/init.sql`; the local Oracle container now initializes schema and seed data directly during first boot.
 - To run a type-check / build quickly, use `cargo check`.
 - To inspect the readiness gate directly, run `docker-compose ps` and `docker-compose logs -f oracle-dev`. `app` waits for `oracle-dev` to become healthy, not just for the database process to print its startup banner.
 - The dev override is intended for local-only frontend work. The default `docker-compose.yml` remains the production-like path that serves prebuilt assets from the image.
@@ -119,7 +130,7 @@ To enable OCR functionality:
 
 1. **Environmental Variables**: Set the following in your `.env` file:
    - `MISTRAL_API_KEY`: Your Mistral AI API key (required).
-   - `MISTRAL_API_ENDPOINT`: Mistral OCR endpoint (defaults to `https://api.mistral.ai/v1/ocr`).
+   - `MISTRAL_API_ENDPOINT`: Optional compatibility setting. If present, it must remain `https://api.mistral.ai/v1/ocr`.
    - `MISTRAL_MODEL`: Mistral model to use (e.g., `mistral-ocr-latest`).
 
 ## Production OAuth & secret management

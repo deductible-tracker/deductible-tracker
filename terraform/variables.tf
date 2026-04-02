@@ -35,6 +35,12 @@ variable "app_user_email" {
   default     = "joshkraemer@gmail.com"
 }
 
+variable "temporary_ssh_cidr" {
+  description = "Temporary SSH ingress CIDR for emergency debugging; leave empty to disable SSH ingress"
+  type        = string
+  default     = ""
+}
+
 variable "instance_shape" {
   default = "VM.Standard.A1.Flex"
 }

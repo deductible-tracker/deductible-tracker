@@ -1,5 +1,4 @@
 use chrono::Utc;
-use std::path::{Path, PathBuf};
 
 // Test the donations helper by using the crate path
 #[test]
@@ -26,6 +25,8 @@ fn parse_utc_from_opt_string_tests() {
 
 // Include asset_helpers.rs in a local test module so we can test its free functions
 mod asset_helpers_test {
+    #![allow(dead_code)]
+
     use std::fs;
     use std::path::{Path, PathBuf};
     include!("../src/main_sections/assets/asset_helpers.rs");

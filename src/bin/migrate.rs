@@ -1,11 +1,11 @@
-use deductible_tracker::db::oracle::{initialize_client, load_config, OracleConnectionManager};
+use deductible_tracker::db::oracle::{connect_once, load_config};
 use deductible_tracker::db::RuntimeMode;
-use r2d2::Pool;
 use std::env;
 use std::fs;
 use std::path::Path;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     // Load .env if it exists
     dotenvy::dotenv().ok();
 
@@ -14,11 +14,10 @@ fn main() -> anyhow::Result<()> {
     let runtime_mode = RuntimeMode::from_env()?;
 
     let config = load_config(runtime_mode)?;
-    initialize_client(&config)?;
 
-    if let Some(tns_admin) = config.tns_admin.clone() {
-        println!("TNS_ADMIN: {}", tns_admin);
-        match fs::read_dir(&tns_admin) {
+    if let Some(wallet_dir) = config.wallet_dir.as_deref() {
+        println!("Wallet directory: {}", wallet_dir.display());
+        match fs::read_dir(wallet_dir) {
             Ok(entries) => {
                 println!("Wallet files:");
                 for entry in entries.flatten() {
@@ -27,28 +26,25 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             Err(e) => {
-                println!("ERROR: Cannot read wallet directory '{}': {}", tns_admin, e);
-                println!("  This is likely an SELinux or permissions issue.");
-                println!("  Ensure the volume mount uses ':z' for SELinux relabeling.");
+                println!(
+                    "ERROR: Cannot read wallet directory '{}': {}",
+                    wallet_dir.display(),
+                    e
+                );
             }
         }
     } else if runtime_mode == RuntimeMode::Production {
-        println!("WARNING: TNS_ADMIN is not set — Oracle Net cannot find wallet/sqlnet.ora");
+        println!("WARNING: Oracle wallet directory is not configured");
     }
 
     println!("Connecting to database (60s timeout)...");
-    let manager =
-        OracleConnectionManager::new(&config.username, &config.password, &config.connect_string);
-    let pool = Pool::builder()
-        .max_size(1)
-        .connection_timeout(std::time::Duration::from_secs(60))
-        .build(manager)
-        .map_err(|e| anyhow::anyhow!("Failed to create DB pool: {}", e))?;
-
-    let conn = pool.get()?;
+    let conn = connect_once(runtime_mode).await?;
 
     let args: Vec<String> = env::args().collect();
-    let run_seed = args.contains(&"--seed".to_string());
+    let run_seed = args.contains(&"--seed".to_string())
+        || env::var("RUN_SEED")
+            .map(|value| value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
 
     let migration_path =
         env::var("MIGRATION_FILE").unwrap_or_else(|_| "migrations/init.sql".to_string());
@@ -80,7 +76,7 @@ fn main() -> anyhow::Result<()> {
 
         for sql in statements {
             println!("Executing: {:.50}...", sql);
-            match conn.execute(sql, &[]) {
+            match conn.execute(sql, &[]).await {
                 Ok(_) => println!("Success."),
                 Err(e) => {
                     let err_msg = e.to_string();
@@ -100,7 +96,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    conn.commit()?;
+    conn.commit().await?;
     println!("Migration complete and committed (Oracle).");
     Ok(())
 }

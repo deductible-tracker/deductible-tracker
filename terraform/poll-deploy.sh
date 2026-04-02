@@ -7,6 +7,22 @@ METADATA_URL="http://169.254.169.254/opc/v2/instance/"
 
 # Path to state file
 STATE_FILE="/home/opc/.last_deployed_image"
+REPO_URL="https://github.com/deductible-tracker/deductible-tracker.git"
+REPO_DIR="/home/opc/deductible-tracker-src"
+
+build_image_from_source() {
+    local revision
+    revision="${TAGS##*:}"
+
+    echo "Building $TAGS from source at $revision"
+    if [ ! -d "$REPO_DIR/.git" ]; then
+        git clone "$REPO_URL" "$REPO_DIR" || return 1
+    fi
+
+    git -C "$REPO_DIR" fetch --depth 1 origin "$revision" || return 1
+    git -C "$REPO_DIR" checkout --force "$revision" || return 1
+    docker build -t "$TAGS" "$REPO_DIR"
+}
 
 # Fetch latest deployment data from instance metadata.
 # Fall back to defined tags so older instances continue to work.
@@ -19,18 +35,19 @@ if [ -z "$TAGS" ] || [ "$TAGS" == "null" ] || [ "$TAGS" == "initial" ]; then
     exit 0
 fi
 
-# Compare with last deployed or check for secret updates
-LAST_IMAGE=""
-if [ -f "$STATE_FILE" ]; then
-    LAST_IMAGE=$(cat "$STATE_FILE")
-fi
-
 # Update secrets if present
 if [ -n "$SECRETS_BASE64" ] && [ "$SECRETS_BASE64" != "null" ]; then
     echo "Updating environment file from metadata..."
     echo "$SECRETS_BASE64" | base64 -d > /home/opc/app.env
     chmod 600 /home/opc/app.env
     chown opc:opc /home/opc/app.env
+    /usr/local/bin/configure-newrelic-infra.sh || true
+fi
+
+# Compare with last deployed
+LAST_IMAGE=""
+if [ -f "$STATE_FILE" ]; then
+    LAST_IMAGE=$(cat "$STATE_FILE")
 fi
 
 if [ "$TAGS" != "$LAST_IMAGE" ]; then
@@ -43,8 +60,11 @@ if [ "$TAGS" != "$LAST_IMAGE" ]; then
     fi
 
     if ! docker pull "$TAGS"; then
-        echo "Failed to pull image $TAGS"
-        exit 1
+        echo "Failed to pull image $TAGS; attempting source build fallback"
+        if ! build_image_from_source; then
+            echo "Failed to build fallback image $TAGS"
+            exit 1
+        fi
     fi
 
     # 2. Blue/Green style swap (simple version)

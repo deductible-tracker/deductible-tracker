@@ -29,6 +29,7 @@ use std::process::Command;
 use regex::Regex;
 
 use db::DbPool;
+use url::Url;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -38,7 +39,7 @@ pub struct AppState {
     pub storage_region: String,
     pub storage_access_key_id: String,
     pub storage_secret_access_key: String,
-    pub mistral_api_endpoint: String,
+    pub mistral_api_endpoint: Url,
     pub mistral_api_key: Option<String>,
     pub mistral_model: String,
     pub index_template: String,
@@ -91,8 +92,7 @@ pub async fn run_app() -> anyhow::Result<()> {
     let storage_region = env::var("OCI_REGION").expect("OCI_REGION must be set");
     let storage_access_key_id = env::var("OCI_ACCESS_KEY_ID").expect("OCI_ACCESS_KEY_ID must be set");
     let storage_secret_access_key = env::var("OCI_SECRET_ACCESS_KEY").expect("OCI_SECRET_ACCESS_KEY must be set");
-    let mistral_api_endpoint = env::var("MISTRAL_API_ENDPOINT")
-        .expect("MISTRAL_API_ENDPOINT must be set");
+    let mistral_api_endpoint = crate::ocr::load_mistral_api_endpoint()?;
     let mistral_api_key = env::var("MISTRAL_API_KEY").ok().filter(|value| !value.trim().is_empty());
     let mistral_model = env::var("MISTRAL_MODEL").unwrap_or_else(|_| "mistral-ocr-latest".to_string());
 
@@ -282,11 +282,15 @@ pub async fn run_app() -> anyhow::Result<()> {
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::STRICT_TRANSPORT_SECURITY,
-            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+            HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
-            HeaderValue::from_static("default-src 'self'; script-src 'self' https://accounts.google.com; script-src-elem 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; connect-src 'self' https://accounts.google.com https://axi3e0fffvc5.compat.objectstorage.us-chicago-1.oraclecloud.com; frame-src https://accounts.google.com; frame-ancestors 'self' https://accounts.google.com;"),
+            HeaderValue::from_static("default-src 'self'; script-src 'self' https://accounts.google.com; script-src-elem 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; font-src 'self' data:; img-src 'self' data: blob: https://*.compat.objectstorage.*.oraclecloud.com; connect-src 'self' https://accounts.google.com https://*.compat.objectstorage.*.oraclecloud.com; frame-src https://accounts.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"),
         ))
         .with_state(state);
 

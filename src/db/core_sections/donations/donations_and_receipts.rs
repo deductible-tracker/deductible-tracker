@@ -30,22 +30,14 @@ fn build_donation_revision_json(snapshot: &DonationRevisionSnapshot) -> String {
 async fn donation_owner_user_id(pool: &DbPool, donation_id: &str) -> anyhow::Result<Option<String>> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let donation_id = donation_id.to_string();
-            let user_id = task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
-                let conn = p.get()?;
-                let mut rows = conn.query("SELECT user_id FROM donations WHERE id = :1", &[&donation_id])?;
-                if let Some(row) = rows.next().transpose()? {
-                    let user_id: String = row.get(0).unwrap_or_default();
-                    if user_id.is_empty() {
-                        return Ok(None);
-                    }
-                    return Ok(Some(user_id));
-                }
-                Ok(None)
-            })
-            .await
-            .map_err(|e| anyhow!("DB task join error: {}", e))??;
+            let conn = p.get().await?;
+            let rows = conn
+                .query(
+                    "SELECT user_id FROM donations WHERE id = :1",
+                    &crate::oracle_params![donation_id.to_string()],
+                )
+                .await?;
+            let user_id = rows.first().map(|row| crate::db::oracle::row_string(row, 0));
             Ok(user_id)
         }
     }
@@ -54,19 +46,14 @@ async fn donation_owner_user_id(pool: &DbPool, donation_id: &str) -> anyhow::Res
 pub async fn user_owns_donation(pool: &DbPool, user_id: &str, donation_id: &str) -> anyhow::Result<bool> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let user_id = user_id.to_string();
-            let donation_id = donation_id.to_string();
-            let exists = task::spawn_blocking(move || -> anyhow::Result<bool> {
-                let conn = p.get()?;
-                let mut rows = conn.query("SELECT COUNT(1) FROM donations WHERE id = :1 AND user_id = :2", &[&donation_id, &user_id])?;
-                if let Some(row) = rows.next().transpose()? {
-                    let count: i64 = row.get(0).unwrap_or(0);
-                    return Ok(count > 0);
-                }
-                Ok(false)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(exists)
+            let conn = p.get().await?;
+            let rows = conn
+                .query(
+                    "SELECT 1 FROM donations WHERE id = :1 AND user_id = :2",
+                    &crate::oracle_params![donation_id.to_string(), user_id.to_string()],
+                )
+                .await?;
+            Ok(rows.first().is_some())
         }
     }
 }
@@ -74,6 +61,12 @@ pub async fn user_owns_donation(pool: &DbPool, user_id: &str, donation_id: &str)
 pub async fn list_receipts(pool: &DbPool, user_id: &str, donation_id: Option<String>) -> anyhow::Result<Vec<crate::db::models::Receipt>> {
     match &**pool {
         DbPoolEnum::Oracle(p) => crate::db::oracle::receipts::list_receipts(p, user_id, donation_id).await,
+    }
+}
+
+pub async fn list_receipt_summaries(pool: &DbPool, user_id: &str, donation_id: Option<String>) -> anyhow::Result<Vec<crate::db::models::Receipt>> {
+    match &**pool {
+        DbPoolEnum::Oracle(p) => crate::db::oracle::receipts::list_receipt_summaries(p, user_id, donation_id).await,
     }
 }
 
@@ -89,83 +82,92 @@ pub async fn list_donations(pool: &DbPool, user_id: &str, year: Option<i32>) -> 
     }
 }
 
+pub async fn list_donation_years(pool: &DbPool, user_id: &str) -> anyhow::Result<Vec<i32>> {
+    match &**pool {
+        DbPoolEnum::Oracle(p) => crate::db::oracle::donations::list_donation_years(p, user_id).await,
+    }
+}
+
 pub async fn soft_delete_donation(pool: &DbPool, user_id: &str, donation_id: &str) -> anyhow::Result<bool> {
     let user_for_revision = Some(user_id.to_string());
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
+            let conn = p.get().await?;
             let user_id = user_id.to_string();
             let donation_id = donation_id.to_string();
             let donation_id_for_revision = donation_id.clone();
             let updated_at = chrono::Utc::now().to_rfc3339();
-            let revision_payload = task::spawn_blocking(move || -> anyhow::Result<Option<(String, String)>> {
-                let conn = p.get()?;
-                let mut existing_rows = conn.query(
+            let existing_rows = conn
+                .query(
                     "SELECT donation_date, donation_year, donation_category, donation_amount, charity_id, notes, deleted FROM donations WHERE id = :1 AND user_id = :2",
-                    &[&donation_id, &user_id],
-                )?;
-                let Some(existing) = existing_rows.next().transpose()? else {
-                    return Ok(None);
-                };
+                    &crate::oracle_params![donation_id.clone(), user_id.clone()],
+                )
+                .await?;
+            let Some(existing) = existing_rows.first() else {
+                return Ok(false);
+            };
 
-                let existing_date = existing
-                    .get::<usize, chrono::NaiveDate>(0)
-                    .ok()
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_default();
-                let existing_year: i32 = existing.get(1).unwrap_or(0);
-                let existing_category: Option<String> = existing.get(2).ok();
-                let existing_amount: Option<f64> = existing.get(3).ok();
-                let existing_charity_id: String = existing.get(4).unwrap_or_default();
-                let existing_notes: Option<String> = existing.get(5).ok();
-                let existing_deleted: i64 = existing.get(6).unwrap_or(0);
+            let existing_date = crate::db::oracle::row_naive_date(existing, 0)
+                .map(|value| value.format("%Y-%m-%d").to_string())
+                .unwrap_or_default();
+            let existing_year = crate::db::oracle::row_i64(existing, 1).unwrap_or(0) as i32;
+            let existing_category = crate::db::oracle::row_opt_string(existing, 2);
+            let existing_amount = crate::db::oracle::row_f64(existing, 3);
+            let existing_charity_id = crate::db::oracle::row_string(existing, 4);
+            let existing_notes = crate::db::oracle::row_opt_string(existing, 5);
+            let existing_deleted = crate::db::oracle::row_bool(existing, 6).unwrap_or(false);
 
-                let sql = "UPDATE donations SET deleted = 1, updated_at = TO_TIMESTAMP_TZ(:1, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :2 AND user_id = :3";
-                if let Err(e) = conn.execute(sql, &[&updated_at, &donation_id, &user_id]) {
-                    tracing::error!("Failed to soft delete donation: {}. SQL: {}", e, sql);
-                    return Err(anyhow::anyhow!("Donation soft delete failed: {}", e));
-                }
+            let sql = "UPDATE donations SET deleted = 1, updated_at = TO_TIMESTAMP_TZ(:1, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :2 AND user_id = :3";
+            if let Err(e) = conn
+                .execute(
+                    sql,
+                    &crate::oracle_params![updated_at.clone(), donation_id.clone(), user_id.clone()],
+                )
+                .await
+            {
+                tracing::error!("Failed to soft delete donation: {}. SQL: {}", e, sql);
+                return Err(anyhow::anyhow!("Donation soft delete failed: {}", e));
+            }
 
-                // Cascade-delete associated receipts
-                if let Err(e) = conn.execute("DELETE FROM receipts WHERE donation_id = :1", &[&donation_id]) {
-                    tracing::error!("Failed to cascade delete receipts for donation {}: {}", donation_id, e);
-                    return Err(anyhow::anyhow!("Cascade delete receipts failed: {}", e));
-                }
+            if let Err(e) = conn
+                .execute(
+                    "DELETE FROM receipts WHERE donation_id = :1",
+                    &crate::oracle_params![donation_id.clone()],
+                )
+                .await
+            {
+                tracing::error!("Failed to cascade delete receipts for donation {}: {}", donation_id, e);
+                return Err(anyhow::anyhow!("Cascade delete receipts failed: {}", e));
+            }
 
-                let _ = conn.commit();
-                let mut cnt_rows = conn.query("SELECT COUNT(1) FROM donations WHERE id = :1 AND user_id = :2 AND deleted = 1", &[&donation_id, &user_id])?;
-                if let Some(r) = cnt_rows.next().transpose()? {
-                    let cnt: i64 = r.get(0).unwrap_or(0);
-                    if cnt > 0 {
-                        let old_values = build_donation_revision_json(&DonationRevisionSnapshot {
-                            donation_id: donation_id.clone(),
-                            user_id: user_id.clone(),
-                            donation_date: existing_date.clone(),
-                            donation_year: existing_year,
-                            donation_category: existing_category.clone(),
-                            donation_amount: existing_amount,
-                            charity_id: existing_charity_id.clone(),
-                            notes: existing_notes.clone(),
-                            deleted: existing_deleted == 1,
-                            updated_at: None,
-                        });
-                        let new_values = build_donation_revision_json(&DonationRevisionSnapshot {
-                            donation_id: donation_id.clone(),
-                            user_id: user_id.clone(),
-                            donation_date: existing_date,
-                            donation_year: existing_year,
-                            donation_category: existing_category,
-                            donation_amount: existing_amount,
-                            charity_id: existing_charity_id,
-                            notes: existing_notes,
-                            deleted: true,
-                            updated_at: Some(updated_at.clone()),
-                        });
-                        return Ok(Some((old_values, new_values)));
-                    }
-                }
-                Ok(None)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+            conn.commit().await?;
+            let revision_payload = {
+                let old_values = build_donation_revision_json(&DonationRevisionSnapshot {
+                    donation_id: donation_id.clone(),
+                    user_id: user_id.clone(),
+                    donation_date: existing_date.clone(),
+                    donation_year: existing_year,
+                    donation_category: existing_category.clone(),
+                    donation_amount: existing_amount,
+                    charity_id: existing_charity_id.clone(),
+                    notes: existing_notes.clone(),
+                    deleted: existing_deleted,
+                    updated_at: None,
+                });
+                let new_values = build_donation_revision_json(&DonationRevisionSnapshot {
+                    donation_id: donation_id.clone(),
+                    user_id: user_id.clone(),
+                    donation_date: existing_date,
+                    donation_year: existing_year,
+                    donation_category: existing_category,
+                    donation_amount: existing_amount,
+                    charity_id: existing_charity_id,
+                    notes: existing_notes,
+                    deleted: true,
+                    updated_at: Some(updated_at.clone()),
+                });
+                Some((old_values, new_values))
+            };
             if let Some((old_values, new_values)) = revision_payload {
                 let revision = RevisionLogEntry {
                     id: Uuid::new_v4().to_string(),

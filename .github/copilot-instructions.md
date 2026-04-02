@@ -6,7 +6,7 @@ This file orients GitHub Copilot to the repository's layout, common development 
 
 ## Project Overview
 
-- **Backend**: Rust (Axum, Oracle DB via `r2d2`).
+- **Backend**: Rust (Axum, Oracle DB via `oracle-rs` and `deadpool-oracle`).
 - **Frontend**: Vanilla JS (ES6 modules), Dexie.js (IndexedDB), TailwindCSS v4.
 - **Key Directories**:
   - `src/db/core_sections/`: Internal DB implementation (included via `include!`).
@@ -30,7 +30,7 @@ This file orients GitHub Copilot to the repository's layout, common development 
   - `npm run format` (runs Prettier to reformat files)
   - Run `npm run format:check` in CI to catch remaining formatting issues.
   - **Fix all errors AND warnings** before final submission.
-   - **Unused variables**: Prefer removing unused variables instead of commenting them out. Before removing, perform a repo-wide search to confirm the symbol isn't referenced elsewhere, then run `npm run lint:js -- --fix` and `npm run format` to ensure no new warnings are introduced.
+  - **Unused variables**: Prefer removing unused variables instead of commenting them out. Before removing, perform a repo-wide search to confirm the symbol isn't referenced elsewhere, then run `npm run lint:js -- --fix` and `npm run format` to ensure no new warnings are introduced.
 
 ## Core Engineering Standards (CRITICAL)
 
@@ -40,8 +40,8 @@ This file orients GitHub Copilot to the repository's layout, common development 
    - **Fix all errors AND warnings** before final submission.
    - Use `anyhow::Result` and `tracing`.
 3. **Oracle DB Patterns**:
-   - Wrap all DB operations in `tokio::task::spawn_blocking`.
-   - Clone the `DbPool` and arguments before moving into the closure.
+   - Use the async `deadpool-oracle` pool and `oracle-rs` APIs directly (`pool.get().await?`, `conn.query(...).await?`, `conn.execute(...).await?`).
+   - Prefer direct column projection and shared row helpers over packed-string workarounds.
    - Use positional placeholders (`:1`, `:2`).
 4. **Testing (STRICT)**:
    - **All tests MUST be placed in the `tests/` directory.**

@@ -49,6 +49,7 @@ pub async fn import_donations(
         .has_headers(true)
         .from_reader(req.csv.as_bytes());
     let mut imported = 0usize;
+    let mut skipped = 0usize;
     for record in reader.records() {
         match record {
             Ok(rec) => {
@@ -77,8 +78,14 @@ pub async fn import_donations(
                     .filter(|s| !s.trim().is_empty());
                 let category = normalize_category(&category_raw);
 
-                let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-                    .unwrap_or_else(|_| chrono::Utc::now().date_naive());
+                let date = match chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                    Ok(d) => d,
+                    Err(_) => {
+                        tracing::warn!("CSV import: skipping row with invalid date '{}'", date_str);
+                        skipped += 1;
+                        continue;
+                    }
+                };
                 let year = date.year();
                 let now = chrono::Utc::now();
 
@@ -162,7 +169,7 @@ pub async fn import_donations(
 
     (
         StatusCode::OK,
-        AxumJson(serde_json::json!({ "imported": imported })),
+        AxumJson(serde_json::json!({ "imported": imported, "skipped": skipped })),
     )
         .into_response()
 }
@@ -242,8 +249,10 @@ pub async fn create_donation(
     let user_id = user.id;
     let charity_name = req.charity_name.trim().to_string();
 
-    let date = NaiveDate::parse_from_str(&req.date, "%Y-%m-%d")
-        .unwrap_or_else(|_| chrono::Utc::now().date_naive());
+    let date = match NaiveDate::parse_from_str(&req.date, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid date format, expected YYYY-MM-DD").into_response(),
+    };
 
     let id = if let Some(provided) = req.id.clone() {
         provided
@@ -354,9 +363,10 @@ pub async fn update_donation(
     let user_id = user.id;
 
     let (date_opt, year_opt) = if let Some(date_str) = req.date.clone() {
-        let d = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-            .unwrap_or_else(|_| chrono::Utc::now().date_naive());
-        (Some(d), Some(d.year()))
+        match NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+            Ok(d) => (Some(d), Some(d.year())),
+            Err(_) => return (StatusCode::BAD_REQUEST, "Invalid date format, expected YYYY-MM-DD").into_response(),
+        }
     } else {
         (None, None)
     };

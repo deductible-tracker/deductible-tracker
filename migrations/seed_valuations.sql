@@ -1,3 +1,5 @@
+SET DEFINE OFF
+
 -- Seed Valuation Categories
 INSERT INTO val_categories (id, name) VALUES ('cat_appliances', 'Appliances');
 INSERT INTO val_categories (id, name) VALUES ('cat_childrens_clothing', 'Children''s Clothing');

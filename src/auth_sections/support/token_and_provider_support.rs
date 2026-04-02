@@ -1,7 +1,7 @@
 fn build_auth_cookie(token: &str) -> String {
     let secure = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
     let mut cookie = format!(
-        "{}={}; SameSite=Strict; Path=/; Max-Age=14400",
+        "{}={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=14400",
         AUTH_COOKIE_NAME,
         token
     );

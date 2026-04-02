@@ -59,12 +59,13 @@ pub async fn dev_login(
     }
 
     let dev_user = env::var("DEV_USERNAME").unwrap_or_else(|_| "admin".to_string());
-    let dev_pass = env::var("DEV_PASSWORD").unwrap_or_else(|_| "password".to_string());
-
-    if dev_pass == "password" {
-        tracing::warn!("Default DEV_PASSWORD is not allowed");
-        return (StatusCode::FORBIDDEN, "Dev login misconfigured").into_response();
-    }
+    let dev_pass = match env::var("DEV_PASSWORD") {
+        Ok(p) if !p.is_empty() && p != "password" => p,
+        _ => {
+            tracing::warn!("DEV_PASSWORD must be set to a non-default value");
+            return (StatusCode::FORBIDDEN, "Dev login misconfigured").into_response();
+        }
+    };
 
     if payload.username == dev_user && payload.password == dev_pass {
         let existing_user = crate::db::users::get_user_profile_by_email(&_state.db, "dev@local").await;
@@ -207,8 +208,17 @@ pub async fn me(
             }).into_response()
         }
         Err(e) => {
-            tracing::error!("Failed loading profile: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response()
+            tracing::error!("Failed loading profile, falling back to token claims: {}", e);
+            Json(UserProfile {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                filing_status: None,
+                agi: None,
+                marginal_tax_rate: None,
+                itemize_deductions: None,
+                provider: user.provider,
+            }).into_response()
         }
     }
 }
@@ -402,8 +412,12 @@ pub async fn import_me(
         }
     }
 
+    const MAX_UPLOAD_SIZE: usize = 100 * 1024 * 1024; // 100 MB
     if data.is_empty() {
         return (StatusCode::BAD_REQUEST, "Missing backup file").into_response();
+    }
+    if data.len() > MAX_UPLOAD_SIZE {
+        return (StatusCode::BAD_REQUEST, "Backup file too large (max 100 MB)").into_response();
     }
 
     let mut archive = match zip::ZipArchive::new(Cursor::new(data)) {
@@ -420,6 +434,10 @@ pub async fn import_me(
             Ok(f) => f,
             Err(_) => return (StatusCode::BAD_REQUEST, "Missing data.json in backup").into_response(),
         };
+        const MAX_JSON_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
+        if data_file.size() > MAX_JSON_SIZE {
+            return (StatusCode::BAD_REQUEST, "data.json too large").into_response();
+        }
         let mut json_buf = Vec::new();
         if data_file.read_to_end(&mut json_buf).is_err() {
             return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read data.json").into_response();
@@ -462,6 +480,11 @@ pub async fn import_me(
     for receipt in &backup.receipts {
         let file_name = format!("receipts/{}", receipt.key.split('/').next_back().unwrap_or(&receipt.id));
         if let Ok(mut zip_file) = archive.by_name(&file_name) {
+            const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024; // 50 MB
+            if zip_file.size() > MAX_FILE_SIZE {
+                tracing::warn!("Skipping oversized file in backup: {} ({} bytes)", file_name, zip_file.size());
+                continue;
+            }
             let mut file_data = Vec::new();
             if zip_file.read_to_end(&mut file_data).is_ok() {
                 match crate::storage::presign_url(&state, "PUT", &receipt.key, 300) {

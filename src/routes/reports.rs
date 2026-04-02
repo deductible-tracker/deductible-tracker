@@ -7,7 +7,6 @@ use axum::{
     extract::{Query, State},
     response::IntoResponse,
 };
-use std::collections::BTreeSet;
 
 #[derive(serde::Deserialize)]
 pub struct ExportParams {
@@ -43,16 +42,8 @@ pub async fn list_available_years(
     State(state): State<AppState>,
     user: AuthenticatedUser,
 ) -> impl IntoResponse {
-    match db::donations::list_donations(&state.db, &user.id, None).await {
-        Ok(list) => {
-            let mut year_set: BTreeSet<i32> = BTreeSet::new();
-            for d in list {
-                year_set.insert(d.year);
-            }
-            let mut years: Vec<i32> = year_set.into_iter().collect();
-            years.reverse();
-            axum::Json(YearsResponse { years }).into_response()
-        }
+    match db::donations::list_donation_years(&state.db, &user.id).await {
+        Ok(years) => axum::Json(YearsResponse { years }).into_response(),
         Err(_) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             "Database Error",

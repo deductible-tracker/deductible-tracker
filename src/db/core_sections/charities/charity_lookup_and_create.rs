@@ -1,3 +1,5 @@
+use oracle_rs::Row;
+
 pub async fn log_audit(
     pool: &DbPool,
     id: &str,
@@ -17,14 +19,19 @@ pub async fn log_audit(
 
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            task::spawn_blocking(move || -> anyhow::Result<()> {
-                let conn = p.get()?;
-                let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (:1,:2,:3,:4,:5,:6, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
-                conn.execute(sql, &[&id, &user_id, &action, &table_name, &record_id, &details, &created_at])?;
-                let _ = conn.commit();
-                Ok(())
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+            let conn = p.get().await?;
+            // Truncate details to VARCHAR2-safe length to avoid CLOB binding issues
+            let details_truncated = details.map(|v| {
+                if v.len() > 4000 { v[..4000].to_string() } else { v }
+            });
+            let sql = "INSERT INTO audit_logs (id, user_id, action, table_name, record_id, details, created_at) VALUES (:1, :2, :3, :4, :5, :6, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
+            conn.execute(
+                sql,
+                &crate::oracle_params![id.clone(), user_id, action, table_name, record_id, details_truncated, created_at],
+            )
+            .await?;
+
+            conn.commit().await?;
             Ok(())
         }
     }
@@ -45,22 +52,46 @@ pub async fn log_revision(
 
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            task::spawn_blocking(move || -> anyhow::Result<()> {
-                let conn = p.get()?;
-                let sql = "INSERT INTO audit_revisions (id, user_id, table_name, record_id, operation, old_values, new_values, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7, TO_TIMESTAMP_TZ(:8, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
-                if let Err(e) = conn.execute(
+            let conn = p.get().await?;
+
+            // Cap values at 252 bytes to stay within oracle-rs's safe
+            // single-byte length encoding (MAX_SHORT = 252). The chunked
+            // encoding path for longer strings triggers a protocol error
+            // with Oracle Free.
+            const MAX_BIND_LEN: usize = 252;
+            let old_val_safe = match old_values_cloned {
+                Some(v) if v.len() > MAX_BIND_LEN => format!("{}…", &v[..MAX_BIND_LEN - 3]),
+                Some(v) => v,
+                None => String::new(),
+            };
+            let new_val_safe = match new_values_cloned {
+                Some(v) if v.len() > MAX_BIND_LEN => format!("{}…", &v[..MAX_BIND_LEN - 3]),
+                Some(v) => v,
+                None => String::new(),
+            };
+
+            let sql = "INSERT INTO audit_revisions (id, user_id, table_name, record_id, operation, old_values, new_values, created_at) VALUES (:1, :2, :3, :4, :5, NULLIF(:6, ''), NULLIF(:7, ''), TO_TIMESTAMP_TZ(:8, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
+            if let Err(e) = conn
+                .execute(
                     sql,
-                    &[&id, &user_id_cloned, &table_name, &record_id, &operation, &old_values_cloned, &new_values_cloned, &created_at],
-                ) {
-                    tracing::error!("Failed to insert audit revision: {}. SQL: {}", e, sql);
-                    return Err(anyhow::anyhow!("Audit revision insertion failed: {}", e));
-                }
-                let _ = conn.commit();
-                Ok(())
-            })
-            .await
-            .map_err(|e| anyhow!("DB task join error: {}", e))??;
+                    &crate::oracle_params![
+                        id.clone(),
+                        user_id_cloned,
+                        table_name,
+                        record_id,
+                        operation,
+                        old_val_safe,
+                        new_val_safe,
+                        created_at,
+                    ],
+                )
+                .await
+            {
+                tracing::error!("Failed to insert audit revision: {}", e);
+                return Err(anyhow::anyhow!("Audit revision insertion failed: {}", e));
+            }
+
+            conn.commit().await?;
             Ok(())
         }
     }
@@ -69,38 +100,33 @@ pub async fn log_revision(
 pub async fn list_audit_logs(pool: &DbPool, user_id: &str, since: Option<chrono::DateTime<chrono::Utc>>) -> anyhow::Result<Vec<crate::db::models::AuditLog>> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let user_id = user_id.to_string();
+            let conn = p.get().await?;
             let since_str = since.map(|d| d.to_rfc3339());
-            let rows = task::spawn_blocking(move || -> anyhow::Result<Vec<crate::db::models::AuditLog>> {
-                let conn = p.get()?;
-                let parse_utc = |value: Option<String>| {
-                    value
-                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(chrono::Utc::now)
-                };
-                let sql = if since_str.is_some() {
-                    "SELECT id, user_id, action, table_name, record_id, details, created_at FROM audit_logs WHERE user_id = :1 AND created_at > :2 ORDER BY created_at DESC"
-                } else {
-                    "SELECT id, user_id, action, table_name, record_id, details, created_at FROM audit_logs WHERE user_id = :1 ORDER BY created_at DESC"
-                };
-                let rows_iter = if let Some(s) = since_str { conn.query(sql, &[&user_id, &s])? } else { conn.query(sql, &[&user_id])? };
-                let mut out = Vec::new();
-                for row in rows_iter.flatten() {
-                    out.push(crate::db::models::AuditLog {
-                        id: row.get(0).unwrap_or_default(),
-                        user_id: row.get(1).unwrap_or_default(),
-                        action: row.get(2).unwrap_or_default(),
-                        table_name: row.get(3).unwrap_or_default(),
-                        record_id: row.get(4).ok(),
-                        details: row.get(5).ok(),
-                        created_at: parse_utc(row.get(6).ok()),
-                    });
-                }
-                Ok(out)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(rows)
+            let sql = if since_str.is_some() {
+                "SELECT id, user_id, action, table_name, record_id, details, created_at FROM audit_logs WHERE user_id = :1 AND created_at > TO_TIMESTAMP_TZ(:2, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') ORDER BY created_at DESC"
+            } else {
+                "SELECT id, user_id, action, table_name, record_id, details, created_at FROM audit_logs WHERE user_id = :1 ORDER BY created_at DESC"
+            };
+            let rows = if let Some(since_str) = since_str {
+                conn.query(sql, &crate::oracle_params![user_id.to_string(), since_str])
+                    .await?
+            } else {
+                conn.query(sql, &crate::oracle_params![user_id.to_string()]).await?
+            };
+            let mut out = Vec::new();
+            for row in &rows.rows {
+                out.push(crate::db::models::AuditLog {
+                    id: crate::db::oracle::row_string(row, 0),
+                    user_id: crate::db::oracle::row_string(row, 1),
+                    action: crate::db::oracle::row_string(row, 2),
+                    table_name: crate::db::oracle::row_string(row, 3),
+                    record_id: crate::db::oracle::row_opt_string(row, 4),
+                    details: crate::db::oracle::row_opt_string(row, 5),
+                    created_at: crate::db::oracle::row_datetime_utc(row, 6)
+                        .unwrap_or_else(chrono::Utc::now),
+                });
+            }
+            Ok(out)
         }
     }
 }
@@ -113,51 +139,49 @@ pub async fn find_charity_by_name_or_ein(
 ) -> anyhow::Result<Option<crate::db::models::Charity>> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let user_id = user_id.to_string();
-            let name = name.to_string();
-            let ein_cloned = ein.clone();
-            let row = task::spawn_blocking(move || -> anyhow::Result<Option<crate::db::models::Charity>> {
-                let conn = p.get()?;
-                let parse_utc = |value: Option<String>| {
-                    value
-                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-                        .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(chrono::Utc::now)
-                };
-                let sql = if ein_cloned.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
-                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND (ein = :2 OR LOWER(name) = LOWER(:3))"
-                } else {
-                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND LOWER(name) = LOWER(:2)"
-                };
-                let rows = if let Some(ein_val) = ein_cloned {
-                    conn.query(sql, &[&user_id, &ein_val, &name])?
-                } else {
-                    conn.query(sql, &[&user_id, &name])?
-                };
-                if let Some(row) = rows.flatten().next() {
-                    return Ok(Some(crate::db::models::Charity {
-                        id: row.get(0).unwrap_or_default(),
-                        user_id: row.get(1).unwrap_or_default(),
-                        name: row.get(2).unwrap_or_default(),
-                        ein: row.get(3).ok(),
-                        created_at: parse_utc(row.get(4).ok()),
-                        updated_at: parse_utc(row.get(5).ok()),
-                        nonprofit_type: row.get(6).ok(),
-                        deductibility: row.get(7).ok(),
-                        street: row.get(8).ok(),
-                        city: row.get(9).ok(),
-                        state: row.get(10).ok(),
-                        zip: row.get(11).ok(),
-                        category: row.get(12).ok(),
-                        status: row.get(13).ok(),
-                        classification: row.get(14).ok(),
-                    }));
+            let conn = p.get().await?;
+            if let Some(ein_val) = ein.clone().filter(|value| !value.is_empty()) {
+                let rows = conn
+                    .query(
+                        "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND ein = :2 FETCH FIRST 1 ROWS ONLY",
+                        &crate::oracle_params![user_id.to_string(), ein_val],
+                    )
+                    .await?;
+                if let Some(row) = rows.first() {
+                    return Ok(Some(charity_from_row(row)));
                 }
-                Ok(None)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+            }
+
+            let normalized_name = name.trim().to_ascii_lowercase();
+            let rows = conn
+                .query(
+                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND LOWER(name) = :2 FETCH FIRST 1 ROWS ONLY",
+                    &crate::oracle_params![user_id.to_string(), normalized_name],
+                )
+                .await?;
+            let row = rows.first().map(charity_from_row);
             Ok(row)
         }
+    }
+}
+
+fn charity_from_row(row: &Row) -> crate::db::models::Charity {
+    crate::db::models::Charity {
+        id: crate::db::oracle::row_string(row, 0),
+        user_id: crate::db::oracle::row_string(row, 1),
+        name: crate::db::oracle::row_string(row, 2),
+        ein: crate::db::oracle::row_opt_string(row, 3),
+        created_at: crate::db::oracle::row_datetime_utc(row, 4).unwrap_or_else(chrono::Utc::now),
+        updated_at: crate::db::oracle::row_datetime_utc(row, 5).unwrap_or_else(chrono::Utc::now),
+        nonprofit_type: crate::db::oracle::row_opt_string(row, 6),
+        deductibility: crate::db::oracle::row_opt_string(row, 7),
+        street: crate::db::oracle::row_opt_string(row, 8),
+        city: crate::db::oracle::row_opt_string(row, 9),
+        state: crate::db::oracle::row_opt_string(row, 10),
+        zip: crate::db::oracle::row_opt_string(row, 11),
+        category: crate::db::oracle::row_opt_string(row, 12),
+        status: crate::db::oracle::row_opt_string(row, 13),
+        classification: crate::db::oracle::row_opt_string(row, 14),
     }
 }
 
@@ -167,21 +191,35 @@ pub async fn create_charity(pool: &DbPool, input: &crate::db::models::NewCharity
 
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let insert_input = input.clone();
-            let insert_created_at = created_at_str.clone();
-            task::spawn_blocking(move || -> anyhow::Result<()> {
-                let conn = p.get()?;
-                let trunc_name = insert_input.name.chars().take(255).collect::<String>();
-                // Modified to use a more robust format for TIMESTAMP WITH TIME ZONE
-                let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, TO_TIMESTAMP_TZ(:14, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
-                if let Err(e) = conn.execute(sql, &[&insert_input.id, &insert_input.user_id, &trunc_name, &insert_input.ein, &insert_input.category, &insert_input.status, &insert_input.classification, &insert_input.nonprofit_type, &insert_input.deductibility, &insert_input.street, &insert_input.city, &insert_input.state, &insert_input.zip, &insert_created_at]) {
-                    tracing::error!("Failed to create charity: {}. SQL: {}", e, sql);
-                    return Err(anyhow::anyhow!("Charity creation failed: {}", e));
-                }
-                let _ = conn.commit();
-                Ok(())
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+            let conn = p.get().await?;
+            let trunc_name = input.name.chars().take(255).collect::<String>();
+            let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, TO_TIMESTAMP_TZ(:14, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
+            if let Err(e) = conn
+                .execute(
+                    sql,
+                    &crate::oracle_params![
+                        input.id.clone(),
+                        input.user_id.clone(),
+                        trunc_name,
+                        input.ein.clone(),
+                        input.category.clone(),
+                        input.status.clone(),
+                        input.classification.clone(),
+                        input.nonprofit_type.clone(),
+                        input.deductibility.clone(),
+                        input.street.clone(),
+                        input.city.clone(),
+                        input.state.clone(),
+                        input.zip.clone(),
+                        created_at_str.clone(),
+                    ],
+                )
+                .await
+            {
+                tracing::error!("Failed to create charity: {}. SQL: {}", e, sql);
+                return Err(anyhow::anyhow!("Charity creation failed: {}", e));
+            }
+            conn.commit().await?;
         }
     };
 

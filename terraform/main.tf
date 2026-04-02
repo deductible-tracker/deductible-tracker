@@ -65,6 +65,18 @@ resource "oci_core_security_list" "main" {
       max = 443
     }
   }
+
+  dynamic "ingress_security_rules" {
+    for_each = var.temporary_ssh_cidr == "" ? [] : [var.temporary_ssh_cidr]
+    content {
+      protocol = "6" # TCP
+      source   = ingress_security_rules.value
+      tcp_options {
+        min = 22
+        max = 22
+      }
+    }
+  }
 }
 
 resource "oci_core_subnet" "public" {

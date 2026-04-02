@@ -31,13 +31,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to Docker Hardened Images
-        uses: docker/login-action@v4
-        with:
-          registry: dhi.io
-          username: ${{ secrets.DHI_USERNAME }}
-          password: ${{ secrets.DHI_TOKEN }}
-
       - name: Log in to the Container registry
         uses: docker/login-action@v4
         with:
@@ -100,8 +93,8 @@ jobs:
 
       - name: Update Instance Metadata Tag to Trigger Deploy
         env:
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_CONNECT_STRING: ${{ secrets.DB_CONNECT_STRING }}
@@ -127,7 +120,7 @@ jobs:
           NEW_RELIC_OTLP_ENDPOINT: ${{ secrets.NEW_RELIC_OTLP_ENDPOINT }}
         run: |
           IMAGE_REF="${{ needs.build.outputs.image_ref }}"
-          
+
           # 1. Discover the active instance OCID
           # We search for instances that are NOT in the TERMINATED state.
           TARGET_COMPARTMENT="${{ secrets.OCI_COMPARTMENT_OCID }}"
@@ -151,8 +144,7 @@ jobs:
           DB_CONNECT_STRING=$DB_CONNECT_STRING
           GHCR_USERNAME=$GHCR_USERNAME
           GHCR_TOKEN=$GHCR_TOKEN
-          MY_WALLET_DIRECTORY=/app/wallet
-          TNS_ADMIN=/app/wallet
+          DB_WALLET_DIR=/app/wallet
           OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT
           OBJECT_STORAGE_BUCKET=$OBJECT_STORAGE_BUCKET
           OCI_REGION=$OCI_REGION
@@ -178,14 +170,14 @@ jobs:
           SITE_DOMAIN=dd.joshkraemer.com
           EOF
           )
-          
+
           SECRETS_BASE64=$(echo "$ENV_CONTENT" | sed 's/^[[:space:]]*//' | base64 -w 0)
-          
+
           # 2. Merge deployment data into existing metadata so we preserve
           # SSH authorized keys and cloud-init user_data.
           EXISTING_METADATA=$(oci compute instance get --instance-id "$INSTANCE_OCID" --query "data.metadata" --output json)
           UPDATED_METADATA=$(echo "$EXISTING_METADATA" | jq -c --arg image "$IMAGE_REF" --arg secrets "$SECRETS_BASE64" '. + {deployed_image: $image, app_secrets: $secrets}')
-          
+
           # 3. Update OCI instance metadata with the latest deployment payload.
           # We use --force because metadata updates still prompt for confirmation in the CLI.
           oci compute instance update --instance-id "$INSTANCE_OCID" \

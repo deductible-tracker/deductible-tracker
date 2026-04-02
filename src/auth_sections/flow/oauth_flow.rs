@@ -366,13 +366,7 @@ pub async fn callback(
                 return (StatusCode::UNAUTHORIZED, "CSRF verification failed").into_response();
             }
 
-            // Logic for Google 1-tap / button (JWT in 'credential' field)
-            // In a production app, we would verify this JWT using Google's public keys.
-            // For now, we will decode it insecurely or assume the library handled it.
-            let mut validation = Validation::default();
-            validation.validate_exp = true;
-            
-            // Google JWT claims
+            // Verify the Google One Tap JWT using Google's public JWKS keys.
             #[derive(Deserialize)]
             struct GoogleClaims {
                 sub: String,
@@ -380,36 +374,71 @@ pub async fn callback(
                 name: String,
             }
 
-            // Google tokens use RS256. The jsonwebtoken crate will fail with 'InvalidKeyFormat' 
-            // if we provide a dummy secret (HMAC) for an RS256 token.
-            // Since we are decoding insecurely for now, we'll manually extract the payload.
-            let parts: Vec<&str> = credential.split('.').collect();
-            if parts.len() < 2 {
-                return (StatusCode::UNAUTHORIZED, "Invalid credential: Malformed JWT").into_response();
-            }
-
-            // Base64 decode the payload (middle part)
-            use base64::{Engine as _, engine::general_purpose};
-            let payload_json = match general_purpose::URL_SAFE_NO_PAD.decode(parts[1]) {
-                Ok(bytes) => bytes,
+            // 1. Decode the JWT header to get the key ID (kid)
+            let jwt_header = match jsonwebtoken::decode_header(&credential) {
+                Ok(h) => h,
                 Err(e) => {
-                    tracing::error!("Failed to decode JWT payload base64: {}", e);
-                    return (StatusCode::UNAUTHORIZED, "Invalid credential: Bad base64").into_response();
+                    tracing::error!("Failed to decode Google JWT header: {}", e);
+                    return (StatusCode::UNAUTHORIZED, "Invalid credential").into_response();
                 }
             };
 
-            let data: GoogleClaims = match serde_json::from_slice(&payload_json) {
+            let kid = match jwt_header.kid {
+                Some(k) => k,
+                None => {
+                    tracing::error!("Google JWT missing kid in header");
+                    return (StatusCode::UNAUTHORIZED, "Invalid credential").into_response();
+                }
+            };
+
+            // 2. Fetch Google's public keys (uses cached JWKS from risc module)
+            let jwks = match crate::auth::get_google_jwks(&kid).await {
+                Ok(j) => j,
+                Err(e) => {
+                    tracing::error!("Failed to fetch Google JWKS: {}", e);
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Server configuration error").into_response();
+                }
+            };
+
+            let jwk = match jwks.find(&kid) {
+                Some(j) => j,
+                None => {
+                    tracing::error!("Google JWKS does not contain kid '{}'", kid);
+                    return (StatusCode::UNAUTHORIZED, "Invalid credential").into_response();
+                }
+            };
+
+            let decoding_key = match DecodingKey::from_jwk(jwk) {
+                Ok(k) => k,
+                Err(e) => {
+                    tracing::error!("Failed to build decoding key from JWK: {}", e);
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Server configuration error").into_response();
+                }
+            };
+
+            // 3. Verify signature, expiration, issuer, and audience
+            let mut validation = Validation::new(jwt_header.alg);
+            validation.set_issuer(&["https://accounts.google.com", "accounts.google.com"]);
+            if let Ok(client_id) = std::env::var("GOOGLE_CLIENT_ID") {
+                validation.set_audience(&[client_id]);
+            }
+
+            let token_data = match jsonwebtoken::decode::<GoogleClaims>(
+                &credential,
+                &decoding_key,
+                &validation,
+            ) {
                 Ok(d) => d,
                 Err(e) => {
-                    tracing::error!("Failed to parse JWT payload JSON: {}", e);
-                    return (StatusCode::UNAUTHORIZED, "Invalid credential: Bad JSON").into_response();
+                    tracing::warn!("Google JWT verification failed: {}", e);
+                    return (StatusCode::UNAUTHORIZED, "Invalid credential").into_response();
                 }
             };
 
             ProviderProfile {
-                id: data.sub,
-                email: data.email,
-                name: data.name,
+                id: token_data.claims.sub,
+                email: token_data.claims.email,
+                name: token_data.claims.name,
             }
         }
     };
@@ -443,8 +472,17 @@ pub async fn callback(
             }
         },
         Err(e) => {
-            tracing::error!("Database lookup failed: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response();
+            tracing::error!("Database lookup failed, falling back to provider profile: {}", e);
+            UserProfile {
+                id: profile.id,
+                email: profile.email,
+                name: profile.name,
+                filing_status: None,
+                agi: None,
+                marginal_tax_rate: None,
+                itemize_deductions: None,
+                provider: provider.clone(),
+            }
         }
     };
 

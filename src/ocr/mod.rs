@@ -1,6 +1,10 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
+mod endpoint;
+
+pub(crate) use endpoint::load_mistral_api_endpoint;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DonationReceiptSuggestion {
     pub date_of_donation: Option<NaiveDate>,
@@ -154,7 +158,7 @@ mod real {
         });
 
         let resp = client
-            .post(&state.mistral_api_endpoint)
+            .post(state.mistral_api_endpoint.clone())
             .bearer_auth(api_key)
             .json(&ocr_request)
             .send()

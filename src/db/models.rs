@@ -154,7 +154,7 @@ pub struct Receipt {
     pub content_type: Option<String>,
     pub size: Option<i64>,
     pub ocr_text: Option<String>,
-    pub ocr_date: Option<DateTime<Utc>>,
+    pub ocr_date: Option<NaiveDate>,
     pub ocr_amount: Option<i64>,
     pub ocr_status: Option<String>,
     pub created_at: DateTime<Utc>,

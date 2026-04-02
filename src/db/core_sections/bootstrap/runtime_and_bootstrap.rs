@@ -1,15 +1,12 @@
-use r2d2::Pool;
+use deadpool_oracle::Pool;
 use std::env;
 use anyhow::anyhow;
 use std::sync::Arc;
 use serde_json::json;
-use tokio::task;
 use uuid::Uuid;
 
-use crate::db::oracle::OracleConnectionManager;
-
 pub enum DbPoolEnum {
-    Oracle(Pool<OracleConnectionManager>),
+    Oracle(Pool),
 }
 
 pub type DbPool = Arc<DbPoolEnum>;
@@ -40,11 +37,11 @@ pub async fn init_pool() -> anyhow::Result<DbPool> {
     let db_pool_max = env::var("DB_POOL_MAX_SIZE")
         .ok()
         .and_then(|v| v.parse::<u32>().ok())
-        .unwrap_or(20);
+        .unwrap_or(4);
     let db_pool_min = env::var("DB_POOL_MIN_IDLE")
         .ok()
         .and_then(|v| v.parse::<u32>().ok())
-        .unwrap_or(2);
+        .unwrap_or(0);
     let db_pool_timeout_secs = env::var("DB_POOL_CONNECTION_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
@@ -110,26 +107,21 @@ pub async fn get_user_receipt_keys(
 ) -> anyhow::Result<Vec<String>> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let user_id = user_id.to_string();
-            task::spawn_blocking(move || -> anyhow::Result<Vec<String>> {
-                let conn = p.get()?;
-                let rows = conn.query(
+            let conn = p.get().await?;
+            let rows = conn
+                .query(
                     "SELECT r.receipt_key FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1",
-                    &[&user_id],
-                )?;
-                let mut keys = Vec::new();
-                for row in rows {
-                    let r = row?;
-                    let key: String = r.get(0).unwrap_or_default();
-                    if !key.is_empty() {
-                        keys.push(key);
-                    }
+                    &crate::oracle_params![user_id.to_string()],
+                )
+                .await?;
+            let mut keys = Vec::new();
+            for row in &rows.rows {
+                let key = crate::db::oracle::row_string(row, 0);
+                if !key.is_empty() {
+                    keys.push(key);
                 }
-                Ok(keys)
-            })
-            .await
-            .map_err(|e| anyhow!("DB task join error: {}", e))?
+            }
+            Ok(keys)
         }
     }
 }
@@ -212,7 +204,7 @@ pub async fn import_data(
                     p,
                     &receipt.id,
                     &receipt.ocr_text,
-                    &receipt.ocr_date.map(|dt| dt.naive_utc().date()),
+                    &receipt.ocr_date,
                     &ocr_amount_f64,
                     &receipt.ocr_status,
                 ).await,

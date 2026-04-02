@@ -128,6 +128,11 @@ fn write_asset_manifest(entrypoints: &AssetEntrypoints) -> anyhow::Result<()> {
 
 #[cfg(feature = "asset-pipeline")]
 pub fn prepare_runtime_assets() -> anyhow::Result<()> {
+    // When assets were already built (e.g. Docker image), skip entirely.
+    if should_skip_asset_rebuild() {
+        return Ok(());
+    }
+
     run_tailwind_build_if_needed()?;
 
     let asset_entrypoints = prepare_fingerprinted_assets()?;
@@ -312,52 +317,9 @@ async fn static_cache_control(req: Request<Body>, next: Next) -> impl IntoRespon
     let path = req.uri().path().to_string();
     let mut response = next.run(req).await;
 
-    // Security Headers
-    let headers = response.headers_mut();
-    
-    // Strict-Transport-Security (HSTS)
-    if env::var("RUST_ENV").unwrap_or_default() == "production" {
-        headers.insert(
-            header::STRICT_TRANSPORT_SECURITY,
-            HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
-        );
-    }
-
-    // X-Content-Type-Options
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-
-    // X-Frame-Options
-    headers.insert(
-        header::X_FRAME_OPTIONS,
-        HeaderValue::from_static("DENY"),
-    );
-
-    // Content-Security-Policy (CSP)
-    // - Default to self
-    // - Allow scripts from self and trusted CDNs if any (none yet)
-    // - Connect to self and OAuth providers
-    // - Images from self and OCI object storage (presigned URLs)
-    let csp = "default-src 'self'; \
-               script-src 'self' 'unsafe-inline'; \
-               style-src 'self' 'unsafe-inline'; \
-               img-src 'self' data: https://*.objectstorage.us-ashburn-1.oraclecloud.com; \
-               connect-src 'self' https://accounts.google.com https://github.com; \
-               frame-ancestors 'none'; \
-               base-uri 'self'; \
-               form-action 'self';";
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_str(csp).unwrap(),
-    );
-
-    // Referrer-Policy
-    headers.insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
-    );
+    // Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, CSP)
+    // are set via SetResponseHeaderLayer on the outer Router — do NOT
+    // duplicate them here. This middleware handles only Cache-Control.
 
     // Fingerprinted assets can be cached for a year.
     if path.starts_with("/assets/")

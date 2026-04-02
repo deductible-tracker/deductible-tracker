@@ -24,7 +24,7 @@ required-features = ["server", "asset-pipeline"]
 [dependencies]
 # --- Always needed (db + tests) ---
 # --- Always needed (db + tests) ---
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "io-util", "fs", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -38,10 +38,8 @@ opentelemetry = { version = "0.31", features = ["trace"], optional = true }
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace"], optional = true }
 opentelemetry-otlp = { version = "0.31", features = ["trace", "grpc-tonic", "tls-ring"], optional = true }
 tonic = { version = "0.14", features = ["transport"], optional = true }
-# Pin rust-oracle to the upstream revision that moved to odpic-sys 0.2.0,
-# which removes the legacy bindgen -> which -> failure build chain.
-oracle = { git = "https://github.com/kubo/rust-oracle.git", rev = "caf3c0d06b654e79192e88bbaf516e599982af05", features = ["chrono"] }
-r2d2 = "0"
+oracle-rs = "0.1.7"
+deadpool-oracle = "0.1.1"
 
 # --- Server-only (gated behind "server" feature) ---
 axum = { version = "0", features = ["multipart", "macros"], optional = true }
@@ -54,15 +52,15 @@ url = { version = "2", optional = true }
 oauth2 = { version = "5", optional = true }
 tower_governor = { version = "0", optional = true }
 csv = { version = "1", optional = true }
-image = { version = "0.25.9", default-features = false, features = ["jpeg", "png"], optional = true }
 tempfile = { version = "3", optional = true }
 regex = { version = "1", optional = true }
 blake3 = { version = "1", optional = true }
 minifier = { version = "0", optional = true }
 brotli = { version = "8", optional = true }
 flate2 = { version = "1", optional = true }
-openssl = { version = "0", features = ["vendored"], optional = true }
-reqwest = { version = "0", features = ["json", "rustls-tls", "stream"], optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+reqwest = { version = "0", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
 rand = { version = "0", optional = true }
 argon2 = { version = "0", optional = true }
 futures = { version = "0", optional = true }
@@ -83,7 +81,8 @@ server = [
     "dep:tower_governor",
     "dep:csv",
     "dep:tempfile",
-    "dep:openssl",
+    "dep:hmac",
+    "dep:sha2",
     "dep:reqwest",
     "dep:rand",
     "dep:argon2",

@@ -18,34 +18,56 @@ pub async fn update_charity(pool: &DbPool, patch: &crate::db::models::CharityPat
 
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
             let charity_id_for_revision = charity_id.clone();
-            let revision_payload = task::spawn_blocking(move || -> anyhow::Result<Option<(String, String)>> {
-                let conn = p.get()?;
-                let mut existing_rows = conn.query("SELECT name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE id = :1 AND user_id = :2", &[&charity_id, &user_id])?;
-                let Some(existing) = existing_rows.next().transpose()? else {
-                    return Ok(None);
-                };
-                let existing_name: String = existing.get(0).unwrap_or_default();
-                let existing_ein: Option<String> = existing.get(1).ok();
-                let existing_category: Option<String> = existing.get(2).ok();
-                let existing_status: Option<String> = existing.get(3).ok();
-                let existing_classification: Option<String> = existing.get(4).ok();
-                let existing_nonprofit_type: Option<String> = existing.get(5).ok();
-                let existing_deductibility: Option<String> = existing.get(6).ok();
-                let existing_street: Option<String> = existing.get(7).ok();
-                let existing_city: Option<String> = existing.get(8).ok();
-                let existing_state: Option<String> = existing.get(9).ok();
-                let existing_zip: Option<String> = existing.get(10).ok();
-                let existing_created_at: Option<String> = existing.get(11).ok();
-                let existing_updated_at: Option<String> = existing.get(12).ok();
+            let conn = p.get().await?;
+            let existing_rows = conn
+                .query(
+                    "SELECT name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE id = :1 AND user_id = :2",
+                    &crate::oracle_params![charity_id.clone(), user_id.clone()],
+                )
+                .await?;
+            let revision_payload = if let Some(existing) = existing_rows.first() {
+                let existing_name = crate::db::oracle::row_string(existing, 0);
+                let existing_ein = crate::db::oracle::row_opt_string(existing, 1);
+                let existing_category = crate::db::oracle::row_opt_string(existing, 2);
+                let existing_status = crate::db::oracle::row_opt_string(existing, 3);
+                let existing_classification = crate::db::oracle::row_opt_string(existing, 4);
+                let existing_nonprofit_type = crate::db::oracle::row_opt_string(existing, 5);
+                let existing_deductibility = crate::db::oracle::row_opt_string(existing, 6);
+                let existing_street = crate::db::oracle::row_opt_string(existing, 7);
+                let existing_city = crate::db::oracle::row_opt_string(existing, 8);
+                let existing_state = crate::db::oracle::row_opt_string(existing, 9);
+                let existing_zip = crate::db::oracle::row_opt_string(existing, 10);
+                let existing_created_at = crate::db::oracle::row_opt_string(existing, 11);
+                let existing_updated_at = crate::db::oracle::row_opt_string(existing, 12);
 
                 let sql = "UPDATE charities SET name = :1, ein = :2, category = :3, status = :4, classification = :5, nonprofit_type = :6, deductibility = :7, street = :8, city = :9, state = :10, zip = :11, updated_at = TO_TIMESTAMP_TZ(:12, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :13 AND user_id = :14";
-                if let Err(e) = conn.execute(sql, &[&name, &ein_cloned, &category_cloned, &status_cloned, &classification_cloned, &nonprofit_type_cloned, &deductibility_cloned, &street_cloned, &city_cloned, &state_cloned, &zip_cloned, &updated_at_str, &charity_id, &user_id]) {
+                if let Err(e) = conn
+                    .execute(
+                        sql,
+                        &crate::oracle_params![
+                            name.clone(),
+                            ein_cloned.clone(),
+                            category_cloned.clone(),
+                            status_cloned.clone(),
+                            classification_cloned.clone(),
+                            nonprofit_type_cloned.clone(),
+                            deductibility_cloned.clone(),
+                            street_cloned.clone(),
+                            city_cloned.clone(),
+                            state_cloned.clone(),
+                            zip_cloned.clone(),
+                            updated_at_str.clone(),
+                            charity_id.clone(),
+                            user_id.clone(),
+                        ],
+                    )
+                    .await
+                {
                     tracing::error!("Failed to update charity: {}. SQL: {}", e, sql);
                     return Err(anyhow::anyhow!("Charity update failed: {}", e));
                 }
-                let _ = conn.commit();
+                conn.commit().await?;
                 let old_values = json!({
                     "id": charity_id,
                     "user_id": user_id,
@@ -80,8 +102,10 @@ pub async fn update_charity(pool: &DbPool, patch: &crate::db::models::CharityPat
                     "created_at": existing_created_at,
                     "updated_at": updated_at_str
                 }).to_string();
-                Ok(Some((old_values, new_values)))
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+                Some((old_values, new_values))
+            } else {
+                None
+            };
             if let Some((old_values, new_values)) = revision_payload {
                 let revision = RevisionLogEntry {
                     id: Uuid::new_v4().to_string(),
@@ -104,76 +128,100 @@ pub async fn update_charity(pool: &DbPool, patch: &crate::db::models::CharityPat
 pub async fn count_donations_for_charity(pool: &DbPool, user_id: &str, charity_id: &str) -> anyhow::Result<i64> {
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
-            let user_id = user_id.to_string();
-            let charity_id = charity_id.to_string();
-            let count = task::spawn_blocking(move || -> anyhow::Result<i64> {
-                let conn = p.get()?;
-                let sql = "SELECT COUNT(1) FROM donations WHERE user_id = :1 AND charity_id = :2 AND deleted = 0";
-                let mut rows = conn.query(sql, &[&user_id, &charity_id])?;
-                if let Some(row) = rows.next().transpose()? {
-                    let val: i64 = row.get(0).unwrap_or(0);
-                    return Ok(val);
-                }
-                Ok(0)
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
-            Ok(count)
+            let conn = p.get().await?;
+            let sql = "SELECT COUNT(1) FROM donations WHERE user_id = :1 AND charity_id = :2 AND deleted = 0";
+            let rows = conn
+                .query(
+                    sql,
+                    &crate::oracle_params![user_id.to_string(), charity_id.to_string()],
+                )
+                .await?;
+            Ok(rows
+                .first()
+                .and_then(|row| crate::db::oracle::row_i64(row, 0))
+                .unwrap_or(0))
         }
     }
 }
 
 pub async fn delete_charity(pool: &DbPool, user_id: &str, charity_id: &str) -> anyhow::Result<bool> {
-    let count = count_donations_for_charity(pool, user_id, charity_id).await?;
-    if count > 0 {
-        return Ok(false);
+    match &**pool {
+        DbPoolEnum::Oracle(p) => {
+            let conn = p.get().await?;
+            let active_donations = conn
+                .query(
+                    "SELECT 1 FROM donations WHERE user_id = :1 AND charity_id = :2 AND deleted = 0 FETCH FIRST 1 ROWS ONLY",
+                    &crate::oracle_params![user_id.to_string(), charity_id.to_string()],
+                )
+                .await?;
+            if active_donations.first().is_some() {
+                return Ok(false);
+            }
+        }
     }
 
     let user_for_revision = Some(user_id.to_string());
     match &**pool {
         DbPoolEnum::Oracle(p) => {
-            let p = p.clone();
+            let conn = p.get().await?;
             let user_id = user_id.to_string();
             let charity_id = charity_id.to_string();
             let charity_id_for_revision = charity_id.clone();
-            let revision_payload = task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
-                let conn = p.get()?;
-                let mut existing_rows = conn.query("SELECT name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE id = :1 AND user_id = :2", &[&charity_id, &user_id])?;
-                let Some(existing) = existing_rows.next().transpose()? else {
-                    return Ok(None);
-                };
-                let existing_name: String = existing.get(0).unwrap_or_default();
-                let existing_ein: Option<String> = existing.get(1).ok();
-                let existing_category: Option<String> = existing.get(2).ok();
-                let existing_status: Option<String> = existing.get(3).ok();
-                let existing_classification: Option<String> = existing.get(4).ok();
-                let existing_nonprofit_type: Option<String> = existing.get(5).ok();
-                let existing_deductibility: Option<String> = existing.get(6).ok();
-                let existing_street: Option<String> = existing.get(7).ok();
-                let existing_city: Option<String> = existing.get(8).ok();
-                let existing_state: Option<String> = existing.get(9).ok();
-                let existing_zip: Option<String> = existing.get(10).ok();
-                let existing_created_at: Option<String> = existing.get(11).ok();
-                let existing_updated_at: Option<String> = existing.get(12).ok();
+            let existing_rows = conn
+                .query(
+                    "SELECT name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at, updated_at FROM charities WHERE id = :1 AND user_id = :2",
+                    &crate::oracle_params![charity_id.clone(), user_id.clone()],
+                )
+                .await?;
+            let revision_payload = if let Some(existing) = existing_rows.first() {
+                let existing_name = crate::db::oracle::row_string(existing, 0);
+                let existing_ein = crate::db::oracle::row_opt_string(existing, 1);
+                let existing_category = crate::db::oracle::row_opt_string(existing, 2);
+                let existing_status = crate::db::oracle::row_opt_string(existing, 3);
+                let existing_classification = crate::db::oracle::row_opt_string(existing, 4);
+                let existing_nonprofit_type = crate::db::oracle::row_opt_string(existing, 5);
+                let existing_deductibility = crate::db::oracle::row_opt_string(existing, 6);
+                let existing_street = crate::db::oracle::row_opt_string(existing, 7);
+                let existing_city = crate::db::oracle::row_opt_string(existing, 8);
+                let existing_state = crate::db::oracle::row_opt_string(existing, 9);
+                let existing_zip = crate::db::oracle::row_opt_string(existing, 10);
+                let existing_created_at = crate::db::oracle::row_opt_string(existing, 11);
+                let existing_updated_at = crate::db::oracle::row_opt_string(existing, 12);
 
                 let del_receipts_sql = "DELETE FROM receipts WHERE donation_id IN (SELECT id FROM donations WHERE charity_id = :1 AND user_id = :2 AND deleted = 1)";
-                if let Err(e) = conn.execute(del_receipts_sql, &[&charity_id, &user_id]) {
+                if let Err(e) = conn
+                    .execute(
+                        del_receipts_sql,
+                        &crate::oracle_params![charity_id.clone(), user_id.clone()],
+                    )
+                    .await
+                {
                     tracing::error!("Failed to delete receipts for soft-deleted donations on charity {}: {}", charity_id, e);
                     return Err(anyhow::anyhow!("Failed to clean up associated receipts: {}", e));
                 }
 
                 let del_donations_sql = "DELETE FROM donations WHERE charity_id = :1 AND user_id = :2 AND deleted = 1";
-                if let Err(e) = conn.execute(del_donations_sql, &[&charity_id, &user_id]) {
+                if let Err(e) = conn
+                    .execute(
+                        del_donations_sql,
+                        &crate::oracle_params![charity_id.clone(), user_id.clone()],
+                    )
+                    .await
+                {
                     tracing::error!("Failed to delete soft-deleted donations for charity {}: {}", charity_id, e);
                     return Err(anyhow::anyhow!("Failed to clean up associated donations: {}", e));
                 }
 
                 let sql = "DELETE FROM charities WHERE id = :1 AND user_id = :2";
-                if let Err(e) = conn.execute(sql, &[&charity_id, &user_id]) {
+                if let Err(e) = conn
+                    .execute(sql, &crate::oracle_params![charity_id.clone(), user_id.clone()])
+                    .await
+                {
                     tracing::error!("Failed to delete charity {}: {}", charity_id, e);
                     return Err(anyhow::anyhow!("Charity delete failed: {}", e));
                 }
-                let _ = conn.commit();
-                let old_values = json!({
+                conn.commit().await?;
+                Some(json!({
                     "id": charity_id,
                     "user_id": user_id,
                     "name": existing_name,
@@ -189,9 +237,10 @@ pub async fn delete_charity(pool: &DbPool, user_id: &str, charity_id: &str) -> a
                     "zip": existing_zip,
                     "created_at": existing_created_at,
                     "updated_at": existing_updated_at
-                }).to_string();
-                Ok(Some(old_values))
-            }).await.map_err(|e| anyhow!("DB task join error: {}", e))??;
+                }).to_string())
+            } else {
+                None
+            };
             if let Some(old_values) = revision_payload {
                 let revision = RevisionLogEntry {
                     id: Uuid::new_v4().to_string(),

@@ -341,6 +341,8 @@ function updateActiveLink(path) {
 
 // --- Views ---
 
+let googleIdentityInitKey = null;
+
 async function renderLogin() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -443,12 +445,18 @@ async function renderLogin() {
           }
 
           if (window.google && google.accounts && google.accounts.id && gIdSignin) {
-            google.accounts.id.initialize({
-              client_id: gIdOnload.getAttribute('data-client_id'),
-              callback: undefined, // Redirect mode
-              login_uri: gIdOnload.getAttribute('data-login_uri'),
-              ux_mode: 'redirect',
-            });
+            const clientId = gIdOnload.getAttribute('data-client_id');
+            const loginUri = gIdOnload.getAttribute('data-login_uri');
+            const initKey = `${clientId}|${loginUri}`;
+            if (googleIdentityInitKey !== initKey) {
+              google.accounts.id.initialize({
+                client_id: clientId,
+                callback: undefined, // Redirect mode
+                login_uri: loginUri,
+                ux_mode: 'redirect',
+              });
+              googleIdentityInitKey = initKey;
+            }
             google.accounts.id.renderButton(gIdSignin, {
               theme: 'outline',
               size: 'large',

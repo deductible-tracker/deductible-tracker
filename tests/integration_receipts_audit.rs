@@ -66,10 +66,10 @@ async fn receipt_ocr_and_audit_flow() {
     // Persist OCR results
     let ocr_text = Some("Sample OCR text".to_string());
     let ocr_date = None;
-    let ocr_amount = Some(12345i64);
+    let ocr_amount = Some(12345f64);
     let ocr_status = Some("done".to_string());
 
-    let set_ok = db::set_receipt_ocr(
+    db::set_receipt_ocr(
         &pool,
         &receipt_id,
         &ocr_text,
@@ -79,7 +79,6 @@ async fn receipt_ocr_and_audit_flow() {
     )
     .await
     .expect("set_receipt_ocr");
-    assert!(set_ok, "set_receipt_ocr returned false");
 
     // Fetch receipt and validate OCR fields
     let fetched = db::get_receipt(&pool, &user_id, &receipt_id)
@@ -110,4 +109,92 @@ async fn receipt_ocr_and_audit_flow() {
         .await
         .expect("list_audit_logs");
     assert!(!logs.is_empty(), "expected at least one audit log");
+}
+
+#[tokio::test]
+async fn receipt_summary_listing_avoids_ocr_clob_decode_failures() {
+    std::env::set_var("RUST_ENV", "development");
+    let pool = db::init_pool().await.expect("init pool");
+
+    let receipt_id = format!("test-receipt-summary-{}", Uuid::new_v4());
+    let user_id = "dev-1".to_string();
+    let now = chrono::Utc::now();
+
+    let charity_id = format!("test-charity-summary-{}", Uuid::new_v4());
+    let charity = NewCharity {
+        id: charity_id.clone(),
+        user_id: user_id.clone(),
+        name: format!("Test Charity Summary {}", Uuid::new_v4()),
+        ein: None,
+        category: None,
+        status: None,
+        classification: None,
+        nonprofit_type: None,
+        deductibility: None,
+        street: None,
+        city: None,
+        state: None,
+        zip: None,
+        created_at: now,
+    };
+    db::create_charity(&pool, &charity)
+        .await
+        .expect("create_charity");
+
+    let donation_id = format!("test-donation-summary-{}", Uuid::new_v4());
+    let donation = NewDonation {
+        id: donation_id.clone(),
+        user_id: user_id.clone(),
+        year: 2026,
+        date: chrono::NaiveDate::from_ymd_opt(2026, 2, 18).expect("valid date"),
+        category: Some("money".to_string()),
+        charity_id: charity_id.clone(),
+        amount: Some(42.0),
+        notes: Some("summary test".to_string()),
+        created_at: now,
+    };
+    db::add_donation(&pool, &donation)
+        .await
+        .expect("add_donation");
+
+    let receipt = NewReceipt {
+        id: receipt_id.clone(),
+        donation_id: donation_id.clone(),
+        key: "summary-test-key".to_string(),
+        file_name: Some("summary.png".to_string()),
+        content_type: Some("image/png".to_string()),
+        size: Some(321),
+        created_at: now,
+    };
+    db::add_receipt(&pool, &receipt).await.expect("add_receipt");
+
+    let large_ocr_text = Some("SUMMARY-OCR-".repeat(8_000));
+    db::set_receipt_ocr(
+        &pool,
+        &receipt_id,
+        &large_ocr_text,
+        &None,
+        &Some(42f64),
+        &Some("done".to_string()),
+    )
+    .await
+    .expect("set_receipt_ocr");
+
+    let summaries = db::receipts::list_receipt_summaries(&pool, &user_id, None)
+        .await
+        .expect("list receipt summaries");
+    let summary = summaries
+        .into_iter()
+        .find(|item| item.id == receipt_id)
+        .expect("summary receipt present");
+    assert_eq!(summary.file_name.as_deref(), Some("summary.png"));
+    assert_eq!(summary.ocr_text, None);
+    assert_eq!(summary.ocr_amount, None);
+    assert_eq!(summary.ocr_status, None);
+
+    let detail = db::get_receipt(&pool, &user_id, &receipt_id)
+        .await
+        .expect("get_receipt")
+        .expect("receipt detail present");
+    assert_eq!(detail.ocr_text, large_ocr_text);
 }

@@ -27,6 +27,10 @@ Wallet_deductibledb/
 terraform/*.json
 terraform/*.txt
 terraform/*.py
+terraform/*.yaml
+terraform/*.yml
+terraform/*.env
+terraform/*.pem
 terraform/tfplan*
 *.tfstate
 *.tfstate.*

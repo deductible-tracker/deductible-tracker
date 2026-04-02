@@ -53,6 +53,7 @@ CREATE TABLE charities (
 );
 
 CREATE INDEX idx_charities_user ON charities(user_id);
+CREATE INDEX idx_charities_user_ein ON charities(user_id, ein);
 CREATE UNIQUE INDEX idx_charities_user_name ON charities(user_id, LOWER(name));
 ALTER TABLE donations ADD CONSTRAINT fk_donations_charity FOREIGN KEY (charity_id) REFERENCES charities(id) ENABLE NOVALIDATE;
 
@@ -98,6 +99,9 @@ CREATE TABLE val_items (
     CONSTRAINT fk_val_category FOREIGN KEY (category_id) REFERENCES val_categories(id)
 );
 
+CREATE INDEX idx_val_items_category_name ON val_items(category_id, name);
+CREATE INDEX idx_val_items_lower_name ON val_items(LOWER(name));
+
 -- Audit log for CPA/export
 CREATE TABLE audit_logs (
     id VARCHAR2(255) PRIMARY KEY,
@@ -105,7 +109,7 @@ CREATE TABLE audit_logs (
     action VARCHAR2(50) NOT NULL,
     table_name VARCHAR2(255) NOT NULL,
     record_id VARCHAR2(255),
-    details CLOB,
+    details VARCHAR2(4000),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP,
     CONSTRAINT fk_audit_user FOREIGN KEY (user_id) REFERENCES users(id)
@@ -117,8 +121,8 @@ CREATE TABLE audit_revisions (
     table_name VARCHAR2(255) NOT NULL,
     record_id VARCHAR2(255) NOT NULL,
     operation VARCHAR2(16) NOT NULL,
-    old_values CLOB,
-    new_values CLOB,
+    old_values VARCHAR2(4000),
+    new_values VARCHAR2(4000),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP,
     CONSTRAINT fk_audit_revisions_user FOREIGN KEY (user_id) REFERENCES users(id)

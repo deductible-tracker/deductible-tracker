@@ -9,6 +9,14 @@ pub async fn list_receipts(
     super::list_receipts(pool, user_id, donation_id).await
 }
 
+pub async fn list_receipt_summaries(
+    pool: &DbPool,
+    user_id: &str,
+    donation_id: Option<String>,
+) -> anyhow::Result<Vec<Receipt>> {
+    super::list_receipt_summaries(pool, user_id, donation_id).await
+}
+
 pub async fn get_receipt(
     pool: &DbPool,
     user_id: &str,

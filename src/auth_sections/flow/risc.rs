@@ -10,7 +10,7 @@ struct CachedJwks {
     expires_at: DateTime<Utc>,
 }
 
-async fn get_google_jwks(kid: &str) -> anyhow::Result<JwkSet> {
+pub async fn get_google_jwks(kid: &str) -> anyhow::Result<JwkSet> {
     let cache = GOOGLE_JWKS_CACHE.get_or_init(|| {
         RwLock::new(CachedJwks {
             keys: JwkSet { keys: vec![] },

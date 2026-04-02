@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
-use openssl::{hash::MessageDigest, pkey::PKey, sha::sha256, sign::Signer};
+use sha2::{Digest, Sha256};
+use hmac::{Hmac, Mac};
 use url::Url;
 
 use crate::AppState;
@@ -83,7 +84,7 @@ pub fn presign_url(
         "{}\n{}\n{}\n{}\nhost\nUNSIGNED-PAYLOAD",
         method, canonical_uri, canonical_query, canonical_headers,
     );
-    let canonical_request_hash = hex_encode(&sha256(canonical_request.as_bytes()));
+    let canonical_request_hash = hex_encode(&sha256_hash(canonical_request.as_bytes()));
     let string_to_sign = format!(
         "AWS4-HMAC-SHA256\n{}\n{}\n{}",
         amz_date, credential_scope, canonical_request_hash,
@@ -121,16 +122,19 @@ fn signing_key(
     hmac_sha256(&k_service, b"aws4_request")
 }
 
+type HmacSha256 = Hmac<Sha256>;
+
+fn sha256_hash(data: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize().to_vec()
+}
+
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-    let pkey = PKey::hmac(key).context("failed to create HMAC key")?;
-    let mut signer =
-        Signer::new(MessageDigest::sha256(), &pkey).context("failed to create HMAC signer")?;
-    signer
-        .update(data)
-        .context("failed to update HMAC signer")?;
-    signer
-        .sign_to_vec()
-        .context("failed to finalize HMAC signer")
+    let mut mac = HmacSha256::new_from_slice(key)
+        .map_err(|e| anyhow!("failed to create HMAC key: {}", e))?;
+    mac.update(data);
+    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 fn hex_encode(bytes: &[u8]) -> String {

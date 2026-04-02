@@ -55,7 +55,6 @@ The codebase is organized into modular "sections" to maintain clarity as the pro
 
 - **Rust**: 1.75+
 - **Node.js**: 24.x (LTS recommended)
-- **Oracle Instant Client**: Required for linking `rust-oracle`.
 - **Docker**: For running the local Oracle Database Free container.
 
 ### Local Environment
@@ -68,6 +67,12 @@ The codebase is organized into modular "sections" to maintain clarity as the pro
 
    Configure your Oracle and Object Storage credentials in `.env`.
 
+   For the checked-in local Oracle stack, the default development values are:
+   - `LOCAL_ORACLE_USER=dtapp`
+   - `ORACLE_PWD=ChangeMe123`
+   - `ORACLE_PDB=FREEPDB1`
+   - host-side `DEV_ORACLE_CONNECT_STRING=localhost:1521/FREEPDB1`
+
 2. **Start the Development Stack**:
    The project uses Docker Compose to orchestrate the app and an Oracle Database Free instance.
 
@@ -75,16 +80,26 @@ The codebase is organized into modular "sections" to maintain clarity as the pro
    docker-compose up --build
    ```
 
-   This will run migrations, build Tailwind assets, and start the application on `http://localhost:8080`.
+   This uses `gvenzl/oracle-free:slim` for local Oracle, initializes schema and valuation seed data on first boot, builds assets, and starts the application on `http://localhost:8080`.
 
-3. **Frontend Iteration**:
+3. **Run Host-Side Rust Commands Against Local Oracle**:
+
+   If you want to run `cargo test` or `cargo run` directly on the host instead of inside Compose, use the same local Oracle credentials:
+
+   ```bash
+   export DEV_ORACLE_USER="${LOCAL_ORACLE_USER:-dtapp}"
+   export DEV_ORACLE_PASSWORD="${ORACLE_PWD:-ChangeMe123}"
+   export DEV_ORACLE_CONNECT_STRING="localhost:1521/FREEPDB1"
+   ```
+
+4. **Frontend Iteration**:
    For faster frontend development, use the dev override which bind-mounts the `static/` directory:
 
    ```bash
    docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
    ```
 
-4. **Running Tests**:
+5. **Running Tests**:
    ```bash
    cargo test
    npm run test:js

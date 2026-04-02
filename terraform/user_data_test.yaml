@@ -116,14 +116,12 @@ runcmd:
   - usermod -aG docker opc
   # Configure SSH firewall (Closing everything, but kept for consistency)
   - if sudo systemctl is-active --quiet firewalld; then
-      sudo firewall-cmd --permanent --remove-service=ssh
-      sudo firewall-cmd --permanent --remove-port=2222/tcp
-      sudo firewall-cmd --reload
+    sudo firewall-cmd --permanent --remove-service=ssh
+    sudo firewall-cmd --permanent --remove-port=2222/tcp
+    sudo firewall-cmd --reload
     fi
   # Setup OCI Logging Agent
   - systemctl enable --now oracle-cloud-agent
   - systemctl restart oracle-cloud-agent-updater
   # Setup cron for polling (every minute)
   - (crontab -u opc -l 2>/dev/null; echo "* * * * * /home/opc/poll-deploy.sh >> /home/opc/deploy.log 2>&1") | crontab -u opc -
-
-

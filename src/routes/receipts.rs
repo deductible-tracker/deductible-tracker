@@ -213,7 +213,9 @@ pub async fn list_receipts(
     user: AuthenticatedUser,
     Query(params): Query<ListReceiptsParams>,
 ) -> impl IntoResponse {
-    match db::receipts::list_receipts(&state.db, &user.id, params.donation_id.clone()).await {
+    match db::receipts::list_receipt_summaries(&state.db, &user.id, params.donation_id.clone())
+        .await
+    {
         Ok(list) => AxumJson(serde_json::json!({ "receipts": list })).into_response(),
         Err(e) => {
             tracing::error!("DB Error listing receipts: {}", e);
