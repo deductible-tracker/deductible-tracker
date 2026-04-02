@@ -35,6 +35,14 @@ jobs:
           set -o pipefail
           if [ -n "$WALLET_ZIP_BASE64" ]; then
             mkdir -p Wallet_deductibledb
+            # Ensure unzip is available; install if missing
+            if ! command -v unzip >/dev/null 2>&1; then
+              echo "unzip not found; installing unzip"
+              sudo apt-get update
+              sudo apt-get install -y unzip
+            fi
+            echo "unzip version:"
+            if command -v unzip >/dev/null 2>&1; then unzip -v | head -n 1; fi
             # Safe diagnostics (do not echo the secret)
             echo "WALLET_ZIP_BASE64 length (chars):" "$(echo -n "$WALLET_ZIP_BASE64" | wc -c)"
             # Sanitize CRLFs and write base64 payload to a temporary file
@@ -47,10 +55,21 @@ jobs:
             echo "Decoded to /tmp/wallet.bin (bytes):" "$(stat -c%s /tmp/wallet.bin 2>/dev/null || wc -c < /tmp/wallet.bin)"
             file -b /tmp/wallet.bin || true
             hexdump -C -n 16 /tmp/wallet.bin || true
-            # Try ZIP/TAR extraction
-            if command -v unzip >/dev/null 2>&1 && unzip -t /tmp/wallet.bin >/dev/null 2>&1; then
-              unzip -qq /tmp/wallet.bin -d Wallet_deductibledb
-              echo "Extracted wallet as zip"
+            # Diagnostic listing using unzip if available
+            if command -v unzip >/dev/null 2>&1; then
+              echo "Archive listing (unzip -l):"
+              unzip -l /tmp/wallet.bin || echo "unzip -l exit:$?"
+            fi
+            # Try ZIP/TAR extraction (prefer unzip; attempt extraction even if tests fail)
+            if command -v unzip >/dev/null 2>&1; then
+              if unzip -t /tmp/wallet.bin >/dev/null 2>&1; then
+                unzip -qq /tmp/wallet.bin -d Wallet_deductibledb || { echo "unzip extraction failed with exit:$?"; unzip -l /tmp/wallet.bin || true; exit 1; }
+                echo "Extracted wallet as zip"
+              else
+                echo "unzip -t failed; attempting extraction anyway"
+                unzip /tmp/wallet.bin -d Wallet_deductibledb || { echo "unzip extraction failed with exit:$?"; unzip -l /tmp/wallet.bin || true; exit 1; }
+                echo "Extracted wallet as zip (forced)"
+              fi
             elif tar -tzf /tmp/wallet.bin >/dev/null 2>&1; then
               tar xzf /tmp/wallet.bin -C Wallet_deductibledb
               echo "Extracted wallet as tar.gz"
