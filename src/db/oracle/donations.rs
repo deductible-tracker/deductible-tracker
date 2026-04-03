@@ -112,10 +112,7 @@ pub(crate) async fn list_donations_since(
     Ok(out)
 }
 
-pub(crate) async fn list_donation_years(
-    pool: &Pool,
-    user_id: &str,
-) -> anyhow::Result<Vec<i32>> {
+pub(crate) async fn list_donation_years(pool: &Pool, user_id: &str) -> anyhow::Result<Vec<i32>> {
     let conn = pool.get().await?;
     let rows = conn
         .query(

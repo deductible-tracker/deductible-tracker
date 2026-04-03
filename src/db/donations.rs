@@ -14,10 +14,7 @@ pub async fn list_donations(
     super::list_donations(pool, user_id, year).await
 }
 
-pub async fn list_donation_years(
-    pool: &DbPool,
-    user_id: &str,
-) -> anyhow::Result<Vec<i32>> {
+pub async fn list_donation_years(pool: &DbPool, user_id: &str) -> anyhow::Result<Vec<i32>> {
     super::list_donation_years(pool, user_id).await
 }
 

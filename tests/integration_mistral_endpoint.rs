@@ -38,7 +38,10 @@ mod mistral_endpoint_test {
     fn rejects_non_canonical_override() {
         let _guard = env_lock().lock().expect("lock env");
         clear_env();
-        std::env::set_var("MISTRAL_API_ENDPOINT", "http://169.254.169.254/latest/meta-data");
+        std::env::set_var(
+            "MISTRAL_API_ENDPOINT",
+            "http://169.254.169.254/latest/meta-data",
+        );
 
         let error = load_mistral_api_endpoint().expect_err("non-canonical endpoint should fail");
 

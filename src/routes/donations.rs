@@ -251,7 +251,13 @@ pub async fn create_donation(
 
     let date = match NaiveDate::parse_from_str(&req.date, "%Y-%m-%d") {
         Ok(d) => d,
-        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid date format, expected YYYY-MM-DD").into_response(),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "Invalid date format, expected YYYY-MM-DD",
+            )
+                .into_response()
+        }
     };
 
     let id = if let Some(provided) = req.id.clone() {
@@ -365,7 +371,13 @@ pub async fn update_donation(
     let (date_opt, year_opt) = if let Some(date_str) = req.date.clone() {
         match NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
             Ok(d) => (Some(d), Some(d.year())),
-            Err(_) => return (StatusCode::BAD_REQUEST, "Invalid date format, expected YYYY-MM-DD").into_response(),
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid date format, expected YYYY-MM-DD",
+                )
+                    .into_response()
+            }
         }
     } else {
         (None, None)

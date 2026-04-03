@@ -1,6 +1,6 @@
 #cloud-config
 package_update: true
-package_upgrade: true
+package_upgrade: false
 packages:
   - curl
   - git
@@ -224,13 +224,13 @@ runcmd:
   - [
       sh,
       -c,
-      'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --remove-service=ssh || true; firewall-cmd --permanent --remove-port=2222/tcp || true; firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --reload; fi',
+      'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --reload; fi',
     ]
   # Setup OCI Logging Agent
   - [
       sh,
       -c,
-      'systemctl enable --now oracle-cloud-agent && systemctl restart oracle-cloud-agent-updater',
+      'systemctl enable --now oracle-cloud-agent || true; systemctl restart oracle-cloud-agent-updater >/dev/null 2>&1 || true',
     ]
   - [sh, -c, '/usr/local/bin/configure-newrelic-infra.sh || true']
   - systemctl daemon-reload

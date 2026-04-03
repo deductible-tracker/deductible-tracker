@@ -38,6 +38,7 @@ opentelemetry = { version = "0.31", features = ["trace"], optional = true }
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace"], optional = true }
 opentelemetry-otlp = { version = "0.31", features = ["trace", "grpc-tonic", "tls-ring"], optional = true }
 tonic = { version = "0.14", features = ["transport"], optional = true }
+rustls = { version = "0.23", features = ["ring"], optional = true }
 oracle-rs = "0.1.7"
 deadpool-oracle = "0.1.1"
 
@@ -94,6 +95,7 @@ server = [
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
     "dep:tonic",
+    "dep:rustls",
 ]
 asset-pipeline = [
     "dep:regex",
@@ -110,3 +112,6 @@ lto = true
 strip = true
 codegen-units = 1
 panic = "abort"
+
+[patch.crates-io]
+oracle-rs = { path = "vendor/oracle-rs" }

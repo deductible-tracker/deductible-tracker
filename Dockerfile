@@ -25,6 +25,7 @@ ENV RUSTFLAGS=""
 ENV PATH=/usr/local/cargo/bin:/usr/local/bin:${PATH}
 
 COPY Cargo.toml Cargo.lock package.json package-lock.json ./
+COPY vendor/oracle-rs /app/vendor/oracle-rs
 
 RUN mkdir -p src && echo 'fn main() { println!("__dummy__"); }' > src/main.rs
 

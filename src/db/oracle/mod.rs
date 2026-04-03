@@ -15,6 +15,9 @@ use crate::db::models::UserProfileUpsert;
 pub(crate) mod charities;
 pub mod donations;
 pub(crate) mod receipts;
+mod wallet_config;
+
+use wallet_config::validate_wallet_password;
 
 fn first_present_env(keys: &[&str]) -> Option<String> {
     keys.iter()
@@ -108,6 +111,7 @@ pub fn load_config(runtime_mode: RuntimeMode) -> anyhow::Result<OracleConfig> {
 }
 
 pub async fn connect_once(runtime_mode: RuntimeMode) -> anyhow::Result<Connection> {
+    install_rustls_provider();
     let config = load_config(runtime_mode)?;
     let driver_config = build_driver_config(&config)?;
     Connection::connect_with_config(driver_config)
@@ -121,6 +125,7 @@ pub(crate) async fn init_pool(
     db_pool_min: u32,
     db_pool_timeout_secs: u64,
 ) -> anyhow::Result<DbPool> {
+    install_rustls_provider();
     let config = load_config(runtime_mode)?;
     let driver_config = build_driver_config(&config)?;
 
@@ -152,6 +157,7 @@ pub(crate) async fn init_pool(
         .build()
         .map_err(|e| {
             eprintln!("[DB] ERROR: Failed to create connection pool: {}", e);
+            eprintln!("[DB] ERROR DEBUG: {:?}", e);
             anyhow::anyhow!("Failed to create DB pool: {}", e)
         })?;
 
@@ -294,6 +300,7 @@ fn build_driver_config(config: &OracleConfig) -> anyhow::Result<OracleDriverConf
 
     if tls_required {
         driver_config = if let Some(wallet_dir) = config.wallet_dir.as_deref() {
+            validate_wallet_password(wallet_dir, config.wallet_password.as_deref())?;
             driver_config
                 .with_wallet(
                     wallet_dir.to_string_lossy(),
@@ -314,6 +321,14 @@ fn build_driver_config(config: &OracleConfig) -> anyhow::Result<OracleDriverConf
 
     Ok(driver_config.with_statement_cache_size(config.statement_cache_size))
 }
+
+#[cfg(feature = "server")]
+fn install_rustls_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+#[cfg(not(feature = "server"))]
+fn install_rustls_provider() {}
 
 fn build_driver_config_from_descriptor(
     descriptor: &str,
