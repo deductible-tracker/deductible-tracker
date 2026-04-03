@@ -11,6 +11,18 @@ fn build_auth_cookie(token: &str) -> String {
     cookie
 }
 
+fn build_csrf_cookie(token: &str) -> String {
+    let secure = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+    let mut cookie = format!(
+        "csrf_token={}; SameSite=Strict; Path=/; Max-Age=14400",
+        token
+    );
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
 fn build_oauth_state_cookie(state_token: &str) -> String {
     let secure = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
     let mut cookie = format!(
@@ -47,6 +59,15 @@ fn clear_pkce_verifier_cookie() -> String {
 fn clear_oauth_state_cookie() -> String {
     let secure = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
     let mut cookie = "oauth_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".to_string();
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
+
+fn clear_csrf_cookie() -> String {
+    let secure = env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) == "production";
+    let mut cookie = "csrf_token=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT".to_string();
     if secure {
         cookie.push_str("; Secure");
     }

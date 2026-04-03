@@ -234,7 +234,7 @@ export async function renderPersonalInfoRoute(deps) {
     formData.append('file', file);
 
     try {
-      const csrfToken = deps.getCookie('auth_token');
+      const csrfToken = deps.getCookie('csrf_token');
       const res = await fetch('/api/me/import', {
         method: 'POST',
         credentials: 'include',

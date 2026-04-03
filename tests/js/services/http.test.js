@@ -35,7 +35,7 @@ describe('apiJson', () => {
   });
 
   test('adds csrf header for api mutation requests when auth cookie exists', async () => {
-    global.document.cookie = 'theme=dark; auth_token=csrf-123';
+    global.document.cookie = 'theme=dark; csrf_token=csrf-123';
 
     await apiJson('/api/me', { method: 'PUT' });
 

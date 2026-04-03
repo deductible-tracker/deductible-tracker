@@ -3,7 +3,7 @@ export async function apiJson(path, options = {}) {
   const headers = { ...options.headers };
 
   if (isApiMutationRequest(path, method)) {
-    const token = getCookie('auth_token');
+    const token = getCookie('csrf_token');
     if (token) {
       headers['X-CSRF-Token'] = token;
     }

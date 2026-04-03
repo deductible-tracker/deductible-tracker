@@ -191,17 +191,32 @@ async fn require_auth(req: Request<Body>, next: Next) -> impl IntoResponse {
     ) {
         let headers = req.headers();
         let auth_token = auth::extract_token_from_headers(headers);
+        if let Some(_auth) = auth_token {
+            // Expect the client to send X-CSRF-Token equal to the readable csrf cookie value
+            let csrf_header = headers.get("X-CSRF-Token").and_then(|h| h.to_str().ok());
+            let csrf_cookie = headers
+                .get(header::COOKIE)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|cookie_header| {
+                    cookie_header.split(';').find_map(|cookie| {
+                        let cookie = cookie.trim();
+                        if let Some((k, v)) = cookie.split_once('=') {
+                            if k == "csrf_token" {
+                                return Some(v.to_string());
+                            }
+                        }
+                        None
+                    })
+                });
 
-        if let Some(auth) = auth_token {
-            let csrf_token = headers.get("X-CSRF-Token").and_then(|h| h.to_str().ok());
-            match csrf_token {
-                Some(csrf) => {
-                    if csrf != auth {
+            match (csrf_header, csrf_cookie) {
+                (Some(hdr), Some(cookie_val)) => {
+                    if hdr != cookie_val {
                         tracing::warn!("CSRF token mismatch");
                         return (StatusCode::FORBIDDEN, "CSRF token mismatch").into_response();
                     }
                 }
-                None => {
+                _ => {
                     tracing::warn!("Missing CSRF token for authenticated state-changing request");
                     return (StatusCode::FORBIDDEN, "Missing CSRF token").into_response();
                 }

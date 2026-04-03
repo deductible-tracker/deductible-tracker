@@ -510,6 +510,11 @@ pub async fn callback(
     if let Ok(header_value) = HeaderValue::from_str(&cookie) {
         response.headers_mut().insert(header::SET_COOKIE, header_value);
     }
+    // Also emit a readable CSRF cookie so client-side JS can add the X-CSRF-Token header.
+    let csrf_cookie = build_csrf_cookie(&token);
+    if let Ok(header_value) = HeaderValue::from_str(&csrf_cookie) {
+        response.headers_mut().append(header::SET_COOKIE, header_value);
+    }
     
     // Clear the oauth_state cookie if it exists (only for AuthCallback::Code flow)
     let clear_state_cookie = clear_oauth_state_cookie();

@@ -389,7 +389,7 @@ async function getReceiptDownloadUrlRoute(key, deps) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-Token': getCookie('auth_token'),
+      'X-CSRF-Token': getCookie('csrf_token'),
     },
     credentials: 'include',
     body: JSON.stringify({ key }),
@@ -1073,7 +1073,7 @@ async function bindDonationFormHandlersRoute({ userId, charities, existingDonati
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': getCookie('auth_token'),
+            'X-CSRF-Token': getCookie('csrf_token'),
           },
           credentials: 'include',
           body: JSON.stringify({ query: q }),

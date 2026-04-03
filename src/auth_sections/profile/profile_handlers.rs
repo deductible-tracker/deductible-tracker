@@ -114,6 +114,11 @@ pub async fn dev_login(
                 if let Ok(header_value) = HeaderValue::from_str(&cookie) {
                     response.headers_mut().insert(header::SET_COOKIE, header_value);
                 }
+                        // Also emit a readable CSRF cookie for client-side X-CSRF-Token usage
+                        let csrf_cookie = build_csrf_cookie(&token);
+                        if let Ok(header_value) = HeaderValue::from_str(&csrf_cookie) {
+                            response.headers_mut().append(header::SET_COOKIE, header_value);
+                        }
                 response
             },
             Err(e) => {
@@ -148,6 +153,12 @@ pub async fn logout(headers: HeaderMap) -> impl IntoResponse {
     }
 
     if let Ok(header_value) = HeaderValue::from_str(&cookie_strict) {
+        response.headers_mut().append(header::SET_COOKIE, header_value);
+    }
+
+    // Clear the readable CSRF cookie as well
+    let csrf_clear = clear_csrf_cookie();
+    if let Ok(header_value) = HeaderValue::from_str(&csrf_clear) {
         response.headers_mut().append(header::SET_COOKIE, header_value);
     }
 
