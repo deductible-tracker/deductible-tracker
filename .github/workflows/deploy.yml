@@ -196,66 +196,85 @@ jobs:
           IMAGE_REF="${{ needs.build.outputs.image_ref }}"
 
           # 1. Discover the active instance OCID
-          # We search for instances that are NOT in the TERMINATED state.
           TARGET_COMPARTMENT="${{ secrets.OCI_COMPARTMENT_OCID }}"
           : "${TARGET_COMPARTMENT:=$OCI_CLI_TENANCY}"
 
-          # Search by tag instead of display-name since names are timestamped
+          echo "Searching for instances in compartment $TARGET_COMPARTMENT (including subtree)..."
+          
+          # Search by defined tags recursively. We look for any instance that has our Operations.deployed_image tag.
           INSTANCE_OCID=$(oci compute instance list --compartment-id "$TARGET_COMPARTMENT" \
             --lifecycle-state RUNNING \
-            --query "data[?\"defined-tags\".\"Operations\".\"deployed_image\"].id | [0]" --raw-output)
+            --compartment-id-in-subtree true \
+            --query "data[?\"defined-tags\".Operations.deployed_image].id | [0]" --raw-output)
 
           if [ -z "$INSTANCE_OCID" ] || [ "$INSTANCE_OCID" == "null" ]; then
-            echo "ERROR: No RUNNING instance with tag project=deductible-tracker found in compartment $TARGET_COMPARTMENT"
+            echo "ERROR: No RUNNING instance with tag Operations.deployed_image found in compartment $TARGET_COMPARTMENT"
+            # Fallback search by name if tag search fails
+            echo "Attempting fallback search by name 'app_server'..."
+            INSTANCE_OCID=$(oci compute instance list --compartment-id "$TARGET_COMPARTMENT" \
+              --lifecycle-state RUNNING \
+              --compartment-id-in-subtree true \
+              --display-name "app_server" \
+              --query "data[0].id" --raw-output)
+          fi
+
+          if [ -z "$INSTANCE_OCID" ] || [ "$INSTANCE_OCID" == "null" ]; then
+            echo "ERROR: Could not find target instance for deployment."
             exit 1
           fi
           echo "Found active instance: $INSTANCE_OCID"
 
           # 2. Capture environment variables and encode them
-          ENV_CONTENT=$(cat <<EOF
-          DB_USER=$DB_USER
-          DB_PASSWORD=$DB_PASSWORD
-          DB_WALLET_PASSWORD=$DB_WALLET_PASSWORD
-          DB_CONNECT_STRING=$DB_CONNECT_STRING
-          GHCR_USERNAME=$GHCR_USERNAME
-          GHCR_TOKEN=$GHCR_TOKEN
-          DB_WALLET_DIR=/app/wallet
-          OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT
-          OBJECT_STORAGE_BUCKET=$OBJECT_STORAGE_BUCKET
-          OCI_REGION=$OCI_REGION
-          OCI_ACCESS_KEY_ID=$OCI_ACCESS_KEY_ID
-          OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY
-          JWT_SECRET=$JWT_SECRET
-          ALLOWED_ORIGINS=$ALLOWED_ORIGINS
-          OAUTH_PROVIDERS=$OAUTH_PROVIDERS
-          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
-          GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
-          GOOGLE_AUTH_URL=$GOOGLE_AUTH_URL
-          GOOGLE_TOKEN_URL=$GOOGLE_TOKEN_URL
-          GOOGLE_USERINFO_URL=$GOOGLE_USERINFO_URL
-          GOOGLE_REDIRECT_URL=$GOOGLE_REDIRECT_URL
-          PROPUBLICA_API_BASE_URL=$PROPUBLICA_API_BASE_URL
-          MISTRAL_API_ENDPOINT=$MISTRAL_API_ENDPOINT
-          MISTRAL_MODEL=$MISTRAL_MODEL
-          MISTRAL_API_KEY=$MISTRAL_API_KEY
-          NEW_RELIC_LICENSE_KEY=$NEW_RELIC_LICENSE_KEY
-          NEW_RELIC_OTLP_ENDPOINT=$NEW_RELIC_OTLP_ENDPOINT
-          NEW_RELIC_APP_NAME=deductible-tracker
-          OTEL_SERVICE_NAME=deductible-tracker
-          SITE_DOMAIN=dd.joshkraemer.com
-          EOF
-          )
+          # Using a temporary file to avoid shell expansion issues and maintain formatting
+          cat > /tmp/env_content <<EOF
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+DB_WALLET_PASSWORD=$DB_WALLET_PASSWORD
+DB_CONNECT_STRING=$DB_CONNECT_STRING
+GHCR_USERNAME=$GHCR_USERNAME
+GHCR_TOKEN=$GHCR_TOKEN
+DB_WALLET_DIR=/app/wallet
+OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT
+OBJECT_STORAGE_BUCKET=$OBJECT_STORAGE_BUCKET
+OCI_REGION=$OCI_REGION
+OCI_ACCESS_KEY_ID=$OCI_ACCESS_KEY_ID
+OCI_SECRET_ACCESS_KEY=$OCI_SECRET_ACCESS_KEY
+JWT_SECRET=$JWT_SECRET
+ALLOWED_ORIGINS=$ALLOWED_ORIGINS
+OAUTH_PROVIDERS=$OAUTH_PROVIDERS
+GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
+GOOGLE_AUTH_URL=$GOOGLE_AUTH_URL
+GOOGLE_TOKEN_URL=$GOOGLE_TOKEN_URL
+GOOGLE_USERINFO_URL=$GOOGLE_USERINFO_URL
+GOOGLE_REDIRECT_URL=$GOOGLE_REDIRECT_URL
+PROPUBLICA_API_BASE_URL=$PROPUBLICA_API_BASE_URL
+MISTRAL_API_ENDPOINT=$MISTRAL_API_ENDPOINT
+MISTRAL_MODEL=$MISTRAL_MODEL
+MISTRAL_API_KEY=$MISTRAL_API_KEY
+NEW_RELIC_LICENSE_KEY=$NEW_RELIC_LICENSE_KEY
+NEW_RELIC_OTLP_ENDPOINT=$NEW_RELIC_OTLP_ENDPOINT
+NEW_RELIC_APP_NAME=deductible-tracker
+OTEL_SERVICE_NAME=deductible-tracker
+SITE_DOMAIN=dd.joshkraemer.com
+EOF
 
-          SECRETS_BASE64=$(echo "$ENV_CONTENT" | sed 's/^[[:space:]]*//' | base64 -w 0)
+          SECRETS_BASE64=$(base64 -w 0 /tmp/env_content)
 
-          # 2. Merge deployment data into existing metadata so we preserve
-          # SSH authorized keys and cloud-init user_data.
-          EXISTING_METADATA=$(oci compute instance get --instance-id "$INSTANCE_OCID" --query "data.metadata" --output json)
-          UPDATED_METADATA=$(echo "$EXISTING_METADATA" | jq -c --arg image "$IMAGE_REF" --arg secrets "$SECRETS_BASE64" '. + {deployed_image: $image, app_secrets: $secrets}')
+          # 3. Merge deployment data into existing metadata
+          echo "Fetching existing metadata..."
+          EXISTING_METADATA=$(oci compute instance get --instance-id "$INSTANCE_OCID" --query "data.metadata" --output json || echo "{}")
+          
+          # Use jq to merge, handling potential nulls or empty objects
+          UPDATED_METADATA=$(echo "$EXISTING_METADATA" | jq -c --arg image "$IMAGE_REF" --arg secrets "$SECRETS_BASE64" '
+            if . == null then {} else . end | . + {deployed_image: $image, app_secrets: $secrets}
+          ')
 
-          # 3. Update OCI instance metadata with the latest deployment payload.
-          # We use --force because metadata updates still prompt for confirmation in the CLI.
+          echo "Updating instance metadata with new image reference..."
+          # 4. Update OCI instance metadata with the latest deployment payload.
           oci compute instance update --instance-id "$INSTANCE_OCID" \
             --metadata "$UPDATED_METADATA" \
             --force
+          
+          echo "Deployment metadata updated successfully. The VM agent will pick it up within 60 seconds."
           exit 0
