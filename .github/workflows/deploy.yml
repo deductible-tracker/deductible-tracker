@@ -205,7 +205,7 @@ jobs:
           INSTANCE_OCID=$(oci compute instance list --compartment-id "$TARGET_COMPARTMENT" \
             --lifecycle-state RUNNING \
             --compartment-id-in-subtree true \
-            --query "data[?\"defined-tags\".Operations.deployed_image].id | [0]" --raw-output)
+            --query 'data[?"defined-tags".Operations.deployed_image].id | [0]' --raw-output)
 
           if [ -z "$INSTANCE_OCID" ] || [ "$INSTANCE_OCID" == "null" ]; then
             echo "ERROR: No RUNNING instance with tag Operations.deployed_image found in compartment $TARGET_COMPARTMENT"
@@ -266,9 +266,9 @@ EOF
           EXISTING_METADATA=$(oci compute instance get --instance-id "$INSTANCE_OCID" --query "data.metadata" --output json || echo "{}")
           
           # Use jq to merge, handling potential nulls or empty objects
-          UPDATED_METADATA=$(echo "$EXISTING_METADATA" | jq -c --arg image "$IMAGE_REF" --arg secrets "$SECRETS_BASE64" '\''
+          UPDATED_METADATA=$(echo "$EXISTING_METADATA" | jq -c --arg image "$IMAGE_REF" --arg secrets "$SECRETS_BASE64" '
             if . == null then {} else . end | . + {deployed_image: $image, app_secrets: $secrets}
-          '\'')
+          ')
 
           echo "Updating instance metadata with new image reference..."
           # 4. Update OCI instance metadata with the latest deployment payload.
