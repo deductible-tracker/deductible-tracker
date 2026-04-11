@@ -166,6 +166,7 @@ jobs:
 
       - name: Update Instance Metadata Tag to Trigger Deploy
         env:
+          OCI_INSTANCE_OCID: ${{ secrets.OCI_INSTANCE_OCID }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           DB_USER: ${{ secrets.DB_USER }}
@@ -193,33 +194,51 @@ jobs:
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           NEW_RELIC_OTLP_ENDPOINT: ${{ secrets.NEW_RELIC_OTLP_ENDPOINT }}
         run: |
+          set -euo pipefail
+
           IMAGE_REF="${{ needs.build.outputs.image_ref }}"
 
           # 1. Discover the active instance OCID
           TARGET_COMPARTMENT="${{ secrets.OCI_COMPARTMENT_OCID }}"
           : "${TARGET_COMPARTMENT:=$OCI_CLI_TENANCY}"
 
-          echo "Searching for instances in compartment $TARGET_COMPARTMENT (including subtree)..."
-          
-          # Search by defined tags recursively. We look for any instance that has our Operations.deployed_image tag.
-          INSTANCE_OCID=$(oci compute instance list --compartment-id "$TARGET_COMPARTMENT" \
-            --lifecycle-state RUNNING \
-            --compartment-id-in-subtree true \
-            --query 'data[?"defined-tags".Operations.deployed_image].id | [0]' --raw-output)
+          if [ -n "${OCI_INSTANCE_OCID:-}" ]; then
+            INSTANCE_OCID="$OCI_INSTANCE_OCID"
+            echo "Using configured instance OCID: $INSTANCE_OCID"
+          else
+            echo "Searching for running instances in compartment $TARGET_COMPARTMENT (including subtree)..."
 
-          if [ -z "$INSTANCE_OCID" ] || [ "$INSTANCE_OCID" == "null" ]; then
-            echo "ERROR: No RUNNING instance with tag Operations.deployed_image found in compartment $TARGET_COMPARTMENT"
-            # Fallback search by name if tag search fails
-            echo "Attempting fallback search by name 'app_server'..."
-            INSTANCE_OCID=$(oci compute instance list --compartment-id "$TARGET_COMPARTMENT" \
+            INSTANCE_LIST_JSON=$(oci compute instance list \
+              --compartment-id "$TARGET_COMPARTMENT" \
               --lifecycle-state RUNNING \
               --compartment-id-in-subtree true \
-              --display-name "app_server" \
-              --query "data[0].id" --raw-output)
+              --all \
+              --output json)
+
+            # The deploy poller reads instance metadata first and only falls back to
+            # defined tags for older instances, so prefer the same lookup here.
+            INSTANCE_OCID=$(echo "$INSTANCE_LIST_JSON" | jq -r '
+              .data
+              | map(select((.metadata.deployed_image // .["defined-tags"].Operations.deployed_image // empty) != ""))
+              | .[0].id // empty
+            ')
           fi
 
           if [ -z "$INSTANCE_OCID" ] || [ "$INSTANCE_OCID" == "null" ]; then
-            echo "ERROR: Could not find target instance for deployment."
+            echo "ERROR: Could not find target instance for deployment." >&2
+            echo "Set OCI_INSTANCE_OCID in GitHub Actions secrets to bypass auto-discovery." >&2
+            if [ -n "${INSTANCE_LIST_JSON:-}" ]; then
+              echo "Running instances discovered:" >&2
+              echo "$INSTANCE_LIST_JSON" | jq -r '
+                .data[]
+                | [
+                    .id,
+                    (.metadata.deployed_image // ""),
+                    (.["defined-tags"].Operations.deployed_image // "")
+                  ]
+                | @tsv
+              ' >&2 || true
+            fi
             exit 1
           fi
           echo "Found active instance: $INSTANCE_OCID"
@@ -259,7 +278,7 @@ jobs:
           SITE_DOMAIN=dd.joshkraemer.com
           EOF
 
-          SECRETS_BASE64=$(base64 -w 0 /tmp/env_content)
+          SECRETS_BASE64=$(base64 < /tmp/env_content | tr -d '\n')
 
           # 3. Merge deployment data into existing metadata
           echo "Fetching existing metadata..."
