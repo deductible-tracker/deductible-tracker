@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -131,7 +131,7 @@ fn sha256_hash(data: &[u8]) -> Vec<u8> {
 }
 
 fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-    let mut mac = <HmacSha256 as Mac>::new_from_slice(key)
+    let mut mac = <HmacSha256 as KeyInit>::new_from_slice(key)
         .map_err(|e| anyhow!("failed to create HMAC key: {}", e))?;
     mac.update(data);
     Ok(mac.finalize().into_bytes().to_vec())

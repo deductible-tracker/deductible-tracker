@@ -1,3 +1,5 @@
+pub use deductible_tracker::AppState;
+
 use chrono::Utc;
 
 // Test the donations helper by using the crate path
@@ -102,5 +104,21 @@ mod asset_helpers_test {
         .unwrap();
 
         assert_ne!(version_a, version_b);
+    }
+}
+
+mod storage_test {
+    #![allow(dead_code)]
+
+    include!("../src/storage.rs");
+
+    #[test]
+    fn hmac_sha256_matches_known_vector() {
+        let actual = hmac_sha256(b"key", b"The quick brown fox jumps over the lazy dog").unwrap();
+
+        assert_eq!(
+            hex_encode(&actual),
+            "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8"
+        );
     }
 }
