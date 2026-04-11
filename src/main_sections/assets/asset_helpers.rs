@@ -159,6 +159,46 @@ fn has_fingerprint_suffix(path: &Path) -> bool {
     maybe_hash.len() == 12 && maybe_hash.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+fn is_fingerprinted_asset_url(path: &str) -> bool {
+    path.strip_prefix("/assets/")
+        .map(|relative| has_fingerprint_suffix(Path::new(relative)))
+        .unwrap_or(false)
+}
+
+fn retain_stable_precache_assets(precache_assets: &mut Vec<String>) {
+    precache_assets.retain(|path| !is_fingerprinted_asset_url(path));
+    precache_assets.sort();
+    precache_assets.dedup();
+}
+
+fn build_service_worker_version(
+    app: &str,
+    upload: &str,
+    dexie: &str,
+    asset_rewrites: &std::collections::HashMap<String, String>,
+    precache_assets: &[String],
+) -> anyhow::Result<String> {
+    let mut sorted_rewrites = asset_rewrites
+        .iter()
+        .map(|(original, rewritten)| (original.clone(), rewritten.clone()))
+        .collect::<Vec<_>>();
+    sorted_rewrites
+        .sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+
+    let version_seed = serde_json::json!({
+        "app": app,
+        "upload": upload,
+        "dexie": dexie,
+        "assetRewrites": sorted_rewrites,
+        "precacheAssets": precache_assets,
+    });
+    let hash = blake3::hash(serde_json::to_string(&version_seed)?.as_bytes())
+        .to_hex()
+        .to_string();
+
+    Ok(hash[..12].to_string())
+}
+
 fn resolve_js_relative(current_dir: &Path, spec: &str) -> Option<PathBuf> {
     if !(spec.starts_with("./") || spec.starts_with("../")) {
         return None;

@@ -27,6 +27,7 @@ fn parse_utc_from_opt_string_tests() {
 mod asset_helpers_test {
     #![allow(dead_code)]
 
+    use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     include!("../src/main_sections/assets/asset_helpers.rs");
@@ -55,5 +56,51 @@ mod asset_helpers_test {
         let src = "function add(a, b) { return a + b; }";
         let m = minify_js_asset(src);
         assert!(!m.is_empty());
+    }
+
+    #[test]
+    fn stable_precache_assets_exclude_fingerprinted_outputs() {
+        let mut precache_assets = vec![
+            "/".to_string(),
+            "/assets/app-1a2b3c4d5e6f.js".to_string(),
+            "/assets/tailwind-0c823dd395ac.css".to_string(),
+            "/assets/vendor/dexie-1234567890ab.js".to_string(),
+            "/css/fonts.css".to_string(),
+        ];
+
+        retain_stable_precache_assets(&mut precache_assets);
+
+        assert_eq!(
+            precache_assets,
+            vec!["/".to_string(), "/css/fonts.css".to_string()]
+        );
+    }
+
+    #[test]
+    fn service_worker_version_changes_when_fingerprinted_assets_change() {
+        let precache_assets = vec!["/".to_string()];
+        let asset_rewrites = HashMap::from([(
+            "/css/fonts.css".to_string(),
+            "/assets/css/fonts-aaaaaaaaaaaa.css".to_string(),
+        )]);
+
+        let version_a = build_service_worker_version(
+            "/assets/boot-aaaaaaaaaaaa.js",
+            "/assets/upload-bbbbbbbbbbbb.js",
+            "/assets/vendor/dexie-cccccccccccc.js",
+            &asset_rewrites,
+            &precache_assets,
+        )
+        .unwrap();
+        let version_b = build_service_worker_version(
+            "/assets/boot-dddddddddddd.js",
+            "/assets/upload-bbbbbbbbbbbb.js",
+            "/assets/vendor/dexie-cccccccccccc.js",
+            &asset_rewrites,
+            &precache_assets,
+        )
+        .unwrap();
+
+        assert_ne!(version_a, version_b);
     }
 }
