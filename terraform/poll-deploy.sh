@@ -1,7 +1,14 @@
 #!/bin/bash
 # poll-deploy.sh: Lightweight agent to pull new image when OCI tag changes
+set -x
+exec > /home/opc/poll-deploy.log 2>&1
 set -euo pipefail
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin
+
+# Use podman if docker command is missing
+if ! command -v docker >/dev/null 2>&1; then
+    alias docker=podman
+fi
 
 # Metadata URL for OCI (requires Auth Header for v2)
 METADATA_URL="http://169.254.169.254/opc/v2/instance/"
