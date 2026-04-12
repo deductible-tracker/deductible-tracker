@@ -119,10 +119,18 @@ if ! docker run -d \
 fi
 
 # Verify deployment
-echo "Verifying deployment (waiting 5s)..."
-sleep 5
-# Exact match check for container name and verify it's responding on health check
-if docker ps --filter "name=^/deductible-app$" --filter "status=running" --format '{{.Names}}' | grep -q "^deductible-app$" && curl -s -f http://127.0.0.1:8080/health >/dev/null; then
+echo "Verifying deployment..."
+HEALTH_CHECK_PASSED=false
+for i in {1..12}; do
+    echo "Health check attempt $i/12..."
+    if docker ps --filter "name=^/deductible-app$" --filter "status=running" --format '{{.Names}}' | grep -q "^deductible-app$" && curl -s -f http://127.0.0.1:8080/health >/dev/null; then
+        HEALTH_CHECK_PASSED=true
+        break
+    fi
+    sleep 5
+done
+
+if [ "$HEALTH_CHECK_PASSED" = true ]; then
     echo "Successfully deployed $TAGS"
     echo "$TAGS" > "$STATE_FILE"
     docker rm -f deductible-app-old 2>/dev/null || true
@@ -140,7 +148,7 @@ if docker ps --filter "name=^/deductible-app$" --filter "status=running" --forma
         fi
     fi
 else
-    echo "New container failed to start, is not running, or failed health check. Rolling back..."
+    echo "New container failed to start, is not running, or failed health check after 60s. Rolling back..."
     docker stop deductible-app 2>/dev/null || true
     docker rm -f deductible-app 2>/dev/null || true
     if docker ps -a --format '{{.Names}}' | grep -q "^deductible-app-old$"; then
