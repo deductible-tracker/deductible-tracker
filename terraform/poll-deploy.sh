@@ -78,6 +78,15 @@ fi
 # 2. Swap containers
 echo "Swapping containers..."
 
+# Run migrations first
+echo "Running database migrations..."
+if ! docker run --rm \
+    --network=host \
+    --env-file "$APP_ENV" \
+    "$TAGS" ./migrate; then
+    echo "Warning: Database migration failed. Continuing anyway."
+fi
+
 # Clean up any existing -old container
 docker stop deductible-app-old 2>/dev/null || true
 docker rm -f deductible-app-old 2>/dev/null || true
@@ -110,27 +119,28 @@ if ! docker run -d \
 fi
 
 # Verify deployment
+echo "Verifying deployment (waiting 5s)..."
 sleep 5
-# Exact match check for container name and verify it's running
-if docker ps --filter "name=^/deductible-app$" --filter "status=running" --format '{{.Names}}' | grep -q "^deductible-app$"; then
+# Exact match check for container name and verify it's responding on health check
+if docker ps --filter "name=^/deductible-app$" --filter "status=running" --format '{{.Names}}' | grep -q "^deductible-app$" && curl -s -f http://127.0.0.1:8080/health >/dev/null; then
     echo "Successfully deployed $TAGS"
     echo "$TAGS" > "$STATE_FILE"
     docker rm -f deductible-app-old 2>/dev/null || true
 
     # Setup Caddy if domain is specified
     if [ -f "$APP_ENV" ]; then
-        SITE_DOMAIN=$(grep '^SITE_DOMAIN=' "$APP_ENV" | cut -d'=' -f2- || true)
+        SITE_DOMAIN=$(grep '^SITE_DOMAIN=' "$APP_ENV" | tail -n1 | cut -d'=' -f2- || true)
         if [ -n "$SITE_DOMAIN" ]; then
             echo "Setting up Caddy for $SITE_DOMAIN"
             docker rm -f caddy 2>/dev/null || true
-            printf '%s\n' "${SITE_DOMAIN} {" '  reverse_proxy localhost:8080' '}' > /home/opc/Caddyfile
+            printf '%s\n' "${SITE_DOMAIN} {" '  reverse_proxy 127.0.0.1:8080' '}' > /home/opc/Caddyfile
             docker run -d --name caddy --restart unless-stopped --network host \
                 -v /home/opc/Caddyfile:/etc/caddy/Caddyfile:z \
                 -v caddy_data:/data -v caddy_config:/config docker.io/library/caddy:2
         fi
     fi
 else
-    echo "New container failed to start or died shortly after. Rolling back..."
+    echo "New container failed to start, is not running, or failed health check. Rolling back..."
     docker stop deductible-app 2>/dev/null || true
     docker rm -f deductible-app 2>/dev/null || true
     if docker ps -a --format '{{.Names}}' | grep -q "^deductible-app-old$"; then

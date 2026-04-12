@@ -66,6 +66,15 @@ resource "oci_core_security_list" "main" {
     }
   }
 
+  ingress_security_rules {
+    protocol = "6" # TCP
+    source   = "10.0.0.0/16"
+    tcp_options {
+      min = 1521
+      max = 1522
+    }
+  }
+
   dynamic "ingress_security_rules" {
     for_each = var.temporary_ssh_cidr == "" ? [] : [var.temporary_ssh_cidr]
     content {

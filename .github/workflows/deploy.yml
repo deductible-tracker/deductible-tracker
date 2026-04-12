@@ -276,6 +276,8 @@ jobs:
           NEW_RELIC_APP_NAME=deductible-tracker
           OTEL_SERVICE_NAME=deductible-tracker
           SITE_DOMAIN=dd.joshkraemer.com
+          RUST_ENV=production
+          SKIP_ASSET_REBUILD=true
           EOF
 
           SECRETS_BASE64=$(base64 < /tmp/env_content | tr -d '\n')
