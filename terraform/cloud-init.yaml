@@ -8,6 +8,7 @@ packages:
   - oracle-cloud-agent
   - podman
   - podman-docker
+  - python3-oci-cli
 
 write_files:
   - path: /usr/local/bin/poll-deploy.sh
@@ -17,7 +18,30 @@ write_files:
       #!/bin/bash
       # poll-deploy.sh: Lightweight agent to pull new image when OCI tag changes
       set -x
-      exec > /home/opc/poll-deploy.log 2>&1
+      LOG_FILE="/home/opc/poll-deploy.log"
+      exec > "$LOG_FILE" 2>&1
+
+      # Function to upload log to metadata
+      upload_log() {
+          echo "Uploading deployment log to metadata..."
+          # Include some container info in the log tail
+          echo "--- Docker Status ---" >> "$LOG_FILE"
+          docker ps -a >> "$LOG_FILE" 2>&1 || true
+          echo "--- App Logs ---" >> "$LOG_FILE"
+          docker logs --tail 50 deductible-app >> "$LOG_FILE" 2>&1 || true
+          echo "--- Caddy Logs ---" >> "$LOG_FILE"
+          docker logs --tail 50 caddy >> "$LOG_FILE" 2>&1 || true
+          
+          if command -v oci >/dev/null 2>&1; then
+              INSTANCE_ID=$(curl -s -f -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/id)
+              if [ -n "$INSTANCE_ID" ]; then
+                  LOG_TAIL=$(tail -n 200 "$LOG_FILE" | base64 | tr -d '\n')
+                  oci compute instance update --auth instance_principal --instance-id "$INSTANCE_ID" --metadata "{\"poll_deploy_log\": \"$LOG_TAIL\"}" --force || true
+              fi
+          fi
+      }
+      trap upload_log EXIT
+
       set -euo pipefail
       export PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin
 
@@ -276,12 +300,9 @@ runcmd:
   - systemctl stop cockpit.socket || true
   - systemctl disable cockpit.socket || true
   - usermod -aG docker opc
-  # Configure host firewall for public web traffic and debugging.
-  - [
-      sh,
-      -c,
-      'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https; firewall-cmd --permanent --add-port=8080/tcp; firewall-cmd --reload; fi',
-    ]
+  # Disable host firewall to rely on OCI Security Lists.
+  - systemctl stop firewalld || true
+  - systemctl disable firewalld || true
   # Setup OCI Logging Agent
   - [
       sh,

@@ -1,7 +1,30 @@
 #!/bin/bash
 # poll-deploy.sh: Lightweight agent to pull new image when OCI tag changes
 set -x
-exec > /home/opc/poll-deploy.log 2>&1
+LOG_FILE="/home/opc/poll-deploy.log"
+exec > "$LOG_FILE" 2>&1
+
+# Function to upload log to metadata
+upload_log() {
+    echo "Uploading deployment log to metadata..."
+    # Include some container info in the log tail
+    echo "--- Docker Status ---" >> "$LOG_FILE"
+    docker ps -a >> "$LOG_FILE" 2>&1 || true
+    echo "--- App Logs ---" >> "$LOG_FILE"
+    docker logs --tail 50 deductible-app >> "$LOG_FILE" 2>&1 || true
+    echo "--- Caddy Logs ---" >> "$LOG_FILE"
+    docker logs --tail 50 caddy >> "$LOG_FILE" 2>&1 || true
+    
+    if command -v oci >/dev/null 2>&1; then
+        INSTANCE_ID=$(curl -s -f -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/id)
+        if [ -n "$INSTANCE_ID" ]; then
+            LOG_TAIL=$(tail -n 200 "$LOG_FILE" | base64 | tr -d '\n')
+            oci compute instance update --auth instance_principal --instance-id "$INSTANCE_ID" --metadata "{\"poll_deploy_log\": \"$LOG_TAIL\"}" --force || true
+        fi
+    fi
+}
+trap upload_log EXIT
+
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin
 
