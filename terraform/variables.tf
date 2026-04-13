@@ -32,7 +32,6 @@ variable "region" {
 variable "app_user_email" {
   description = "Email address for the OCI identity user used by the Deductible Tracker App."
   type        = string
-  default     = "joshkraemer@gmail.com"
 }
 
 variable "temporary_ssh_cidr" {

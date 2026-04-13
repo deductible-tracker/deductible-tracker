@@ -40,9 +40,9 @@ services:
     container_name: oracletest
     environment:
       ORACLE_PDB: ${ORACLE_PDB:-FREEPDB1}
-      ORACLE_PASSWORD: ${ORACLE_SYSTEM_PASSWORD:-Oracle1234}
+      ORACLE_PASSWORD: ${ORACLE_SYSTEM_PASSWORD:?Set ORACLE_SYSTEM_PASSWORD in .env}
       APP_USER: ${LOCAL_ORACLE_USER:-dtapp}
-      APP_USER_PASSWORD: ${ORACLE_PWD:-ChangeMe123}
+      APP_USER_PASSWORD: ${ORACLE_PWD:?Set ORACLE_PWD in .env}
     volumes:
       - oracletest-data:/opt/oracle/oradata
       - ./scripts/oracle-dev-startup/10-init-gvenzl.sh:/container-entrypoint-initdb.d/10-init-gvenzl.sh:ro

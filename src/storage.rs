@@ -10,11 +10,18 @@ pub fn normalize_object_key(bucket_name: &str, key: &str) -> String {
     let trimmed = key.trim().trim_start_matches('/');
     let bucket_prefix = format!("{}/", bucket_name);
 
-    if trimmed.starts_with(&bucket_prefix) {
+    let normalized = if trimmed.starts_with(&bucket_prefix) {
         trimmed[bucket_prefix.len()..].to_string()
     } else {
         trimmed.to_string()
+    };
+
+    // Reject path traversal attempts
+    if normalized.contains("..") || normalized.contains('\0') {
+        return String::new();
     }
+
+    normalized
 }
 
 pub fn user_receipt_prefix(user_id: &str) -> String {

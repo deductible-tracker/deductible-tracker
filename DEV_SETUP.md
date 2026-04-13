@@ -16,10 +16,10 @@ docker compose up --build
 
 This starts the local Oracle Free container and then starts the web server on port `8080` once Oracle is healthy.
 
-The checked-in local Oracle stack now uses `gvenzl/oracle-free:slim` with a dedicated app user. By default:
+The checked-in local Oracle stack now uses `gvenzl/oracle-free:slim` with a dedicated app user. Set these values in your `.env` file (copy `.env.example` to get started):
 
 - `LOCAL_ORACLE_USER=dtapp`
-- `ORACLE_PWD=ChangeMe123`
+- `ORACLE_PWD=<your-dev-password>`
 - `ORACLE_PDB=FREEPDB1`
 - host-side connect string: `localhost:1521/FREEPDB1`
 - container-side connect string: `//oracle-dev:1521/FREEPDB1`

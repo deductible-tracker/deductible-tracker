@@ -37,7 +37,7 @@ Dev-only Oracle bootstrap note
 
 ```
 ORACLE_PDB_USER=pdbadmin
-ORACLE_PWD=ChangeMe123
+ORACLE_PWD=<your-dev-password>
 ORACLE_PDB_CONNECT_STRING=//localhost:1521/FREEPDB1
 ```
 

@@ -67,9 +67,9 @@ The codebase is organized into modular "sections" to maintain clarity as the pro
 
    Configure your Oracle and Object Storage credentials in `.env`.
 
-   For the checked-in local Oracle stack, the default development values are:
+   For the checked-in local Oracle stack, set the required values in your `.env` file:
    - `LOCAL_ORACLE_USER=dtapp`
-   - `ORACLE_PWD=ChangeMe123`
+   - `ORACLE_PWD=<your-dev-password>`
    - `ORACLE_PDB=FREEPDB1`
    - host-side `DEV_ORACLE_CONNECT_STRING=localhost:1521/FREEPDB1`
 
@@ -88,7 +88,7 @@ The codebase is organized into modular "sections" to maintain clarity as the pro
 
    ```bash
    export DEV_ORACLE_USER="${LOCAL_ORACLE_USER:-dtapp}"
-   export DEV_ORACLE_PASSWORD="${ORACLE_PWD:-ChangeMe123}"
+   export DEV_ORACLE_PASSWORD="$ORACLE_PWD"
    export DEV_ORACLE_CONNECT_STRING="localhost:1521/FREEPDB1"
    ```
 

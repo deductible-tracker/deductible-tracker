@@ -193,6 +193,7 @@ jobs:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           NEW_RELIC_OTLP_ENDPOINT: ${{ secrets.NEW_RELIC_OTLP_ENDPOINT }}
+          SITE_DOMAIN: ${{ secrets.SITE_DOMAIN }}
         run: |
           set -euo pipefail
 
@@ -275,12 +276,13 @@ jobs:
           NEW_RELIC_OTLP_ENDPOINT=$NEW_RELIC_OTLP_ENDPOINT
           NEW_RELIC_APP_NAME=deductible-tracker
           OTEL_SERVICE_NAME=deductible-tracker
-          SITE_DOMAIN=dd.joshkraemer.com
+          SITE_DOMAIN=$SITE_DOMAIN
           RUST_ENV=production
           SKIP_ASSET_REBUILD=true
           EOF
 
           SECRETS_BASE64=$(base64 < /tmp/env_content | tr -d '\n')
+          rm -f /tmp/env_content
 
           # 3. Merge deployment data into existing metadata
           echo "Fetching existing metadata..."

@@ -28,9 +28,9 @@ services:
     container_name: oracle-dev
     environment:
       ORACLE_PDB: ${ORACLE_PDB:-FREEPDB1}
-      ORACLE_PASSWORD: ${ORACLE_SYSTEM_PASSWORD:-Oracle1234}
+      ORACLE_PASSWORD: ${ORACLE_SYSTEM_PASSWORD:?Set ORACLE_SYSTEM_PASSWORD in .env}
       APP_USER: ${LOCAL_ORACLE_USER:-dtapp}
-      APP_USER_PASSWORD: ${ORACLE_PWD:-ChangeMe123}
+      APP_USER_PASSWORD: ${ORACLE_PWD:?Set ORACLE_PWD in .env}
     ports:
       - '1521:1521'
     volumes:
