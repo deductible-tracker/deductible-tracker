@@ -32,6 +32,11 @@ write_files:
           echo "--- Caddy Logs ---" >> "$LOG_FILE"
           docker logs --tail 50 caddy >> "$LOG_FILE" 2>&1 || true
           
+          # Also output to console for emergency debugging
+          echo "--- DEPLOY LOG START ---" > /dev/console
+          tail -n 100 "$LOG_FILE" > /dev/console
+          echo "--- DEPLOY LOG END ---" > /dev/console
+
           if command -v oci >/dev/null 2>&1; then
               INSTANCE_ID=$(curl -s -f -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/id)
               if [ -n "$INSTANCE_ID" ]; then
