@@ -65,28 +65,41 @@ if [ -z "$TAGS" ] || [ "$TAGS" == "null" ] || [ "$TAGS" == "initial" ]; then
     exit 0
 fi
 
-# Update secrets if present
-if [ -n "$SECRETS_BASE64" ] && [ "$SECRETS_BASE64" != "null" ]; then
-    echo "Updating environment file from metadata..."
-    echo "$SECRETS_BASE64" | base64 -d > "$APP_ENV"
-    chmod 600 "$APP_ENV"
-    chown opc:opc "$APP_ENV"
-    /usr/local/bin/configure-newrelic-infra.sh || true
-fi
-
 # Compare with last deployed
 LAST_IMAGE=""
 if [ -f "$STATE_FILE" ]; then
     LAST_IMAGE=$(cat "$STATE_FILE")
 fi
 
-if [ "$TAGS" == "$LAST_IMAGE" ]; then
-    echo "No change in image ($TAGS). Exiting."
+# Also check if secrets changed
+SECRETS_CHANGED=false
+if [ -n "$SECRETS_BASE64" ] && [ "$SECRETS_BASE64" != "null" ]; then
+    OLD_SECRETS_HASH=""
+    if [ -f "$APP_ENV" ]; then
+        OLD_SECRETS_HASH=$(sha256sum "$APP_ENV" | awk '{print $1}')
+    fi
+
+    echo "Updating environment file from metadata..."
+    echo "$SECRETS_BASE64" | base64 -d > "$APP_ENV.tmp"
+    NEW_SECRETS_HASH=$(sha256sum "$APP_ENV.tmp" | awk '{print $1}')
+
+    if [ "$OLD_SECRETS_HASH" != "$NEW_SECRETS_HASH" ]; then
+        echo "Secrets changed!"
+        SECRETS_CHANGED=true
+    fi
+
+    mv "$APP_ENV.tmp" "$APP_ENV"
+    chmod 600 "$APP_ENV"
+    chown opc:opc "$APP_ENV"
+    /usr/local/bin/configure-newrelic-infra.sh || true
+fi
+
+if [ "$TAGS" == "$LAST_IMAGE" ] && [ "$SECRETS_CHANGED" = false ]; then
+    echo "No change in image or secrets. Exiting."
     exit 0
 fi
 
-echo "New deployment detected: $TAGS (Previous: $LAST_IMAGE)"
-
+echo "Deployment triggered (Image change: $([ "$TAGS" != "$LAST_IMAGE" ] && echo true || echo false), Secrets change: $SECRETS_CHANGED)"
 # Login to GHCR if credentials exist
 if [ -f "$APP_ENV" ]; then
     GHCR_USERNAME_VALUE=$(grep '^GHCR_USERNAME=' "$APP_ENV" | cut -d'=' -f2- || true)
