@@ -51,31 +51,15 @@ resource "oci_core_security_list" "main" {
   ingress_security_rules {
     protocol = "6" # TCP
     source   = "0.0.0.0/0"
-    tcp_options {
-      min = 80
-      max = 80
-    }
   }
 
   ingress_security_rules {
-    protocol = "6" # TCP
-    source   = "0.0.0.0/0"
-    tcp_options {
-      min = 443
-      max = 443
-    }
-  }
-
-  ingress_security_rules {
-    protocol = "6" # TCP
+    protocol = "all"
     source   = "10.0.0.0/16"
-    tcp_options {
-      min = 1521
-      max = 1522
-    }
   }
 
   dynamic "ingress_security_rules" {
+
     for_each = var.temporary_ssh_cidr == "" ? [] : [var.temporary_ssh_cidr]
     content {
       protocol = "6" # TCP
@@ -206,7 +190,6 @@ resource "oci_core_instance" "app_server" {
 
   lifecycle {
     ignore_changes = [
-      metadata,
     ]
   }
 

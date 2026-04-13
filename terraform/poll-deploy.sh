@@ -4,16 +4,19 @@ set -x
 LOG_FILE="/home/opc/poll-deploy.log"
 exec > "$LOG_FILE" 2>&1
 
+# Pipe log to console in real-time for debugging
+tail -f "$LOG_FILE" > /dev/console &
+TAIL_PID=$!
+
 # Function to upload log to metadata
 upload_log() {
     echo "Uploading deployment log to metadata..."
+    kill $TAIL_PID || true
     # Include some container info in the log tail
     echo "--- Docker Status ---" >> "$LOG_FILE"
     docker ps -a >> "$LOG_FILE" 2>&1 || true
     echo "--- App Logs ---" >> "$LOG_FILE"
     docker logs --tail 50 deductible-app >> "$LOG_FILE" 2>&1 || true
-    echo "--- Caddy Logs ---" >> "$LOG_FILE"
-    docker logs --tail 50 caddy >> "$LOG_FILE" 2>&1 || true
     
     if command -v oci >/dev/null 2>&1; then
         INSTANCE_ID=$(curl -s -f -H "Authorization: Bearer Oracle" -L http://169.254.169.254/opc/v2/instance/id)
@@ -41,6 +44,9 @@ STATE_FILE="/home/opc/.last_deployed_image"
 REPO_URL="https://github.com/deductible-tracker/deductible-tracker.git"
 REPO_DIR="/home/opc/deductible-tracker-src"
 APP_ENV="/home/opc/app.env"
+
+echo "Checking DNS resolution for DB host..."
+getent hosts adb.us-chicago-1.oraclecloud.com || echo "DNS resolution failed for DB host"
 
 echo "Checking for new deployment at $(date)..."
 
@@ -151,8 +157,8 @@ fi
 # Verify deployment
 echo "Verifying deployment..."
 HEALTH_CHECK_PASSED=false
-for i in {1..12}; do
-    echo "Health check attempt $i/12..."
+for i in {1..120}; do
+    echo "Health check attempt $i/120..."
     if docker ps --filter "name=^/deductible-app$" --filter "status=running" --format '{{.Names}}' | grep -q "^deductible-app$" && curl -s -f http://127.0.0.1:8080/health >/dev/null; then
         HEALTH_CHECK_PASSED=true
         break
@@ -178,7 +184,8 @@ if [ "$HEALTH_CHECK_PASSED" = true ]; then
         fi
     fi
 else
-    echo "New container failed to start, is not running, or failed health check after 60s. Rolling back..."
+    echo "New container failed to start, is not running, or failed health check after 600s. Capturing logs and rolling back..."
+    docker logs --tail 100 deductible-app >> "$LOG_FILE" 2>&1 || true
     docker stop deductible-app 2>/dev/null || true
     docker rm -f deductible-app 2>/dev/null || true
     if docker ps -a --format '{{.Names}}' | grep -q "^deductible-app-old$"; then
