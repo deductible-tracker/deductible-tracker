@@ -586,6 +586,7 @@ function buildRouteDeps() {
     navigate,
     refreshCharitiesCache,
     setCurrentUser,
+    handleLogout,
     Sync,
     updateCharityOnServer,
     updateDonationOnServer,

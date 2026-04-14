@@ -280,7 +280,7 @@ export async function renderPersonalInfoRoute(deps) {
         await deps.db.delete();
         await deps.db.open();
         alert('Your account has been deleted.');
-        window.location.href = '/auth/logout';
+        await deps.handleLogout();
       } else {
         alert('Failed to delete account. Please try again or contact support.');
       }
