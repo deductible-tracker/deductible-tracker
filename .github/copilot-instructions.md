@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file orients GitHub Copilot to the repository's layout, common development workflows, and high-level architectural standards. For detailed workflows, refer to the specialized **Skills** in `.github/skills/`.
+This file orients GitHub Copilot to the repository's layout, common development workflows, and high-level architectural standards. For detailed workflows, refer to the specialized **Skills** in `.agents/skills/`.
 
 ## Project Overview
 
@@ -58,9 +58,9 @@ This file orients GitHub Copilot to the repository's layout, common development 
 
 Refer to these for step-by-step implementation guidance:
 
-- **Adding a DB operation**: `.github/skills/rust-db-operation/SKILL.md`
-- **Adding a Frontend feature**: `.github/skills/frontend-feature/SKILL.md`
-- **Adding a Test**: `.github/skills/testing-patterns/SKILL.md`
+- **Adding a DB operation**: `.agents/skills/rust-db-operation/SKILL.md`
+- **Adding a Frontend feature**: `.agents/skills/frontend-feature/SKILL.md`
+- **Adding a Test**: `.agents/skills/testing-patterns/SKILL.md`
 
 ## Files to Consult First
 
