@@ -110,8 +110,9 @@ pub async fn risc_webhook(
     let payload = token_data.claims;
     
     // Handle verification event separately to log it specifically
-    if let Some(verification) = payload.events.get("http://schemas.openid.net/event/risc/v1/verification") {
-        tracing::info!("RISC: Received verification event from Google: {:?}", verification);
+    if payload.events.get("https://schemas.openid.net/secevent/risc/event-type/verification").is_some()
+       || payload.events.get("http://schemas.openid.net/event/risc/v1/verification").is_some() {
+        tracing::info!("RISC: Received verification event from Google");
         return StatusCode::ACCEPTED.into_response();
     }
 
@@ -121,9 +122,13 @@ pub async fn risc_webhook(
     );
 
     // 4. Handle specific events
-    if payload.events.get("http://schemas.openid.net/event/risc/v1/token-revoked").is_some() 
-       || payload.events.get("http://schemas.openid.net/event/risc/v1/account-disabled").is_some() {
-        
+    let is_revocation = payload.events.get("https://schemas.openid.net/secevent/risc/event-type/sessions-revoked").is_some()
+        || payload.events.get("https://schemas.openid.net/secevent/oauth/event-type/tokens-revoked").is_some()
+        || payload.events.get("https://schemas.openid.net/secevent/risc/event-type/account-disabled").is_some()
+        || payload.events.get("http://schemas.openid.net/event/risc/v1/token-revoked").is_some()
+        || payload.events.get("http://schemas.openid.net/event/risc/v1/account-disabled").is_some();
+
+    if is_revocation {
         if let Some(sub) = payload.sub {
             tracing::info!("RISC: Revoking all sessions for user sub: {}", sub);
             // Implement your global user revocation logic here
