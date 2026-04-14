@@ -1,0 +1,64 @@
+x-app-environment: &app-environment
+  RUST_ENV: ${RUST_ENV:-development}
+  RUST_LOG: ${RUST_LOG:-deductible_tracker=debug,tower_http=debug}
+  RUN_SEED: ${RUN_SEED:-false}
+  JWT_SECRET: ${JWT_SECRET}
+  OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://host.docker.internal:9000}
+  OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-deductible-tracker-dev}
+  OCI_REGION: ${OCI_REGION:-us-ashburn-1}
+  OCI_ACCESS_KEY_ID: ${OCI_ACCESS_KEY_ID}
+  OCI_SECRET_ACCESS_KEY: ${OCI_SECRET_ACCESS_KEY}
+  DB_WALLET_DIR: ''
+  TNS_ADMIN: ''
+  ALLOW_DEV_LOGIN: ${ALLOW_DEV_LOGIN:-true}
+  DEV_USERNAME: ${DEV_USERNAME:-admin}
+  DEV_PASSWORD: ${DEV_PASSWORD}
+  DEV_ORACLE_USER: ${LOCAL_ORACLE_USER:-dtapp}
+  DEV_ORACLE_PASSWORD: ${ORACLE_PWD}
+  DEV_ORACLE_CONNECT_STRING: //oracle-dev:1521/${ORACLE_PDB:-FREEPDB1}
+  SKIP_TAILWIND_BUILD: 'true'
+  SKIP_ASSET_REBUILD: 'true'
+  ORACLE_PDB_USER: ${LOCAL_ORACLE_USER:-dtapp}
+  ORACLE_PWD: ${ORACLE_PWD}
+  ORACLE_PDB_CONNECT_STRING: //oracle-dev:1521/${ORACLE_PDB:-FREEPDB1}
+
+services:
+  oracle-dev:
+    image: gvenzl/oracle-free:slim
+    container_name: oracle-dev
+    environment:
+      ORACLE_PDB: ${ORACLE_PDB:-FREEPDB1}
+      ORACLE_PASSWORD: ${ORACLE_SYSTEM_PASSWORD:?Set ORACLE_SYSTEM_PASSWORD in .env}
+      APP_USER: ${LOCAL_ORACLE_USER:-dtapp}
+      APP_USER_PASSWORD: ${ORACLE_PWD:?Set ORACLE_PWD in .env}
+    ports:
+      - '1521:1521'
+    volumes:
+      - oracle-dev-data:/opt/oracle/oradata
+      - ./scripts/oracle-dev-startup/10-init-gvenzl.sh:/container-entrypoint-initdb.d/10-init-gvenzl.sh:ro
+      - ./migrations/init.sql:/container-entrypoint-initdb.d/init.sql:ro
+      - ./migrations/seed_valuations.sql:/container-entrypoint-initdb.d/seed_valuations.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'healthcheck.sh']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      oracle-dev:
+        condition: service_healthy
+    ports:
+      - '8080:8080'
+    env_file:
+      - .env
+    environment: *app-environment
+    restart: unless-stopped
+
+volumes:
+  oracle-dev-data:

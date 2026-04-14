@@ -1,0 +1,50 @@
+# Rust
+/target
+
+# Environment variables
+.env
+.env.*
+!.env.example
+dev.db
+
+# OS files
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# Generated public assets
+public/assets/
+
+# Database Wallets
+Wallet_deductibledb/
+
+# Terraform
+.terraform/
+terraform/*.json
+terraform/*.txt
+terraform/*.py
+terraform/*.yaml
+terraform/*.yml
+terraform/*.env
+terraform/*.pem
+terraform/tfplan*
+terraform/do_update.sh
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
+# Local SSH keys for GitHub Actions (do NOT commit)
+github_action_key
+github_action_key.pub
+
+# Secrets and credentials
+*.p12
+*.jks

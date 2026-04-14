@@ -1,0 +1,72 @@
+x-test-environment: &test-environment
+  RUST_ENV: development
+  RUST_LOG: ${RUST_LOG:-deductible_tracker=debug,tower_http=debug}
+  RUN_SEED: 'true'
+  JWT_SECRET: ${JWT_SECRET}
+  OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-http://host.docker.internal:9000}
+  OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-deductible-tracker-dev}
+  OCI_REGION: ${OCI_REGION:-us-ashburn-1}
+  OCI_ACCESS_KEY_ID: ${OCI_ACCESS_KEY_ID}
+  OCI_SECRET_ACCESS_KEY: ${OCI_SECRET_ACCESS_KEY}
+  DB_WALLET_DIR: ''
+  TNS_ADMIN: ''
+  CARGO_BUILD_JOBS: 1
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  RUSTFLAGS: -C debuginfo=0
+  ALLOW_DEV_LOGIN: ${ALLOW_DEV_LOGIN:-true}
+  DEV_USERNAME: ${DEV_USERNAME:-admin}
+  DEV_PASSWORD: ${DEV_PASSWORD}
+  DEV_ORACLE_USER: ${LOCAL_ORACLE_USER:-dtapp}
+  DEV_ORACLE_PASSWORD: ${ORACLE_PWD}
+  DEV_ORACLE_CONNECT_STRING: //localhost:1521/${ORACLE_PDB:-FREEPDB1}
+  SKIP_TAILWIND_BUILD: 'true'
+  SKIP_ASSET_REBUILD: 'true'
+  ORACLE_PDB_USER: ${LOCAL_ORACLE_USER:-dtapp}
+  ORACLE_PWD: ${ORACLE_PWD}
+  ORACLE_PDB_CONNECT_STRING: //localhost:1521/${ORACLE_PDB:-FREEPDB1}
+
+x-builder-image: &builder-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: builder
+    args:
+      PREBUILD_TESTS: 1
+
+services:
+  oracletest:
+    image: gvenzl/oracle-free:slim
+    container_name: oracletest
+    environment:
+      ORACLE_PDB: ${ORACLE_PDB:-FREEPDB1}
+      ORACLE_PASSWORD: ${ORACLE_SYSTEM_PASSWORD:?Set ORACLE_SYSTEM_PASSWORD in .env}
+      APP_USER: ${LOCAL_ORACLE_USER:-dtapp}
+      APP_USER_PASSWORD: ${ORACLE_PWD:?Set ORACLE_PWD in .env}
+    volumes:
+      - oracletest-data:/opt/oracle/oradata
+      - ./scripts/oracle-dev-startup/10-init-gvenzl.sh:/container-entrypoint-initdb.d/10-init-gvenzl.sh:ro
+      - ./migrations/init.sql:/container-entrypoint-initdb.d/init.sql:ro
+      - ./migrations/seed_valuations.sql:/container-entrypoint-initdb.d/seed_valuations.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'healthcheck.sh']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    restart: 'no'
+
+  test:
+    <<: *builder-image
+    depends_on:
+      oracletest:
+        condition: service_healthy
+    network_mode: service:oracletest
+    command: sh -lc "cargo test --locked --no-default-features -j1 --lib --test integration_js_jest --test integration_receipts_audit -- --nocapture"
+    env_file:
+      - .env
+    environment: *test-environment
+    restart: 'no'
+
+volumes:
+  oracletest-data:

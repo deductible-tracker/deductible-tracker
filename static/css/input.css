@@ -1,0 +1,272 @@
+@import 'tailwindcss';
+
+@source "../index.html";
+@source "../js/**/*.js";
+
+@theme {
+  --font-sans:
+    'Roboto', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+
+  --color-slate-50: #f9f9f9;
+  --color-slate-100: #f3f3f3;
+  --color-slate-200: #d6d7d9;
+  --color-slate-300: #cccccc;
+  --color-slate-400: #777777;
+  --color-slate-500: #5b616b;
+  --color-slate-600: #333333;
+  --color-slate-700: #1b1b1b;
+  --color-slate-800: #111111;
+  --color-slate-900: #000000;
+
+  --color-indigo-50: #e6f2ff;
+  --color-indigo-100: #cce5ff;
+  --color-indigo-200: #99cbff;
+  --color-indigo-300: #66b2ff;
+  --color-indigo-400: #3399ff;
+  --color-indigo-500: #337ab7;
+  --color-indigo-600: #00599c;
+  --color-indigo-700: #002d62;
+  --color-indigo-800: #001a33;
+  --color-indigo-900: #000d1a;
+
+  --color-rose-50: #f2dede;
+  --color-rose-100: #ebccd1;
+  --color-rose-200: #e4b9c0;
+  --color-rose-300: #dca6af;
+  --color-rose-400: #d5939e;
+  --color-rose-500: #ce808d;
+  --color-rose-600: #c76d7c;
+  --color-rose-700: #a94442;
+  --color-rose-800: #8a3735;
+  --color-rose-900: #6b2a28;
+
+  --color-red-50: #f2dede;
+  --color-red-100: #ebccd1;
+  --color-red-500: #a94442;
+  --color-red-600: #8a3735;
+  --color-red-700: #6b2a28;
+
+  --color-green-50: #dff0d8;
+  --color-green-100: #d0e9c6;
+  --color-green-500: #3c763d;
+  --color-green-600: #2b542c;
+  --color-green-700: #1a321a;
+
+  --color-emerald-50: #dff0d8;
+  --color-emerald-100: #d0e9c6;
+  --color-emerald-500: #3c763d;
+  --color-emerald-600: #2b542c;
+  --color-emerald-700: #1a321a;
+
+  --color-blue-50: #e6f2ff;
+  --color-blue-100: #cce5ff;
+  --color-blue-500: #337ab7;
+  --color-blue-600: #00599c;
+  --color-blue-700: #002d62;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    color: var(--color-slate-900);
+    background-color: var(--color-slate-100);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      color: var(--color-slate-100);
+      background-color: var(--color-slate-900);
+    }
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  .dt-panel {
+    border-radius: 1rem;
+    border: 1px solid var(--color-slate-200);
+    background: #fff;
+  }
+
+  .dt-panel-muted {
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-slate-200);
+    background: var(--color-slate-50);
+  }
+
+  .dt-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    background: var(--color-indigo-600);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #fff;
+    transition: background-color 0.15s ease;
+  }
+
+  .dt-btn-primary:hover {
+    background: var(--color-indigo-700);
+  }
+
+  .dt-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-slate-200);
+    background: #fff;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-slate-700);
+    transition: background-color 0.15s ease;
+  }
+
+  .dt-btn-secondary:hover {
+    background: var(--color-slate-50);
+  }
+
+  .dt-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-rose-200);
+    background: var(--color-rose-50);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-rose-700);
+    transition: background-color 0.15s ease;
+  }
+
+  .dt-btn-danger:hover {
+    background: var(--color-rose-100);
+  }
+
+  .dt-input {
+    margin-top: 0.25rem;
+    display: block;
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-slate-200);
+    background: #fff;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-slate-900);
+  }
+
+  .dt-input::placeholder {
+    color: var(--color-slate-400);
+  }
+
+  .dt-input:focus {
+    outline: none;
+    border-color: var(--color-indigo-500);
+    box-shadow: 0 0 0 3px var(--color-indigo-100);
+  }
+
+  .dt-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-slate-700);
+  }
+
+  .dt-modal-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .dt-modal-wrap {
+      padding: 2rem;
+    }
+  }
+
+  .dt-modal {
+    width: 100%;
+    max-width: 42rem;
+    border-radius: 1rem;
+    border: 1px solid var(--color-slate-200);
+    background: #fff;
+    padding: 1.25rem;
+    box-shadow: 0 20px 35px -18px rgba(0, 0, 0, 0.45);
+  }
+
+  @media (min-width: 640px) {
+    .dt-modal {
+      padding: 1.5rem;
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .dt-panel {
+      border-color: var(--color-slate-700);
+      background: var(--color-slate-800);
+    }
+    .dt-panel-muted {
+      border-color: var(--color-slate-700);
+      background: var(--color-slate-900);
+    }
+    .dt-btn-primary {
+      background: var(--color-indigo-500);
+    }
+    .dt-btn-primary:hover {
+      background: var(--color-indigo-600);
+    }
+    .dt-btn-secondary {
+      border-color: var(--color-slate-700);
+      background: var(--color-slate-800);
+      color: var(--color-slate-300);
+    }
+    .dt-btn-secondary:hover {
+      background: var(--color-slate-700);
+    }
+    .dt-btn-danger {
+      border-color: var(--color-rose-800);
+      background: var(--color-rose-900);
+      color: var(--color-rose-200);
+    }
+    .dt-btn-danger:hover {
+      background: var(--color-rose-800);
+    }
+    .dt-input {
+      border-color: var(--color-slate-700);
+      background: var(--color-slate-800);
+      color: var(--color-slate-100);
+    }
+    .dt-input::placeholder {
+      color: var(--color-slate-500);
+    }
+    .dt-input:focus {
+      border-color: var(--color-indigo-400);
+      box-shadow: 0 0 0 3px var(--color-indigo-900);
+    }
+    .dt-label {
+      color: var(--color-slate-300);
+    }
+    .dt-modal {
+      border-color: var(--color-slate-700);
+      background: var(--color-slate-800);
+    }
+  }
+}

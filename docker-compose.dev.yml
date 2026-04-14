@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ./deductible-tracker
+    environment:
+      DB_WALLET_DIR: ''
+      SKIP_TAILWIND_BUILD: ${DEV_SKIP_TAILWIND_BUILD:-false}
+      SKIP_ASSET_REBUILD: ${DEV_SKIP_ASSET_REBUILD:-false}
+    volumes:
+      - ./static:/app/static:ro
