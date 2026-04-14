@@ -43,7 +43,7 @@ pub async fn get_google_jwks(kid: &str) -> anyhow::Result<JwkSet> {
 #[derive(Deserialize)]
 pub struct RiscEvent {
     pub iss: String,
-    pub sub: String,
+    pub sub: Option<String>,
     pub aud: String,
     pub iat: usize,
     pub jti: String,
@@ -108,8 +108,15 @@ pub async fn risc_webhook(
     };
 
     let payload = token_data.claims;
+    
+    // Handle verification event separately to log it specifically
+    if let Some(verification) = payload.events.get("http://schemas.openid.net/event/risc/v1/verification") {
+        tracing::info!("RISC: Received verification event from Google: {:?}", verification);
+        return StatusCode::ACCEPTED.into_response();
+    }
+
     tracing::info!(
-        "Verified RISC event: iss={}, sub={}, aud={}, iat={}, jti={}", 
+        "Verified RISC event: iss={}, sub={:?}, aud={}, iat={}, jti={}", 
         payload.iss, payload.sub, payload.aud, payload.iat, payload.jti
     );
 
@@ -117,8 +124,14 @@ pub async fn risc_webhook(
     if payload.events.get("http://schemas.openid.net/event/risc/v1/token-revoked").is_some() 
        || payload.events.get("http://schemas.openid.net/event/risc/v1/account-disabled").is_some() {
         
-        tracing::info!("RISC: Revoking all sessions for user sub: {}", payload.sub);
-        // Implement your global user revocation logic here
+        if let Some(sub) = payload.sub {
+            tracing::info!("RISC: Revoking all sessions for user sub: {}", sub);
+            // Implement your global user revocation logic here
+        } else {
+            tracing::warn!("RISC: Revocation event received, but 'sub' field is missing");
+        }
+    } else {
+        tracing::debug!("RISC: Received event, but no action taken for payload: {:?}", payload.events);
     }
 
     StatusCode::ACCEPTED.into_response()

@@ -234,7 +234,7 @@ pub async fn me(
     }
 }
 
-pub async fn get_config() -> impl IntoResponse {
+pub async fn get_config(headers: HeaderMap) -> impl IntoResponse {
     let allow_dev_login = std::env::var("ALLOW_DEV_LOGIN")
         .map(|v| v.to_lowercase() == "true")
         .unwrap_or(false);
@@ -249,11 +249,30 @@ pub async fn get_config() -> impl IntoResponse {
     let google_enabled = providers.contains(&"google".to_string()) && std::env::var("GOOGLE_CLIENT_ID").is_ok();
     let google_client_id = std::env::var("GOOGLE_CLIENT_ID").ok();
 
-    Json(serde_json::json!({
+    // Generate or retrieve OAuth state for CSRF protection
+    let existing_state = extract_cookie_by_name(&headers, "oauth_state");
+    let (state_token, set_cookie_header) = if let Some(state) = existing_state {
+        (state, None)
+    } else {
+        let new_state = create_state_token("google").unwrap_or_default();
+        let cookie = build_oauth_state_cookie(&new_state);
+        (new_state, Some(cookie))
+    };
+
+    let mut response = Json(serde_json::json!({
         "allow_dev_login": allow_dev_login,
         "google_enabled": google_enabled,
-        "google_client_id": google_client_id
-    }))
+        "google_client_id": google_client_id,
+        "oauth_state": state_token
+    })).into_response();
+
+    if let Some(cookie) = set_cookie_header {
+        if let Ok(hv) = HeaderValue::from_str(&cookie) {
+            response.headers_mut().append(header::SET_COOKIE, hv);
+        }
+    }
+
+    response
 }
 
 pub async fn update_me(

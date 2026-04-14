@@ -422,10 +422,14 @@ async function renderLogin() {
       // load the Google Identity script and initialize the button. This avoids
       // the Google script running on origins that are not configured for the
       // client ID (which causes 403/origin errors in the console).
-      if (config.google_enabled && config.google_client_id) {
+          if (config.google_enabled && config.google_client_id) {
         try {
           // Set attributes for the element
           gIdOnload.setAttribute('data-client_id', config.google_client_id);
+          // Set the state token for CSRF protection (passed as a body parameter)
+          if (config.oauth_state) {
+            gIdOnload.setAttribute('data-state', config.oauth_state);
+          }
           // Use location.origin to ensure the login_uri is absolute, as required by Google OAuth policies.
           if (!gIdOnload.getAttribute('data-login_uri')) {
             gIdOnload.setAttribute('data-login_uri', `${location.origin}/auth/callback/google`);

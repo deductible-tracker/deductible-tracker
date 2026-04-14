@@ -33,7 +33,8 @@ pub enum AuthCallback {
     Code { code: String, state: String },
     Credential { 
         credential: String,
-        g_csrf_token: Option<String> 
+        g_csrf_token: Option<String>,
+        state: Option<String>,
     },
 }
 
@@ -353,8 +354,21 @@ pub async fn callback(
                 }
             }
         }
-        AuthCallback::Credential { credential, g_csrf_token } => {
-            // CSRF protection for Google One Tap: Compare g_csrf_token in form and g_csrf_token in cookie
+        AuthCallback::Credential { credential, g_csrf_token, state: oauth_state } => {
+            // 1. CSRF protection via state parameter (if present)
+            if let Some(state_val) = oauth_state {
+                let state_cookie = extract_cookie_by_name(&headers, "oauth_state");
+                if state_cookie.as_deref() != Some(state_val.as_str()) {
+                    tracing::warn!("OAuth state mismatch in GSI callback");
+                    return (StatusCode::UNAUTHORIZED, "Invalid state").into_response();
+                }
+                if let Err(e) = validate_state_token(&state_val, &provider) {
+                    tracing::warn!("OAuth state invalid in GSI callback: {}", e);
+                    return (StatusCode::UNAUTHORIZED, "Invalid state").into_response();
+                }
+            }
+
+            // 2. CSRF protection for Google One Tap: Compare g_csrf_token in form and g_csrf_token in cookie
             let csrf_cookie = extract_cookie_by_name(&headers, "g_csrf_token");
             if let (Some(form_token), Some(cookie_token)) = (g_csrf_token, csrf_cookie) {
                 if form_token != cookie_token {
