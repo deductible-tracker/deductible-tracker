@@ -1,6 +1,6 @@
 ---
 name: testing-patterns
-description: Guidelines for adding unit and integration tests in both Rust (backend) and JavaScript (frontend).
+description: Use when adding or updating Rust or JavaScript tests in deductible-tracker, including integration, Jest, and verification workflow.
 ---
 
 # Skill: Testing Patterns (JS & Rust)

@@ -1,6 +1,6 @@
 ---
 name: frontend-feature
-description: Workflow for adding new frontend features, including Dexie.js schema updates, services, and view rendering.
+description: Use when building or changing deductible-tracker frontend features, including Dexie.js schema updates, services, sync, and view rendering.
 ---
 
 # Skill: Adding a new Frontend Feature

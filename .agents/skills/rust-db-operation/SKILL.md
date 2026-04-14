@@ -1,6 +1,6 @@
 ---
 name: rust-db-operation
-description: Guidance for adding new database operations in the Rust backend using oracle-rs and deadpool-oracle, including modeling, implementation, query design, and audit logging.
+description: Use when adding or changing Rust database operations in deductible-tracker with oracle-rs, deadpool-oracle, query design, and audit logging.
 ---
 
 # Skill: Adding a new Rust DB Operation

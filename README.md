@@ -40,6 +40,8 @@ A production-grade charitable donation tracker and valuation engine, designed as
 
 The codebase is organized into modular "sections" to maintain clarity as the project grows:
 
+- `AGENTS.md`: Repository-wide instructions for coding agents.
+- `.agents/`: Shared skills, review personas, and reference checklists for coding agents.
 - `src/main_sections/`: Core server logic (bootstrap, HTTP pipeline, asset management).
 - `src/auth_sections/`: Authentication workflows (OAuth flows, profile management, JWT support).
 - `src/db/core_sections/`: Domain-specific database operations (donations, charities, valuations).
@@ -131,29 +133,15 @@ Pushing to the `main` branch triggers the GitHub Actions workflow, which:
 - `NEW_RELIC_OTLP_ENDPOINT` is optional and can be used for non-default New Relic regions or a custom OTLP endpoint.
 - The deploy workflow writes these values into the OCI instance metadata payload, which becomes `/home/opc/app.env` on the VM.
 - The OCI cloud-init bootstrap installs and configures `newrelic-infra` automatically when `NEW_RELIC_LICENSE_KEY` is present.
-## Git submodules
-
-This repository includes an embedded skill at `.agents/skills/gstack` which is managed as a git submodule.
-
-If you clone the repository fresh or run CI, initialize submodules by running:
-
-```bash
-git submodule sync --recursive
-git submodule update --init --recursive
-```
-
-To fetch only the gstack submodule (shallow):
-
-```bash
-git submodule update --init --recursive --depth 1 .agents/skills/gstack
-```
-
-If you see CI errors mentioning "No url found for submodule path '.agents/skills/gstack'", ensure `.gitmodules` is present (it should be) and re-run the commands above. If the problem persists, remove any embedded `.git` inside `.agents/skills/gstack` and re-add the submodule with:
-
-```bash
-git rm -f .agents/skills/gstack
-git submodule add https://github.com/garrytan/gstack .agents/skills/gstack
-git commit -m "chore: add gstack as submodule"
-```
 
 - Docker container monitoring comes from the New Relic infrastructure agent on the VM, so container metrics appear without changing the application container image.
+
+## Agent Guidance
+
+This repository keeps coding-agent guidance in the root `AGENTS.md` file rather than a tool-specific rules file.
+
+- General-purpose lifecycle skills live in `.agents/skills/` and are vendored from `addyosmani/agent-skills`.
+- Repo-specific skills live in the same `.agents/skills/` tree so local conventions and generic workflows can be combined.
+- Specialist review personas live in `.agents/agents/`.
+- Supporting checklists live in `.agents/references/`.
+- The repo no longer uses git submodules for agent skills. Fresh clones are self-contained and do not require any submodule initialization.
