@@ -277,11 +277,8 @@ async function navigate(path, options = {}) {
   updateHomeSummaryVisibility(target);
 
   // Toggle nav visibility on mobile based on route
-  if (target.includes('/new') || target.includes('/edit') || target.includes('/view/')) {
-    document.body.classList.add('hide-nav-on-mobile');
-  } else {
-    document.body.classList.remove('hide-nav-on-mobile');
-  }
+  // Note: We used to hide the header completely on mobile for /new, /edit, /view routes,
+  // but it's better to keep the header (logo/title) visible for context and navigation.
 
   let handler;
   if (routes[target]) {
@@ -346,19 +343,8 @@ let googleIdentityInitKey = null;
 async function renderLogin() {
   const app = document.getElementById('app');
   app.innerHTML = `
-        <div class="mx-auto grid min-h-full max-w-6xl items-center gap-8 py-8 sm:py-12 lg:grid-cols-2">
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-linear-to-br from-indigo-50 to-white p-6 sm:p-10">
-                <p class="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-400">Deductible Tracker</p>
-                <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-4xl">A better way to track charitable giving</h1>
-                <p class="mt-4 max-w-xl text-sm text-slate-600 dark:text-slate-300 sm:text-base">An offline-first replacement for Turbotax's It's Deductible.</p>
-                <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-2">
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Fast donation entry</div>
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Receipt management</div>
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Offline-first sync</div>
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">CSV exports</div>
-                </div>
-            </div>
-            <div class="dt-panel p-6 sm:p-8">
+        <div class="mx-auto grid min-h-full max-w-6xl items-center gap-6 py-4 sm:gap-8 sm:py-12 lg:grid-cols-2">
+            <div class="dt-panel p-6 sm:p-8 order-1 lg:order-2">
                 <h2 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Sign in</h2>
                 <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Continue with Google to create or access your account.</p>
                 
@@ -402,6 +388,17 @@ async function renderLogin() {
                             </div>
                         </form>
                     </div>
+                </div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-linear-to-br from-indigo-50 to-white p-6 sm:p-10 order-2 lg:order-1">
+                <p class="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-400">Deductible Tracker</p>
+                <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-4xl">A better way to track charitable giving</h1>
+                <p class="mt-4 max-w-xl text-sm text-slate-600 dark:text-slate-300 sm:text-base">An offline-first replacement for Turbotax's It's Deductible.</p>
+                <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-2">
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Fast donation entry</div>
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Receipt management</div>
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Offline-first sync</div>
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">CSV exports</div>
                 </div>
             </div>
         </div>
@@ -802,6 +799,16 @@ async function init() {
   window.addEventListener('sync-queue-changed', updateSyncStatus);
   updateStatus();
 
+  function closeMobileMenu() {
+    const mobile = document.getElementById('mobile-menu');
+    if (mobile && !mobile.classList.contains('hidden')) {
+      mobile.classList.add('hidden');
+      document.body.classList.remove('nav-open');
+      document.getElementById('hamburger-icon')?.classList.remove('hidden');
+      document.getElementById('close-icon')?.classList.add('hidden');
+    }
+  }
+
   // 2. Global Event Listeners (Attach immediately)
   // Nav link routing (works for top nav and mobile menu)
   document.querySelectorAll('[data-route]').forEach((a) => {
@@ -810,8 +817,7 @@ async function init() {
       const link = e.currentTarget;
       const route = link ? link.dataset.route : null;
       // If mobile menu visible, hide it on navigation
-      const mobile = document.getElementById('mobile-menu');
-      if (mobile && !mobile.classList.contains('hidden')) mobile.classList.add('hidden');
+      closeMobileMenu();
 
       // Verify with server whether the user is still authenticated
       try {
@@ -837,11 +843,23 @@ async function init() {
 
   // Mobile menu toggle
   const mobileButton = document.getElementById('mobile-menu-button');
+  const hamburgerIcon = document.getElementById('hamburger-icon');
+  const closeIcon = document.getElementById('close-icon');
+
   if (mobileButton) {
     mobileButton.addEventListener('click', () => {
       const mobile = document.getElementById('mobile-menu');
       if (!mobile) return;
-      mobile.classList.toggle('hidden');
+      const isOpen = !mobile.classList.contains('hidden');
+
+      if (isOpen) {
+        closeMobileMenu();
+      } else {
+        mobile.classList.remove('hidden');
+        document.body.classList.add('nav-open');
+        hamburgerIcon?.classList.add('hidden');
+        closeIcon?.classList.remove('hidden');
+      }
     });
   }
 
@@ -852,8 +870,7 @@ async function init() {
   const btnAddDonationMobile = document.getElementById('btn-add-donation-mobile');
   if (btnAddDonationMobile) {
     btnAddDonationMobile.addEventListener('click', async () => {
-      const mobile = document.getElementById('mobile-menu');
-      if (mobile) mobile.classList.add('hidden');
+      closeMobileMenu();
       await navigate('/donations/new');
     });
   }
@@ -865,8 +882,7 @@ async function init() {
   const btnLogoutMobile = document.getElementById('btn-logout-mobile');
   if (btnLogoutMobile) {
     btnLogoutMobile.addEventListener('click', async () => {
-      const mobile = document.getElementById('mobile-menu');
-      if (mobile) mobile.classList.add('hidden');
+      closeMobileMenu();
       await handleLogout();
     });
   }

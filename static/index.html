@@ -29,11 +29,8 @@
   >
     <style>
       @media (max-width: 1023px) {
-        body.hide-nav-on-mobile header {
-          display: none;
-        }
-        body.hide-nav-on-mobile main {
-          padding-top: 0;
+        body.nav-open {
+          overflow: hidden;
         }
       }
     </style>
@@ -50,12 +47,20 @@
               aria-expanded="false"
               class="lg:hidden inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
             >
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg id="hamburger-icon" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
                   d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+              <svg id="close-icon" class="hidden h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
                 />
               </svg>
             </button>
@@ -164,7 +169,7 @@
 
       <div
         id="mobile-menu"
-        class="hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 lg:hidden"
+        class="hidden absolute left-0 right-0 top-full z-50 border-t border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 lg:hidden h-[calc(100vh-64px)] overflow-y-auto"
         role="navigation"
         aria-label="Mobile navigation"
       >
