@@ -1,4 +1,4 @@
-const CACHE_NAME='dt-cache-6d2642aceb9d';function createOfflineResponse(){const offlineHtml=`
+const CACHE_NAME='dt-cache-fe987b0e93cd';function createOfflineResponse(){const offlineHtml=`
         <!doctype html>
         <html lang="en">
         <head>
