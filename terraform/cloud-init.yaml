@@ -62,8 +62,9 @@ write_files:
       REPO_DIR="/home/opc/deductible-tracker-src"
       APP_ENV="/home/opc/app.env"
 
-      refresh_new_relic_config() {
+      refresh_observability_config() {
           /usr/local/bin/configure-newrelic-infra.sh || true
+          /usr/local/bin/configure-otel-collector.sh || true
       }
 
       echo "Checking DNS resolution for DB host..."
@@ -112,7 +113,7 @@ write_files:
           mv "$APP_ENV.tmp" "$APP_ENV"
           chmod 600 "$APP_ENV"
           chown opc:opc "$APP_ENV"
-          /usr/local/bin/configure-newrelic-infra.sh || true
+          refresh_observability_config
       fi
 
       if [ "$TAGS" == "$LAST_IMAGE" ] && [ "$SECRETS_CHANGED" = false ]; then
@@ -185,12 +186,12 @@ write_files:
               echo "Rolling back to deductible-app-old..."
               docker start deductible-app-old || true
               docker rename deductible-app-old deductible-app || true
-              refresh_new_relic_config
+              refresh_observability_config
           fi
           exit 1
       fi
 
-      refresh_new_relic_config
+      refresh_observability_config
 
       # Verify deployment
       echo "Verifying deployment..."
@@ -231,7 +232,7 @@ write_files:
           if docker ps -a --format '{{.Names}}' | grep -q "^deductible-app-old$"; then
               docker start deductible-app-old || true
               docker rename deductible-app-old deductible-app || true
-              refresh_new_relic_config
+              refresh_observability_config
           fi
           exit 1
       fi
@@ -246,41 +247,6 @@ write_files:
       APP_ENV="/home/opc/app.env"
       REPO_FILE="/etc/yum.repos.d/newrelic-infra.repo"
       CONFIG_FILE="/etc/newrelic-infra.yml"
-      LOGGING_DIR="/etc/newrelic-infra/logging.d"
-      APP_LOG_CONFIG="$LOGGING_DIR/deductible-tracker-app.yml"
-
-      resolve_container_log_path() {
-          local candidate=""
-          local container_id=""
-
-          if command -v docker >/dev/null 2>&1; then
-              candidate=$(docker inspect --format '{{.LogPath}}' deductible-app 2>/dev/null || true)
-              container_id=$(docker inspect --format '{{.Id}}' deductible-app 2>/dev/null || true)
-          fi
-
-          if [ -z "$candidate" ] && command -v podman >/dev/null 2>&1; then
-              candidate=$(podman inspect --format '{{.LogPath}}' deductible-app 2>/dev/null || true)
-          fi
-
-          if [ -z "$container_id" ] && command -v podman >/dev/null 2>&1; then
-              container_id=$(podman inspect --format '{{.Id}}' deductible-app 2>/dev/null || true)
-          fi
-
-          if [ -n "$container_id" ] && { [ -z "$candidate" ] || [ ! -e "$candidate" ]; }; then
-              for root in /var/lib/containers/storage/overlay-containers /var/lib/containers/storage/containers; do
-                  if [ -e "$root/$container_id/userdata/ctr.log" ]; then
-                      candidate="$root/$container_id/userdata/ctr.log"
-                      break
-                  fi
-              done
-          fi
-
-          if [ "$candidate" = "<no value>" ]; then
-              candidate=""
-          fi
-
-          printf '%s' "$candidate"
-      }
 
       if [ ! -f "$APP_ENV" ]; then
           exit 0
@@ -291,7 +257,6 @@ write_files:
           if systemctl list-unit-files newrelic-infra.service >/dev/null 2>&1; then
               systemctl disable --now newrelic-infra >/dev/null 2>&1 || true
           fi
-          rm -f "$APP_LOG_CONFIG"
           exit 0
       fi
 
@@ -315,8 +280,6 @@ write_files:
           DEPLOY_ENV="production"
       fi
 
-      mkdir -p "$LOGGING_DIR"
-
       cat > "$CONFIG_FILE" <<EOF
       license_key: ${LICENSE_KEY}
       display_name: ${HOSTNAME_VALUE}
@@ -329,24 +292,185 @@ write_files:
         runtime: docker
       EOF
 
-            APP_LOG_PATH=$(resolve_container_log_path)
-            if [ -n "$APP_LOG_PATH" ] && [ -e "$APP_LOG_PATH" ]; then
-                    printf '%s\n' \
-                            'logs:' \
-                            '  - name: deductible-tracker-app' \
-                            "    file: ${APP_LOG_PATH}" \
-                            '    attributes:' \
-                            '      service.name: deductible-tracker' \
-                            '      service: deductible-tracker' \
-                            "      environment: ${DEPLOY_ENV}" \
-                            '      provider: oracle' \
-                            '      runtime: docker' \
-                            '      container_name: deductible-app' \
-                            > "$APP_LOG_CONFIG"
-            fi
-
       systemctl enable --now newrelic-infra
       systemctl restart newrelic-infra
+
+  - path: /usr/local/bin/configure-otel-collector.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      APP_ENV="/home/opc/app.env"
+      CONFIG_DIR="/etc/deductible-otelcol"
+      CONFIG_FILE="$CONFIG_DIR/config.yaml"
+      LOG_DIR="/var/log/deductible-tracker"
+      APP_LOG_LINK="$LOG_DIR/deductible-app.log"
+      COLLECTOR_NAME="deductible-otelcol"
+      COLLECTOR_IMAGE="docker.io/otel/opentelemetry-collector-contrib:0.143.0"
+
+      container_engine() {
+          if command -v docker >/dev/null 2>&1; then
+              printf '%s' docker
+              return 0
+          fi
+
+          if command -v podman >/dev/null 2>&1; then
+              printf '%s' podman
+              return 0
+          fi
+
+          return 1
+      }
+
+      stop_collector() {
+          local engine=""
+
+          engine=$(container_engine 2>/dev/null || true)
+          if [ -n "$engine" ]; then
+              "$engine" rm -f "$COLLECTOR_NAME" >/dev/null 2>&1 || true
+          fi
+      }
+
+      resolve_container_log_path() {
+          local engine=""
+          local candidate=""
+          local container_id=""
+
+          engine=$(container_engine 2>/dev/null || true)
+          if [ -z "$engine" ]; then
+              return 0
+          fi
+
+          candidate=$(
+              "$engine" inspect --format '{{.LogPath}}' deductible-app 2>/dev/null || true
+          )
+          container_id=$(
+              "$engine" inspect --format '{{.Id}}' deductible-app 2>/dev/null || true
+          )
+
+          if [ -n "$container_id" ] && { [ -z "$candidate" ] || [ ! -e "$candidate" ]; }; then
+              for root in /var/lib/containers/storage/overlay-containers /var/lib/containers/storage/containers; do
+                  if [ -e "$root/$container_id/userdata/ctr.log" ]; then
+                      candidate="$root/$container_id/userdata/ctr.log"
+                      break
+                  fi
+              done
+          fi
+
+          if [ "$candidate" = "<no value>" ]; then
+              candidate=""
+          fi
+
+          printf '%s' "$candidate"
+      }
+
+      if [ ! -f "$APP_ENV" ]; then
+          stop_collector
+          rm -f "$CONFIG_FILE" "$APP_LOG_LINK"
+          exit 0
+      fi
+
+      LICENSE_KEY=$(grep '^NEW_RELIC_LICENSE_KEY=' "$APP_ENV" 2>/dev/null | cut -d'=' -f2- || true)
+      if [ -z "$LICENSE_KEY" ]; then
+          stop_collector
+          rm -f "$CONFIG_FILE" "$APP_LOG_LINK"
+          exit 0
+      fi
+
+      ENGINE=$(container_engine)
+      NEW_RELIC_ENDPOINT=$(grep '^NEW_RELIC_OTLP_ENDPOINT=' "$APP_ENV" 2>/dev/null | cut -d'=' -f2- || true)
+      SERVICE_NAME=$(grep '^OTEL_SERVICE_NAME=' "$APP_ENV" 2>/dev/null | cut -d'=' -f2- || true)
+      DEPLOY_ENV=$(grep '^RUST_ENV=' "$APP_ENV" 2>/dev/null | cut -d'=' -f2- || true)
+      HOSTNAME_VALUE=$(hostnamectl --static 2>/dev/null || hostname)
+
+      if [ -z "$NEW_RELIC_ENDPOINT" ]; then
+          NEW_RELIC_ENDPOINT="https://otlp.nr-data.net"
+      fi
+
+      if [ -z "$SERVICE_NAME" ]; then
+          SERVICE_NAME="deductible-tracker"
+      fi
+
+      if [ -z "$DEPLOY_ENV" ]; then
+          DEPLOY_ENV="production"
+      fi
+
+      mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+
+      APP_LOG_PATH=$(resolve_container_log_path)
+      if [ -n "$APP_LOG_PATH" ] && [ -e "$APP_LOG_PATH" ]; then
+          ln -sfn "$APP_LOG_PATH" "$APP_LOG_LINK"
+      else
+          rm -f "$APP_LOG_LINK"
+      fi
+
+      cat > "$CONFIG_FILE" <<EOF
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 127.0.0.1:4317
+        filelog/deductible_app:
+          include:
+            - ${APP_LOG_LINK}
+          start_at: end
+          poll_interval: 500ms
+          include_file_path: true
+          include_file_name: false
+          retry_on_failure:
+            enabled: true
+          resource:
+            service.name: ${SERVICE_NAME}
+            service.namespace: deductible-tracker
+            deployment.environment.name: ${DEPLOY_ENV}
+            cloud.provider: oracle
+            host.name: ${HOSTNAME_VALUE}
+          attributes:
+            container_name: deductible-app
+          operators:
+            - type: container
+
+      processors:
+        batch:
+
+      exporters:
+        otlphttp/newrelic:
+          endpoint: ${NEW_RELIC_ENDPOINT}
+          headers:
+            api-key: ${LICENSE_KEY}
+
+      extensions:
+        health_check:
+          endpoint: 127.0.0.1:13133
+
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [otlphttp/newrelic]
+          logs:
+            receivers: [filelog/deductible_app]
+            processors: [batch]
+            exporters: [otlphttp/newrelic]
+      EOF
+
+      "$ENGINE" pull "$COLLECTOR_IMAGE" >/dev/null 2>&1 || true
+      "$ENGINE" rm -f "$COLLECTOR_NAME" >/dev/null 2>&1 || true
+      "$ENGINE" run -d \
+          --name "$COLLECTOR_NAME" \
+          --restart always \
+          --network=host \
+          --cap-drop=ALL \
+          --security-opt no-new-privileges \
+          -v "$CONFIG_FILE:/etc/otelcol-contrib/config.yaml:ro,z" \
+          -v "$LOG_DIR:$LOG_DIR:ro,z" \
+          -v /var/lib/containers/storage:/var/lib/containers/storage:ro,z \
+          "$COLLECTOR_IMAGE" \
+          --config=file:/etc/otelcol-contrib/config.yaml >/dev/null
   - path: /etc/systemd/system/deductible-deploy.service
     owner: root:root
     permissions: '0644'
@@ -382,19 +506,15 @@ system_info:
     groups: [docker]
 
 runcmd:
-  - systemctl stop cockpit.socket || true
-  - systemctl disable cockpit.socket || true
-  - usermod -aG docker opc
-  # Disable host firewall to rely on OCI Security Lists.
-  - systemctl stop firewalld || true
-  - systemctl disable firewalld || true
-  # Setup OCI Logging Agent
-  - [
-      sh,
-      -c,
-      'systemctl enable --now oracle-cloud-agent || true; systemctl restart oracle-cloud-agent-updater >/dev/null 2>&1 || true',
-    ]
-  - [sh, -c, '/usr/local/bin/configure-newrelic-infra.sh || true']
-  - systemctl daemon-reload
-  - systemctl enable --now deductible-deploy.timer
-  - systemctl start deductible-deploy.service
+        - systemctl stop cockpit.socket || true
+        - systemctl disable cockpit.socket || true
+        - usermod -aG docker opc
+        # Disable host firewall to rely on OCI Security Lists.
+        - systemctl stop firewalld || true
+        - systemctl disable firewalld || true
+        # Setup OCI Logging Agent
+        - sh -c 'systemctl enable --now oracle-cloud-agent || true; systemctl restart oracle-cloud-agent-updater >/dev/null 2>&1 || true'
+        - sh -c '/usr/local/bin/configure-newrelic-infra.sh || true; /usr/local/bin/configure-otel-collector.sh || true'
+        - systemctl daemon-reload
+        - systemctl enable --now deductible-deploy.timer
+        - systemctl start deductible-deploy.service

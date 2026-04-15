@@ -198,12 +198,8 @@ jobs:
           set -euo pipefail
 
           IMAGE_REF="${{ needs.build.outputs.image_ref }}"
-          OTEL_OTLP_ENDPOINT_VALUE="${NEW_RELIC_OTLP_ENDPOINT:-https://otlp.nr-data.net:4317}"
+          OTEL_OTLP_ENDPOINT_VALUE="http://127.0.0.1:4317"
           OTEL_OTLP_HEADERS_VALUE=""
-
-          if [ -n "${NEW_RELIC_LICENSE_KEY:-}" ]; then
-            OTEL_OTLP_HEADERS_VALUE="api-key=$NEW_RELIC_LICENSE_KEY"
-          fi
 
           # 1. Discover the active instance OCID
           TARGET_COMPARTMENT="${{ secrets.OCI_COMPARTMENT_OCID }}"

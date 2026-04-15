@@ -121,15 +121,20 @@ fn telemetry_enabled() -> bool {
         return enabled;
     }
 
-    env::var("NEW_RELIC_LICENSE_KEY")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .is_some()
-        || env::var("OTEL_EXPORTER_OTLP_HEADERS")
+    has_otlp_endpoint_config()
+        || env::var("NEW_RELIC_LICENSE_KEY")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .is_some()
-        || env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
+        || explicit_otlp_headers().is_some()
+}
+
+fn has_otlp_endpoint_config() -> bool {
+    env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_some()
+        || env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .is_some()
@@ -155,16 +160,12 @@ fn otlp_endpoint() -> String {
 fn otlp_metadata() -> Result<MetadataMap> {
     let mut metadata = MetadataMap::new();
 
-    if let Some(headers) = env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            env::var("OTEL_EXPORTER_OTLP_HEADERS")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-        })
-    {
+    if let Some(headers) = explicit_otlp_headers() {
         return parse_otlp_headers(&headers);
+    }
+
+    if !uses_new_relic_otlp_endpoint() {
+        return Ok(metadata);
     }
 
     let license_key = env::var("NEW_RELIC_LICENSE_KEY")
@@ -174,6 +175,21 @@ fn otlp_metadata() -> Result<MetadataMap> {
     metadata.insert("api-key", parsed);
 
     Ok(metadata)
+}
+
+fn explicit_otlp_headers() -> Option<String> {
+    env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            env::var("OTEL_EXPORTER_OTLP_HEADERS")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+fn uses_new_relic_otlp_endpoint() -> bool {
+    otlp_endpoint().contains("nr-data.net")
 }
 
 fn parse_otlp_headers(headers: &str) -> Result<MetadataMap> {

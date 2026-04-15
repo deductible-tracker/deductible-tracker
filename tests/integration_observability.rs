@@ -12,6 +12,8 @@ mod observability_test {
 
     fn clear_otel_env() {
         std::env::remove_var("NEW_RELIC_LICENSE_KEY");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT");
         std::env::remove_var("OTEL_EXPORTER_OTLP_HEADERS");
         std::env::remove_var("OTEL_EXPORTER_OTLP_TRACES_HEADERS");
     }
@@ -58,6 +60,31 @@ mod observability_test {
 
         assert_eq!(api_key, "header-license");
         assert_eq!(custom, "trace-demo");
+
+        clear_otel_env();
+    }
+
+    #[test]
+    fn otlp_metadata_skips_new_relic_headers_for_local_collector() {
+        let _guard = env_lock().lock().expect("lock env");
+        clear_otel_env();
+        std::env::set_var("NEW_RELIC_LICENSE_KEY", "test-license-key");
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317");
+
+        let metadata = otlp_metadata().expect("metadata");
+
+        assert!(metadata.get("api-key").is_none());
+
+        clear_otel_env();
+    }
+
+    #[test]
+    fn telemetry_enabled_when_local_otlp_endpoint_is_configured() {
+        let _guard = env_lock().lock().expect("lock env");
+        clear_otel_env();
+        std::env::set_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317");
+
+        assert!(telemetry_enabled());
 
         clear_otel_env();
     }

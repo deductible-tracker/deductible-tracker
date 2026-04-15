@@ -129,11 +129,12 @@ Pushing to the `main` branch triggers the GitHub Actions workflow, which:
 
 ### Observability
 
-- The Rust backend exports APM traces to New Relic over OTLP when `NEW_RELIC_LICENSE_KEY` is present in the deployment environment.
-- `NEW_RELIC_OTLP_ENDPOINT` is optional and can be used for non-default New Relic regions or a custom OTLP endpoint; the deploy workflow also writes the standard `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`, `OTEL_PROPAGATORS`, and `OTEL_TRACES_EXPORTER` variables into `/home/opc/app.env` on the VM.
-- The OCI cloud-init bootstrap installs and configures `newrelic-infra` automatically when `NEW_RELIC_LICENSE_KEY` is present.
-- Docker container monitoring comes from the New Relic infrastructure agent on the VM, so container metrics appear without changing the application container image.
-- Application log forwarding also comes from `newrelic-infra`: the deploy poller refreshes the agent config after container swaps so `/etc/newrelic-infra/logging.d/deductible-tracker-app.yml` always points at the active `deductible-app` container log file.
+- The Rust backend exports APM traces over OTLP whenever telemetry is enabled; in production the deploy workflow points the app at a host-local OpenTelemetry Collector on `127.0.0.1:4317`.
+- The OCI cloud-init bootstrap now runs two observability paths when `NEW_RELIC_LICENSE_KEY` is present:
+   - `newrelic-infra` for host and container infrastructure monitoring.
+   - `otel/opentelemetry-collector-contrib` for application traces and container log forwarding to New Relic.
+- `NEW_RELIC_OTLP_ENDPOINT` remains optional and is used by the Collector for non-default New Relic regions or a custom OTLP endpoint; the app container itself receives `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_PROPAGATORS`, and `OTEL_TRACES_EXPORTER` through `/home/opc/app.env`.
+- The deploy poller refreshes both the infrastructure agent and the OpenTelemetry Collector after secret updates, container swaps, and rollback paths so app traces and logs continue to follow the active `deductible-app` container.
 
 ## Agent Guidance
 
