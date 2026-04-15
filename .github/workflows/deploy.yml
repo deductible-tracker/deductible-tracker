@@ -198,6 +198,12 @@ jobs:
           set -euo pipefail
 
           IMAGE_REF="${{ needs.build.outputs.image_ref }}"
+          OTEL_OTLP_ENDPOINT_VALUE="${NEW_RELIC_OTLP_ENDPOINT:-https://otlp.nr-data.net:4317}"
+          OTEL_OTLP_HEADERS_VALUE=""
+
+          if [ -n "${NEW_RELIC_LICENSE_KEY:-}" ]; then
+            OTEL_OTLP_HEADERS_VALUE="api-key=$NEW_RELIC_LICENSE_KEY"
+          fi
 
           # 1. Discover the active instance OCID
           TARGET_COMPARTMENT="${{ secrets.OCI_COMPARTMENT_OCID }}"
@@ -275,7 +281,11 @@ jobs:
           NEW_RELIC_LICENSE_KEY=$NEW_RELIC_LICENSE_KEY
           NEW_RELIC_OTLP_ENDPOINT=$NEW_RELIC_OTLP_ENDPOINT
           NEW_RELIC_APP_NAME=deductible-tracker
+          OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_OTLP_ENDPOINT_VALUE
+          OTEL_EXPORTER_OTLP_HEADERS=$OTEL_OTLP_HEADERS_VALUE
+          OTEL_PROPAGATORS=tracecontext,baggage
           OTEL_SERVICE_NAME=deductible-tracker
+          OTEL_TRACES_EXPORTER=otlp
           SITE_DOMAIN=$SITE_DOMAIN
           RUST_ENV=production
           SKIP_ASSET_REBUILD=true

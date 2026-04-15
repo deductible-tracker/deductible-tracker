@@ -62,6 +62,10 @@ write_files:
       REPO_DIR="/home/opc/deductible-tracker-src"
       APP_ENV="/home/opc/app.env"
 
+      refresh_new_relic_config() {
+          /usr/local/bin/configure-newrelic-infra.sh || true
+      }
+
       echo "Checking DNS resolution for DB host..."
       getent hosts adb.us-chicago-1.oraclecloud.com || echo "DNS resolution failed for DB host"
 
@@ -181,9 +185,12 @@ write_files:
               echo "Rolling back to deductible-app-old..."
               docker start deductible-app-old || true
               docker rename deductible-app-old deductible-app || true
+              refresh_new_relic_config
           fi
           exit 1
       fi
+
+      refresh_new_relic_config
 
       # Verify deployment
       echo "Verifying deployment..."
@@ -224,6 +231,7 @@ write_files:
           if docker ps -a --format '{{.Names}}' | grep -q "^deductible-app-old$"; then
               docker start deductible-app-old || true
               docker rename deductible-app-old deductible-app || true
+              refresh_new_relic_config
           fi
           exit 1
       fi
@@ -238,6 +246,41 @@ write_files:
       APP_ENV="/home/opc/app.env"
       REPO_FILE="/etc/yum.repos.d/newrelic-infra.repo"
       CONFIG_FILE="/etc/newrelic-infra.yml"
+      LOGGING_DIR="/etc/newrelic-infra/logging.d"
+      APP_LOG_CONFIG="$LOGGING_DIR/deductible-tracker-app.yml"
+
+      resolve_container_log_path() {
+          local candidate=""
+          local container_id=""
+
+          if command -v docker >/dev/null 2>&1; then
+              candidate=$(docker inspect --format '{{.LogPath}}' deductible-app 2>/dev/null || true)
+              container_id=$(docker inspect --format '{{.Id}}' deductible-app 2>/dev/null || true)
+          fi
+
+          if [ -z "$candidate" ] && command -v podman >/dev/null 2>&1; then
+              candidate=$(podman inspect --format '{{.LogPath}}' deductible-app 2>/dev/null || true)
+          fi
+
+          if [ -z "$container_id" ] && command -v podman >/dev/null 2>&1; then
+              container_id=$(podman inspect --format '{{.Id}}' deductible-app 2>/dev/null || true)
+          fi
+
+          if [ -n "$container_id" ] && { [ -z "$candidate" ] || [ ! -e "$candidate" ]; }; then
+              for root in /var/lib/containers/storage/overlay-containers /var/lib/containers/storage/containers; do
+                  if [ -e "$root/$container_id/userdata/ctr.log" ]; then
+                      candidate="$root/$container_id/userdata/ctr.log"
+                      break
+                  fi
+              done
+          fi
+
+          if [ "$candidate" = "<no value>" ]; then
+              candidate=""
+          fi
+
+          printf '%s' "$candidate"
+      }
 
       if [ ! -f "$APP_ENV" ]; then
           exit 0
@@ -248,6 +291,7 @@ write_files:
           if systemctl list-unit-files newrelic-infra.service >/dev/null 2>&1; then
               systemctl disable --now newrelic-infra >/dev/null 2>&1 || true
           fi
+          rm -f "$APP_LOG_CONFIG"
           exit 0
       fi
 
@@ -271,6 +315,8 @@ write_files:
           DEPLOY_ENV="production"
       fi
 
+      mkdir -p "$LOGGING_DIR"
+
       cat > "$CONFIG_FILE" <<EOF
       license_key: ${LICENSE_KEY}
       display_name: ${HOSTNAME_VALUE}
@@ -282,6 +328,22 @@ write_files:
         provider: oracle
         runtime: docker
       EOF
+
+            APP_LOG_PATH=$(resolve_container_log_path)
+            if [ -n "$APP_LOG_PATH" ] && [ -e "$APP_LOG_PATH" ]; then
+                    printf '%s\n' \
+                            'logs:' \
+                            '  - name: deductible-tracker-app' \
+                            "    file: ${APP_LOG_PATH}" \
+                            '    attributes:' \
+                            '      service.name: deductible-tracker' \
+                            '      service: deductible-tracker' \
+                            "      environment: ${DEPLOY_ENV}" \
+                            '      provider: oracle' \
+                            '      runtime: docker' \
+                            '      container_name: deductible-app' \
+                            > "$APP_LOG_CONFIG"
+            fi
 
       systemctl enable --now newrelic-infra
       systemctl restart newrelic-infra
