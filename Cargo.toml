@@ -37,6 +37,8 @@ dotenvy = "0"
 opentelemetry = { version = "0.31", features = ["trace"], optional = true }
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace"], optional = true }
 opentelemetry-otlp = { version = "0.31", features = ["trace", "grpc-tonic", "tls-ring"], optional = true }
+easy_init_newrelic_opentelemetry = { version = "0.6", optional = true }
+time = { version = "0.3", features = ["macros"] }
 tonic = { version = "0.14", features = ["transport"], optional = true }
 rustls = { version = "0.23", features = ["ring"], optional = true }
 oracle-rs = "0.1.7"
@@ -94,6 +96,7 @@ server = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
+    "dep:easy_init_newrelic_opentelemetry",
     "dep:tonic",
     "dep:rustls",
 ]
