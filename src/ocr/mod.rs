@@ -140,7 +140,7 @@ mod real {
         }
 
         let client = Client::new();
-        let mime_type = get_mime_type(bytes.as_ref(), hinted_content_type);
+        let mime_type = get_mime_type(bytes, hinted_content_type);
         let b64_file = BASE64_STANDARD.encode(bytes);
 
         let mut document = json!({

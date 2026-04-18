@@ -1,7 +1,11 @@
 import db from './db.js';
 import { getCurrentUser, getCurrentUserId, setCurrentUser } from './services/current-user.js';
 import { apiJson } from './services/http.js';
-import { registerVaultKey, unlockVaultKey, encryptData, decryptData, ensureVaultKey } from './services/crypto.js';
+import { decryptData, ensureVaultKey } from './services/crypto.js';
+import {
+  encryptPayloadFields,
+  DONATION_SENSITIVE_FIELDS,
+} from './services/encrypt-transport.js';
 
 const API_BASE = '/api';
 const PENDING_PROFILE_KEY_PREFIX = 'pending_profile:';
@@ -149,19 +153,12 @@ export const Sync = {
             };
 
             if (vaultKey && donation) {
-              const sensitive = {
-                date: donation.date,
-                category: donation.category,
-                amount: donation.amount,
-                notes: donation.notes,
-              };
-              item.is_encrypted = true;
-              item.encrypted_payload = await encryptData(vaultKey, sensitive);
-              // Clear plaintext fields for transport
-              item.date = null;
-              item.category = null;
-              item.amount = null;
-              item.notes = null;
+              const encrypted = await encryptPayloadFields(
+                vaultKey,
+                item,
+                DONATION_SENSITIVE_FIELDS
+              );
+              Object.assign(item, encrypted);
             }
 
             batch.donations.push(item);
@@ -184,15 +181,13 @@ export const Sync = {
             };
 
             if (vaultKey) {
-              const sensitive = {
-                file_name: receipt.file_name,
-                ocr_text: receipt.ocr_text,
-                ocr_date: receipt.ocr_date,
-                ocr_amount: receipt.ocr_amount,
-              };
-              item.is_encrypted = true;
-              item.encrypted_payload = await encryptData(vaultKey, sensitive);
-              item.file_name = null; // Don't leak filename
+              const receiptSensitiveFields = ['file_name', 'ocr_text', 'ocr_date', 'ocr_amount'];
+              const encrypted = await encryptPayloadFields(
+                vaultKey,
+                item,
+                receiptSensitiveFields
+              );
+              Object.assign(item, encrypted);
             }
 
             batch.receipts.push(item);

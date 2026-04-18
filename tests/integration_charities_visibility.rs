@@ -71,6 +71,9 @@ async fn create_test_user(pool: &db::DbPool, suffix: &str) -> String {
         agi: None,
         marginal_tax_rate: None,
         itemize_deductions: Some(false),
+        is_encrypted: None,
+        encrypted_payload: None,
+        vault_credential_id: None,
     };
 
     db::users::upsert_user_profile(pool, &input)
@@ -142,6 +145,8 @@ async fn created_charity_is_visible_in_same_users_list() {
         city: Some("Austin".to_string()),
         state: Some("TX".to_string()),
         zip: Some("78701".to_string()),
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: chrono::Utc::now(),
     };
 
@@ -163,6 +168,8 @@ async fn created_charity_is_visible_in_same_users_list() {
         city: None,
         state: None,
         zip: None,
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: chrono::Utc::now(),
     };
 

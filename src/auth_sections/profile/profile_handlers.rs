@@ -83,6 +83,7 @@ pub async fn dev_login(
                     itemize_deductions: row.6,
                     is_encrypted: row.7,
                     encrypted_payload: row.8,
+                    vault_credential_id: row.9,
                 }
             },
             _ => {
@@ -96,6 +97,7 @@ pub async fn dev_login(
                     itemize_deductions: None,
                     is_encrypted: None,
                     encrypted_payload: None,
+                    vault_credential_id: None,
                     provider: "local".to_string(),
                 }
             }
@@ -112,6 +114,7 @@ pub async fn dev_login(
             itemize_deductions: user.itemize_deductions,
             is_encrypted: user.is_encrypted,
             encrypted_payload: user.encrypted_payload.clone(),
+            vault_credential_id: user.vault_credential_id.clone(),
         }).await;
         match create_jwt(&user) {
             Ok(token) => {
@@ -188,7 +191,7 @@ pub async fn me(
     user: AuthenticatedUser,
 ) -> impl IntoResponse {
     match crate::db::users::get_user_profile(&state.db, &user.id).await {
-        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload))) => Json(UserProfile {
+        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload, vault_credential_id))) => Json(UserProfile {
             id: user.id,
             email,
             name,
@@ -198,6 +201,7 @@ pub async fn me(
             itemize_deductions,
             is_encrypted,
             encrypted_payload,
+            vault_credential_id,
             provider,
         }).into_response(),
         Ok(None) => {
@@ -207,6 +211,7 @@ pub async fn me(
             let itemize_deductions = None;
             let is_encrypted = None;
             let encrypted_payload = None;
+            let vault_credential_id: Option<String> = None;
             let _ = crate::db::users::upsert_user_profile(&state.db, &crate::db::models::UserProfileUpsert {
                 user_id: user.id.clone(),
                 email: user.email.clone(),
@@ -218,6 +223,7 @@ pub async fn me(
                 itemize_deductions,
                 is_encrypted,
                 encrypted_payload: encrypted_payload.clone(),
+                vault_credential_id: vault_credential_id.clone(),
             }).await;
             Json(UserProfile {
                 id: user.id,
@@ -229,6 +235,7 @@ pub async fn me(
                 itemize_deductions,
                 is_encrypted,
                 encrypted_payload,
+                vault_credential_id,
                 provider: user.provider,
             }).into_response()
         }
@@ -244,6 +251,7 @@ pub async fn me(
                 itemize_deductions: None,
                 is_encrypted: None,
                 encrypted_payload: None,
+                vault_credential_id: None,
                 provider: user.provider,
             }).into_response()
         }
@@ -334,6 +342,7 @@ pub async fn update_me(
     let itemize_deductions = req.itemize_deductions.or_else(|| existing.as_ref().and_then(|r| r.6));
     let is_encrypted = req.is_encrypted.or_else(|| existing.as_ref().and_then(|r| r.7));
     let encrypted_payload = req.encrypted_payload.or_else(|| existing.as_ref().and_then(|r| r.8.clone()));
+    let vault_credential_id = req.vault_credential_id.or_else(|| existing.as_ref().and_then(|r| r.9.clone()));
 
     match crate::db::users::upsert_user_profile(&state.db, &crate::db::models::UserProfileUpsert {
         user_id: user.id.clone(),
@@ -346,6 +355,7 @@ pub async fn update_me(
         itemize_deductions,
         is_encrypted,
         encrypted_payload: encrypted_payload.clone(),
+        vault_credential_id: vault_credential_id.clone(),
     }).await {
         Ok(_) => Json(UserProfile {
             id: user.id,
@@ -357,6 +367,7 @@ pub async fn update_me(
             itemize_deductions,
             is_encrypted,
             encrypted_payload,
+            vault_credential_id,
             provider: user.provider,
         }).into_response(),
         Err(e) => {
@@ -375,8 +386,8 @@ pub async fn export_me(
     // 1. Fetch metadata
     let profile_res = crate::db::users::get_user_profile(&state.db, &user_id).await;
     let profile = match profile_res {
-        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload))) => {
-            UserProfile { id: user_id.clone(), email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload }
+        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload, vault_credential_id))) => {
+            UserProfile { id: user_id.clone(), email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload, vault_credential_id }
         }
         _ => return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to load profile").into_response(),
     };
@@ -532,6 +543,7 @@ pub async fn import_me(
         itemize_deductions: backup.profile.itemize_deductions,
         is_encrypted: backup.profile.is_encrypted,
         encrypted_payload: backup.profile.encrypted_payload,
+        vault_credential_id: backup.profile.vault_credential_id,
     };
 
     if let Err(e) = crate::db::users::import_data(

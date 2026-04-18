@@ -479,6 +479,7 @@ pub async fn callback(
                 itemize_deductions: row.6,
                 is_encrypted: row.7,
                 encrypted_payload: row.8,
+                vault_credential_id: row.9,
             }
         },
         Ok(None) => {
@@ -492,6 +493,7 @@ pub async fn callback(
                 itemize_deductions: None,
                 is_encrypted: None,
                 encrypted_payload: None,
+                vault_credential_id: None,
                 provider: provider.clone(),
             }
         },
@@ -507,6 +509,7 @@ pub async fn callback(
                 itemize_deductions: None,
                 is_encrypted: None,
                 encrypted_payload: None,
+                vault_credential_id: None,
                 provider: provider.clone(),
             }
         }
@@ -523,6 +526,7 @@ pub async fn callback(
         itemize_deductions: user.itemize_deductions,
         is_encrypted: user.is_encrypted,
         encrypted_payload: user.encrypted_payload.clone(),
+        vault_credential_id: user.vault_credential_id.clone(),
     }).await;
 
     let token = match create_jwt(&user) {

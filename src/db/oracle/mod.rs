@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context};
-use chrono::{DateTime, NaiveDate, Utc};
 use deadpool_oracle::{Pool, PoolBuilder};
 use oracle_rs::{Config as OracleDriverConfig, Connection, Row, Value};
 use std::env;
@@ -12,11 +11,18 @@ use std::time::Duration;
 use crate::db::core::{DbPool, DbPoolEnum, RuntimeMode, UserProfileRow};
 use crate::db::models::UserProfileUpsert;
 
+mod bootstrap;
+mod row_helpers;
 pub(crate) mod charities;
 pub mod donations;
 pub(crate) mod receipts;
 mod wallet_config;
 
+pub(crate) use row_helpers::{
+    parse_utc_from_opt_string, row_bool, row_datetime_utc, row_f64, row_i64, row_naive_date,
+    row_opt_string, row_string,
+};
+use bootstrap::run_bootstrap_ddl;
 use wallet_config::validate_wallet_password;
 
 fn first_present_env(keys: &[&str]) -> Option<String> {
@@ -448,57 +454,8 @@ fn log_wallet_directory(wallet_dir: &Path) {
     }
 }
 
-async fn run_bootstrap_ddl(pool: &Pool) -> anyhow::Result<()> {
-    let conn = pool.get().await?;
-    for sql in [
-        "ALTER TABLE users ADD (filing_status VARCHAR2(32))",
-        "ALTER TABLE users ADD (agi NUMBER(14,2))",
-        "ALTER TABLE users ADD (marginal_tax_rate NUMBER(6,4))",
-        "ALTER TABLE users ADD (itemize_deductions NUMBER(1))",
-        "ALTER TABLE users ADD (is_encrypted NUMBER(1) DEFAULT 0)",
-        "ALTER TABLE users ADD (encrypted_payload CLOB)",
-        "ALTER TABLE users ADD (vault_credential_id VARCHAR2(512))",
-        "ALTER TABLE users ADD (updated_at TIMESTAMP)",
-        "ALTER TABLE charities ADD (category VARCHAR2(255))",
-        "ALTER TABLE charities ADD (status VARCHAR2(255))",
-        "ALTER TABLE charities ADD (classification VARCHAR2(255))",
-        "ALTER TABLE charities ADD (nonprofit_type VARCHAR2(255))",
-        "ALTER TABLE charities ADD (deductibility VARCHAR2(64))",
-        "ALTER TABLE charities ADD (street VARCHAR2(255))",
-        "ALTER TABLE charities ADD (city VARCHAR2(120))",
-        "ALTER TABLE charities ADD (state VARCHAR2(16))",
-        "ALTER TABLE charities ADD (zip VARCHAR2(20))",
-        "ALTER TABLE charities ADD (is_encrypted NUMBER(1) DEFAULT 0)",
-        "ALTER TABLE charities ADD (encrypted_payload CLOB)",
-        "ALTER TABLE donations ADD (donation_category VARCHAR2(32))",
-        "ALTER TABLE donations ADD (donation_amount NUMBER(12,2))",
-        "ALTER TABLE donations ADD (is_encrypted NUMBER(1) DEFAULT 0)",
-        "ALTER TABLE donations ADD (encrypted_payload CLOB)",
-        "ALTER TABLE receipts ADD (is_encrypted NUMBER(1) DEFAULT 0)",
-        "ALTER TABLE receipts ADD (encrypted_payload CLOB)",
-        "ALTER TABLE receipts ADD (updated_at TIMESTAMP)",
-        "ALTER TABLE audit_logs ADD (updated_at TIMESTAMP)",
-        "ALTER TABLE val_categories ADD (created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-        "ALTER TABLE val_categories ADD (updated_at TIMESTAMP)",
-        "ALTER TABLE val_items ADD (created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
-        "ALTER TABLE val_items ADD (updated_at TIMESTAMP)",
-        "CREATE TABLE audit_revisions (id VARCHAR2(255) PRIMARY KEY, user_id VARCHAR2(255), table_name VARCHAR2(255) NOT NULL, record_id VARCHAR2(255) NOT NULL, operation VARCHAR2(16) NOT NULL, old_values VARCHAR2(4000), new_values VARCHAR2(4000), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP, CONSTRAINT fk_audit_revisions_user FOREIGN KEY (user_id) REFERENCES users(id))",
-        "CREATE INDEX idx_audit_revisions_table_record ON audit_revisions(table_name, record_id, created_at)",
-        "CREATE INDEX idx_charities_user_ein ON charities(user_id, ein)",
-        "CREATE INDEX idx_val_items_category_name ON val_items(category_id, name)",
-        "CREATE INDEX idx_val_items_lower_name ON val_items(LOWER(name))",
-    ] {
-        let _ = conn.execute(sql, &[]).await;
-    }
-    let _ = conn.commit().await;
-    Ok(())
-}
 
-pub(crate) fn parse_utc_from_opt_string(value: Option<String>) -> DateTime<Utc> {
-    value
-        .and_then(|text| parse_datetime_text(&text))
-        .unwrap_or_else(Utc::now)
-}
+
 
 /// Deprecated: CLOB UPDATE binding hangs with oracle-rs 0.1.7. Bind as VARCHAR2 directly instead.
 #[allow(dead_code)]
@@ -574,97 +531,6 @@ struct UserProfileNumericFields {
     itemize_deductions: Option<bool>,
 }
 
-pub(crate) fn row_string(row: &Row, index: usize) -> String {
-    row_opt_string(row, index).unwrap_or_default()
-}
 
-pub(crate) fn row_opt_string(row: &Row, index: usize) -> Option<String> {
-    row.get_string(index)
-        .map(ToOwned::to_owned)
-        .or_else(|| row.get(index).and_then(value_to_string))
-}
 
-pub(crate) fn row_i64(row: &Row, index: usize) -> Option<i64> {
-    row.get(index).and_then(|value| {
-        value
-            .as_i64()
-            .or_else(|| value_to_string(value)?.parse::<i64>().ok())
-    })
-}
 
-pub(crate) fn row_f64(row: &Row, index: usize) -> Option<f64> {
-    row.get(index).and_then(|value| {
-        value
-            .as_f64()
-            .or_else(|| value_to_string(value)?.parse::<f64>().ok())
-    })
-}
-
-pub(crate) fn row_bool(row: &Row, index: usize) -> Option<bool> {
-    row.get(index).and_then(|value| {
-        value.as_bool().or_else(|| {
-            value_to_string(value).and_then(|text| {
-                match text.trim().to_ascii_lowercase().as_str() {
-                    "1" | "true" | "y" | "yes" => Some(true),
-                    "0" | "false" | "n" | "no" => Some(false),
-                    _ => None,
-                }
-            })
-        })
-    })
-}
-
-pub(crate) fn row_naive_date(row: &Row, index: usize) -> Option<NaiveDate> {
-    row.get(index)
-        .and_then(|value| value_to_string(value).and_then(|text| parse_naive_date_text(&text)))
-}
-
-pub(crate) fn row_datetime_utc(row: &Row, index: usize) -> Option<DateTime<Utc>> {
-    row.get(index)
-        .and_then(|value| value_to_string(value).and_then(|text| parse_datetime_text(&text)))
-}
-
-fn value_to_string(value: &Value) -> Option<String> {
-    match value {
-        Value::Null => None,
-        _ => Some(value.to_string()),
-    }
-}
-
-fn parse_naive_date_text(value: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .ok()
-        .or_else(|| {
-            value
-                .split_whitespace()
-                .next()
-                .and_then(|prefix| NaiveDate::parse_from_str(prefix, "%Y-%m-%d").ok())
-        })
-        .or_else(|| parse_datetime_text(value).map(|value| value.date_naive()))
-}
-
-fn parse_datetime_text(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|value| value.with_timezone(&Utc))
-        .or_else(|| {
-            DateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f %:z")
-                .ok()
-                .map(|value| value.with_timezone(&Utc))
-        })
-        .or_else(|| {
-            DateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S %:z")
-                .ok()
-                .map(|value| value.with_timezone(&Utc))
-        })
-        .or_else(|| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f")
-                .ok()
-                .map(|value| DateTime::from_naive_utc_and_offset(value, Utc))
-        })
-        .or_else(|| {
-            chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-                .ok()
-                .map(|value| DateTime::from_naive_utc_and_offset(value, Utc))
-        })
-}

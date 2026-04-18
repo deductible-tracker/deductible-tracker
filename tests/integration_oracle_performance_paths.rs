@@ -25,6 +25,9 @@ async fn create_test_user(pool: &db::DbPool) -> (String, String) {
         agi: None,
         marginal_tax_rate: None,
         itemize_deductions: Some(false),
+        is_encrypted: None,
+        encrypted_payload: None,
+        vault_credential_id: None,
     };
 
     db::users::upsert_user_profile(pool, &input)
@@ -49,6 +52,8 @@ async fn create_test_charity(pool: &db::DbPool, user_id: &str, suffix: &str) -> 
         city: None,
         state: None,
         zip: None,
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: Utc::now(),
     };
 
@@ -111,6 +116,8 @@ async fn batch_sync_merges_updates_and_receipts() {
                 charity_id: charity_id.clone(),
                 notes: Some("first sync".to_string()),
                 updated_at: Some(first_updated_at),
+                is_encrypted: None,
+                encrypted_payload: None,
             }],
             receipts: vec![ReceiptSyncItem {
                 action: "create".to_string(),
@@ -120,6 +127,8 @@ async fn batch_sync_merges_updates_and_receipts() {
                 file_name: Some("receipt-1.png".to_string()),
                 content_type: Some("image/png".to_string()),
                 size: Some(1200),
+                is_encrypted: None,
+                encrypted_payload: None,
             }],
         },
     )
@@ -140,6 +149,8 @@ async fn batch_sync_merges_updates_and_receipts() {
                 charity_id: charity_id.clone(),
                 notes: Some("older sync".to_string()),
                 updated_at: Some(older_updated_at),
+                is_encrypted: None,
+                encrypted_payload: None,
             }],
             receipts: vec![ReceiptSyncItem {
                 action: "create".to_string(),
@@ -149,6 +160,8 @@ async fn batch_sync_merges_updates_and_receipts() {
                 file_name: Some("receipt-1.png".to_string()),
                 content_type: Some("image/png".to_string()),
                 size: Some(1200),
+                is_encrypted: None,
+                encrypted_payload: None,
             }],
         },
     )
@@ -179,6 +192,8 @@ async fn batch_sync_merges_updates_and_receipts() {
                 charity_id: charity_id.clone(),
                 notes: Some("newer sync".to_string()),
                 updated_at: Some(newer_updated_at),
+                is_encrypted: None,
+                encrypted_payload: None,
             }],
             receipts: vec![ReceiptSyncItem {
                 action: "create".to_string(),
@@ -188,6 +203,8 @@ async fn batch_sync_merges_updates_and_receipts() {
                 file_name: Some("receipt-1.png".to_string()),
                 content_type: Some("image/png".to_string()),
                 size: Some(1200),
+                is_encrypted: None,
+                encrypted_payload: None,
             }],
         },
     )
@@ -239,6 +256,8 @@ async fn clob_updates_round_trip_large_payloads() {
             charity_id: charity_id.clone(),
             amount: Some(88.0),
             notes: Some("large clob test".to_string()),
+            is_encrypted: None,
+            encrypted_payload: None,
             created_at: now,
         },
     )
@@ -254,6 +273,8 @@ async fn clob_updates_round_trip_large_payloads() {
             file_name: Some("receipt.pdf".to_string()),
             content_type: Some("application/pdf".to_string()),
             size: Some(4096),
+            is_encrypted: None,
+            encrypted_payload: None,
             created_at: now,
         },
     )

@@ -28,6 +28,9 @@ async fn oracle_user_profile_round_trip() {
         agi: Some(123_456.78),
         marginal_tax_rate: Some(24.0),
         itemize_deductions: Some(true),
+        is_encrypted: None,
+        encrypted_payload: None,
+        vault_credential_id: None,
     };
 
     db::users::upsert_user_profile(&pool, &input)
@@ -83,6 +86,9 @@ async fn oracle_repeated_profile_text_query_stays_stable() {
         agi: Some(80_000.0),
         marginal_tax_rate: Some(0.12),
         itemize_deductions: Some(false),
+        is_encrypted: None,
+        encrypted_payload: None,
+        vault_credential_id: None,
     };
 
     db::users::upsert_user_profile(&pool, &input)

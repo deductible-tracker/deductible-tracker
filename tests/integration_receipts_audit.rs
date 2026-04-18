@@ -29,6 +29,8 @@ async fn receipt_ocr_and_audit_flow() {
         city: None,
         state: None,
         zip: None,
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: now,
     };
     db::create_charity(&pool, &charity)
@@ -46,6 +48,8 @@ async fn receipt_ocr_and_audit_flow() {
         charity_id: charity_id.clone(),
         amount: Some(123.45),
         notes: Some("integration test".to_string()),
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: now,
     };
     db::add_donation(&pool, &donation)
@@ -59,6 +63,8 @@ async fn receipt_ocr_and_audit_flow() {
         file_name: Some("sample.png".to_string()),
         content_type: Some("image/png".to_string()),
         size: Some(123i64),
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: now,
     };
     db::add_receipt(&pool, &receipt).await.expect("add_receipt");
@@ -135,6 +141,8 @@ async fn receipt_summary_listing_avoids_ocr_clob_decode_failures() {
         city: None,
         state: None,
         zip: None,
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: now,
     };
     db::create_charity(&pool, &charity)
@@ -151,6 +159,8 @@ async fn receipt_summary_listing_avoids_ocr_clob_decode_failures() {
         charity_id: charity_id.clone(),
         amount: Some(42.0),
         notes: Some("summary test".to_string()),
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: now,
     };
     db::add_donation(&pool, &donation)
@@ -164,6 +174,8 @@ async fn receipt_summary_listing_avoids_ocr_clob_decode_failures() {
         file_name: Some("summary.png".to_string()),
         content_type: Some("image/png".to_string()),
         size: Some(321),
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: now,
     };
     db::add_receipt(&pool, &receipt).await.expect("add_receipt");
