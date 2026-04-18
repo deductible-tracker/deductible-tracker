@@ -117,6 +117,8 @@ pub async fn import_donations(
                                 city: None,
                                 state: None,
                                 zip: None,
+                                is_encrypted: None,
+                                encrypted_payload: None,
                                 created_at: now,
                             };
                             if let Err(e) =
@@ -143,6 +145,8 @@ pub async fn import_donations(
                     charity_id: resolved_charity_id.clone(),
                     amount,
                     notes: notes.clone(),
+                    is_encrypted: None,
+                    encrypted_payload: None,
                     created_at: now,
                 };
                 if let Err(e) = crate::db::donations::add_donation(&state.db, &new_donation).await {
@@ -301,6 +305,8 @@ pub async fn create_donation(
                     city: None,
                     state: None,
                     zip: None,
+                    is_encrypted: None,
+                    encrypted_payload: None,
                     created_at: now,
                 };
                 if let Err(e) = crate::db::charities::create_charity(&state.db, &new_charity).await
@@ -326,6 +332,8 @@ pub async fn create_donation(
         charity_id: charity_id.clone(),
         amount: req.amount,
         notes: req.notes.clone(),
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: now,
     };
 
@@ -404,6 +412,8 @@ pub async fn update_donation(
             .map(ToString::to_string),
         amount_opt: req.amount,
         notes: req.notes.clone(),
+        is_encrypted: None,
+        encrypted_payload: None,
         incoming_updated_at,
     };
 

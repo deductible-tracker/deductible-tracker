@@ -21,7 +21,8 @@ pub async fn batch_sync(pool: &DbPool, user_id: &str, req: crate::db::models::Ba
                 let donation_year = donation.year.unwrap_or(donation_date.year());
                 let incoming_updated_at = donation.updated_at.unwrap_or(now).to_rfc3339();
                 let created_at = now.to_rfc3339();
-                let sql = "MERGE INTO donations d USING (SELECT :1 AS id, :2 AS user_id, TO_DATE(:3, 'YYYY-MM-DD') AS donation_date, :4 AS donation_year, :5 AS donation_category, :6 AS donation_amount, :7 AS charity_id, :8 AS notes, TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS incoming_updated_at, TO_TIMESTAMP_TZ(:10, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS incoming_created_at FROM dual) s ON (d.id = s.id AND d.user_id = s.user_id) WHEN MATCHED THEN UPDATE SET d.donation_date = s.donation_date, d.donation_year = s.donation_year, d.donation_category = s.donation_category, d.donation_amount = s.donation_amount, d.charity_id = s.charity_id, d.notes = s.notes, d.updated_at = s.incoming_updated_at, d.deleted = 0 WHERE d.updated_at IS NULL OR d.updated_at < s.incoming_updated_at OR s.incoming_updated_at IS NULL WHEN NOT MATCHED THEN INSERT (id, user_id, donation_date, donation_year, donation_category, donation_amount, charity_id, notes, created_at, updated_at, deleted) VALUES (s.id, s.user_id, s.donation_date, s.donation_year, s.donation_category, s.donation_amount, s.charity_id, s.notes, s.incoming_created_at, s.incoming_updated_at, 0)";
+                let is_encrypted = donation.is_encrypted.map(|v| if v { 1 } else { 0 });
+                let sql = "MERGE INTO donations d USING (SELECT :1 AS id, :2 AS user_id, TO_DATE(:3, 'YYYY-MM-DD') AS donation_date, :4 AS donation_year, :5 AS donation_category, :6 AS donation_amount, :7 AS charity_id, :8 AS notes, :9 AS is_encrypted, :10 AS encrypted_payload, TO_TIMESTAMP_TZ(:11, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS incoming_updated_at, TO_TIMESTAMP_TZ(:12, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS incoming_created_at FROM dual) s ON (d.id = s.id AND d.user_id = s.user_id) WHEN MATCHED THEN UPDATE SET d.donation_date = s.donation_date, d.donation_year = s.donation_year, d.donation_category = s.donation_category, d.donation_amount = s.donation_amount, d.charity_id = s.charity_id, d.notes = s.notes, d.is_encrypted = s.is_encrypted, d.encrypted_payload = s.encrypted_payload, d.updated_at = s.incoming_updated_at, d.deleted = 0 WHERE d.updated_at IS NULL OR d.updated_at < s.incoming_updated_at OR s.incoming_updated_at IS NULL WHEN NOT MATCHED THEN INSERT (id, user_id, donation_date, donation_year, donation_category, donation_amount, charity_id, notes, is_encrypted, encrypted_payload, created_at, updated_at, deleted) VALUES (s.id, s.user_id, s.donation_date, s.donation_year, s.donation_category, s.donation_amount, s.charity_id, s.notes, s.is_encrypted, s.encrypted_payload, s.incoming_created_at, s.incoming_updated_at, 0)";
                 conn.execute(
                     sql,
                     &crate::oracle_params![
@@ -33,6 +34,8 @@ pub async fn batch_sync(pool: &DbPool, user_id: &str, req: crate::db::models::Ba
                         donation.amount,
                         donation.charity_id,
                         donation.notes,
+                        is_encrypted,
+                        donation.encrypted_payload,
                         incoming_updated_at,
                         created_at,
                     ],
@@ -45,7 +48,8 @@ pub async fn batch_sync(pool: &DbPool, user_id: &str, req: crate::db::models::Ba
                     continue;
                 }
 
-                let sql = "MERGE INTO receipts r USING (SELECT :1 AS id, :2 AS donation_id, :3 AS receipt_key, :4 AS file_name, :5 AS content_type, :6 AS receipt_size, TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS created_at FROM dual) s ON (r.id = s.id) WHEN NOT MATCHED THEN INSERT (id, donation_id, receipt_key, file_name, content_type, receipt_size, created_at) VALUES (s.id, s.donation_id, s.receipt_key, s.file_name, s.content_type, s.receipt_size, s.created_at)";
+                let is_encrypted = receipt.is_encrypted.map(|v| if v { 1 } else { 0 });
+                let sql = "MERGE INTO receipts r USING (SELECT :1 AS id, :2 AS donation_id, :3 AS receipt_key, :4 AS file_name, :5 AS content_type, :6 AS receipt_size, :7 AS is_encrypted, :8 AS encrypted_payload, TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') AS created_at FROM dual) s ON (r.id = s.id) WHEN NOT MATCHED THEN INSERT (id, donation_id, receipt_key, file_name, content_type, receipt_size, is_encrypted, encrypted_payload, created_at) VALUES (s.id, s.donation_id, s.receipt_key, s.file_name, s.content_type, s.receipt_size, s.is_encrypted, s.encrypted_payload, s.created_at)";
                 conn.execute(
                     sql,
                     &crate::oracle_params![
@@ -55,6 +59,8 @@ pub async fn batch_sync(pool: &DbPool, user_id: &str, req: crate::db::models::Ba
                         receipt.file_name,
                         receipt.content_type,
                         receipt.size,
+                        is_encrypted,
+                        receipt.encrypted_payload,
                         chrono::Utc::now().to_rfc3339(),
                     ],
                 )
@@ -85,14 +91,19 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
             let year_opt = patch.year_opt;
             let amount_opt = patch.amount_opt;
             let notes_cloned = patch.notes.clone();
+            let is_encrypted_opt = patch.is_encrypted;
+            let encrypted_payload_opt = patch.encrypted_payload.clone();
             let rows = conn
                 .query(
-                    "SELECT donation_date, donation_year, donation_category, donation_amount, charity_id, notes, updated_at FROM donations WHERE id = :1 AND user_id = :2",
+                    "SELECT donation_date, donation_year, donation_category, donation_amount, charity_id, notes, updated_at, is_encrypted, encrypted_payload FROM donations WHERE id = :1 AND user_id = :2",
                     &crate::oracle_params![donation_id.clone(), user_id.clone()],
                 )
                 .await?;
             let revision_payload = if let Some(row) = rows.first() {
                 let existing_updated = crate::db::oracle::row_opt_string(row, 6);
+                let existing_is_encrypted = crate::db::oracle::row_bool(row, 7);
+                let existing_encrypted_payload = crate::db::oracle::row_opt_string(row, 8);
+
                 if let (Some(inc), Some(ex)) = (incoming.clone(), existing_updated.clone()) {
                     if inc <= ex {
                         None
@@ -110,6 +121,8 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                         let new_amount = amount_opt.or(existing_amount);
                         let new_charity_id = charity_id_owned.clone().or(existing_charity_id.clone()).unwrap_or_default();
                         let new_notes = notes_cloned.clone().or(existing_notes.clone());
+                        let new_is_encrypted = is_encrypted_opt.or(existing_is_encrypted);
+                        let new_encrypted_payload = encrypted_payload_opt.clone().or(existing_encrypted_payload.clone());
                         let new_updated_at = incoming.clone().unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
                         let existing_date_str = existing_date
@@ -124,6 +137,8 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                             donation_amount: existing_amount,
                             charity_id: existing_charity_id.clone().unwrap_or_default(),
                             notes: existing_notes.clone(),
+                            is_encrypted: existing_is_encrypted,
+                            encrypted_payload: existing_encrypted_payload.clone(),
                             deleted: false,
                             updated_at: existing_updated,
                         });
@@ -136,11 +151,14 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                             donation_amount: new_amount,
                             charity_id: new_charity_id.clone(),
                             notes: new_notes.clone(),
+                            is_encrypted: new_is_encrypted,
+                            encrypted_payload: new_encrypted_payload.clone(),
                             deleted: false,
                             updated_at: Some(new_updated_at.clone()),
                         });
 
-                        let sql = "UPDATE donations SET donation_date = TO_DATE(:1, 'YYYY-MM-DD'), donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, updated_at = TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :8 AND user_id = :9";
+                        let sql = "UPDATE donations SET donation_date = TO_DATE(:1, 'YYYY-MM-DD'), donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, is_encrypted = :7, encrypted_payload = :8, updated_at = TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :10 AND user_id = :11";
+                        let is_enc_val = new_is_encrypted.map(|v| if v { 1 } else { 0 });
                         if let Err(e) = conn
                             .execute(
                                 sql,
@@ -151,6 +169,8 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                                     new_amount,
                                     new_charity_id,
                                     new_notes,
+                                    is_enc_val,
+                                    new_encrypted_payload,
                                     new_updated_at,
                                     donation_id.clone(),
                                     user_id.clone(),
@@ -178,6 +198,8 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                     let new_amount = amount_opt.or(existing_amount);
                     let new_charity_id = charity_id_owned.clone().or(existing_charity_id.clone()).unwrap_or_default();
                     let new_notes = notes_cloned.clone().or(existing_notes.clone());
+                    let new_is_encrypted = is_encrypted_opt.or(existing_is_encrypted);
+                    let new_encrypted_payload = encrypted_payload_opt.clone().or(existing_encrypted_payload.clone());
                     let new_updated_at = incoming.clone().unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
                     let existing_date_str = existing_date
@@ -192,6 +214,8 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                         donation_amount: existing_amount,
                         charity_id: existing_charity_id.clone().unwrap_or_default(),
                         notes: existing_notes.clone(),
+                        is_encrypted: existing_is_encrypted,
+                        encrypted_payload: existing_encrypted_payload.clone(),
                         deleted: false,
                         updated_at: existing_updated,
                     });
@@ -204,11 +228,14 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                         donation_amount: new_amount,
                         charity_id: new_charity_id.clone(),
                         notes: new_notes.clone(),
+                        is_encrypted: new_is_encrypted,
+                        encrypted_payload: new_encrypted_payload.clone(),
                         deleted: false,
                         updated_at: Some(new_updated_at.clone()),
                     });
 
-                    let sql = "UPDATE donations SET donation_date = TO_DATE(:1, 'YYYY-MM-DD'), donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, updated_at = TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :8 AND user_id = :9";
+                    let sql = "UPDATE donations SET donation_date = TO_DATE(:1, 'YYYY-MM-DD'), donation_year = :2, donation_category = :3, donation_amount = :4, charity_id = :5, notes = :6, is_encrypted = :7, encrypted_payload = :8, updated_at = TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :10 AND user_id = :11";
+                    let is_enc_val = new_is_encrypted.map(|v| if v { 1 } else { 0 });
                     if let Err(e) = conn
                         .execute(
                             sql,
@@ -219,6 +246,8 @@ pub async fn update_donation(pool: &DbPool, patch: &crate::db::models::DonationP
                                 new_amount,
                                 new_charity_id,
                                 new_notes,
+                                is_enc_val,
+                                new_encrypted_payload,
                                 new_updated_at,
                                 donation_id.clone(),
                                 user_id.clone(),

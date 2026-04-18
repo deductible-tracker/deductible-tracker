@@ -4,7 +4,7 @@ use deadpool_oracle::Pool;
 
 pub(crate) async fn list_charities(pool: &Pool, user_id: &str) -> anyhow::Result<Vec<Charity>> {
     let conn = pool.get().await?;
-    let sql = "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 ORDER BY name ASC";
+    let sql = "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification, is_encrypted, encrypted_payload FROM charities WHERE user_id = :1 ORDER BY name ASC";
     let rows = conn
         .query(sql, &crate::oracle_params![user_id.to_string()])
         .await?;
@@ -26,6 +26,8 @@ pub(crate) async fn list_charities(pool: &Pool, user_id: &str) -> anyhow::Result
             category: crate::db::oracle::row_opt_string(row, 12),
             status: crate::db::oracle::row_opt_string(row, 13),
             classification: crate::db::oracle::row_opt_string(row, 14),
+            is_encrypted: crate::db::oracle::row_bool(row, 15),
+            encrypted_payload: crate::db::oracle::row_opt_string(row, 16),
         });
     }
     Ok(out)

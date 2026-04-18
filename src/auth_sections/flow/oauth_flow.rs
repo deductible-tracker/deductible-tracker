@@ -59,16 +59,22 @@ pub struct UserProfile {
     pub agi: Option<f64>,
     pub marginal_tax_rate: Option<f64>,
     pub itemize_deductions: Option<bool>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
+    pub vault_credential_id: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateMeRequest {
-    pub email: String,
-    pub name: String,
+    pub email: Option<String>,
+    pub name: Option<String>,
     pub filing_status: Option<String>,
     pub agi: Option<f64>,
     pub marginal_tax_rate: Option<f64>,
     pub itemize_deductions: Option<bool>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
+    pub vault_credential_id: Option<String>,
 }
 
 // Claims for our JWT
@@ -471,6 +477,8 @@ pub async fn callback(
                 agi: row.4,
                 marginal_tax_rate: row.5,
                 itemize_deductions: row.6,
+                is_encrypted: row.7,
+                encrypted_payload: row.8,
             }
         },
         Ok(None) => {
@@ -482,6 +490,8 @@ pub async fn callback(
                 agi: None,
                 marginal_tax_rate: None,
                 itemize_deductions: None,
+                is_encrypted: None,
+                encrypted_payload: None,
                 provider: provider.clone(),
             }
         },
@@ -495,6 +505,8 @@ pub async fn callback(
                 agi: None,
                 marginal_tax_rate: None,
                 itemize_deductions: None,
+                is_encrypted: None,
+                encrypted_payload: None,
                 provider: provider.clone(),
             }
         }
@@ -509,6 +521,8 @@ pub async fn callback(
         agi: user.agi,
         marginal_tax_rate: user.marginal_tax_rate,
         itemize_deductions: user.itemize_deductions,
+        is_encrypted: user.is_encrypted,
+        encrypted_payload: user.encrypted_payload.clone(),
     }).await;
 
     let token = match create_jwt(&user) {

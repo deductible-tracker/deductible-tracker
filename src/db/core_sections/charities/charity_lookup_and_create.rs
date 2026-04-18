@@ -143,7 +143,7 @@ pub async fn find_charity_by_name_or_ein(
             if let Some(ein_val) = ein.clone().filter(|value| !value.is_empty()) {
                 let rows = conn
                     .query(
-                        "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND ein = :2 FETCH FIRST 1 ROWS ONLY",
+                        "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification, is_encrypted, encrypted_payload FROM charities WHERE user_id = :1 AND ein = :2 FETCH FIRST 1 ROWS ONLY",
                         &crate::oracle_params![user_id.to_string(), ein_val],
                     )
                     .await?;
@@ -155,7 +155,7 @@ pub async fn find_charity_by_name_or_ein(
             let normalized_name = name.trim().to_ascii_lowercase();
             let rows = conn
                 .query(
-                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification FROM charities WHERE user_id = :1 AND LOWER(name) = :2 FETCH FIRST 1 ROWS ONLY",
+                    "SELECT id, user_id, name, ein, created_at, updated_at, nonprofit_type, deductibility, street, city, state, zip, category, status, classification, is_encrypted, encrypted_payload FROM charities WHERE user_id = :1 AND LOWER(name) = :2 FETCH FIRST 1 ROWS ONLY",
                     &crate::oracle_params![user_id.to_string(), normalized_name],
                 )
                 .await?;
@@ -182,6 +182,8 @@ fn charity_from_row(row: &Row) -> crate::db::models::Charity {
         category: crate::db::oracle::row_opt_string(row, 12),
         status: crate::db::oracle::row_opt_string(row, 13),
         classification: crate::db::oracle::row_opt_string(row, 14),
+        is_encrypted: crate::db::oracle::row_bool(row, 15),
+        encrypted_payload: crate::db::oracle::row_opt_string(row, 16),
     }
 }
 
@@ -193,7 +195,8 @@ pub async fn create_charity(pool: &DbPool, input: &crate::db::models::NewCharity
         DbPoolEnum::Oracle(p) => {
             let conn = p.get().await?;
             let trunc_name = input.name.chars().take(255).collect::<String>();
-            let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, TO_TIMESTAMP_TZ(:14, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
+            let is_encrypted = input.is_encrypted.map(|v| if v { 1 } else { 0 });
+            let sql = "INSERT INTO charities (id, user_id, name, ein, category, status, classification, nonprofit_type, deductibility, street, city, state, zip, is_encrypted, encrypted_payload, created_at) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12, :13, :14, :15, TO_TIMESTAMP_TZ(:16, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
             if let Err(e) = conn
                 .execute(
                     sql,
@@ -211,6 +214,8 @@ pub async fn create_charity(pool: &DbPool, input: &crate::db::models::NewCharity
                         input.city.clone(),
                         input.state.clone(),
                         input.zip.clone(),
+                        is_encrypted,
+                        input.encrypted_payload.clone(),
                         created_at_str.clone(),
                     ],
                 )

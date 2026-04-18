@@ -7,6 +7,8 @@ struct DonationRevisionSnapshot {
     donation_amount: Option<f64>,
     charity_id: String,
     notes: Option<String>,
+    is_encrypted: Option<bool>,
+    encrypted_payload: Option<String>,
     deleted: bool,
     updated_at: Option<String>,
 }
@@ -21,6 +23,8 @@ fn build_donation_revision_json(snapshot: &DonationRevisionSnapshot) -> String {
         "donation_amount": snapshot.donation_amount,
         "charity_id": snapshot.charity_id,
         "notes": snapshot.notes,
+        "is_encrypted": snapshot.is_encrypted,
+        "encrypted_payload": snapshot.encrypted_payload,
         "deleted": snapshot.deleted,
         "updated_at": snapshot.updated_at,
     })
@@ -99,7 +103,7 @@ pub async fn soft_delete_donation(pool: &DbPool, user_id: &str, donation_id: &st
             let updated_at = chrono::Utc::now().to_rfc3339();
             let existing_rows = conn
                 .query(
-                    "SELECT donation_date, donation_year, donation_category, donation_amount, charity_id, notes, deleted FROM donations WHERE id = :1 AND user_id = :2",
+                    "SELECT donation_date, donation_year, donation_category, donation_amount, charity_id, notes, deleted, is_encrypted, encrypted_payload FROM donations WHERE id = :1 AND user_id = :2",
                     &crate::oracle_params![donation_id.clone(), user_id.clone()],
                 )
                 .await?;
@@ -116,6 +120,8 @@ pub async fn soft_delete_donation(pool: &DbPool, user_id: &str, donation_id: &st
             let existing_charity_id = crate::db::oracle::row_string(existing, 4);
             let existing_notes = crate::db::oracle::row_opt_string(existing, 5);
             let existing_deleted = crate::db::oracle::row_bool(existing, 6).unwrap_or(false);
+            let existing_is_encrypted = crate::db::oracle::row_bool(existing, 7);
+            let existing_encrypted_payload = crate::db::oracle::row_opt_string(existing, 8);
 
             let sql = "UPDATE donations SET deleted = 1, updated_at = TO_TIMESTAMP_TZ(:1, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') WHERE id = :2 AND user_id = :3";
             if let Err(e) = conn
@@ -151,6 +157,8 @@ pub async fn soft_delete_donation(pool: &DbPool, user_id: &str, donation_id: &st
                     donation_amount: existing_amount,
                     charity_id: existing_charity_id.clone(),
                     notes: existing_notes.clone(),
+                    is_encrypted: existing_is_encrypted,
+                    encrypted_payload: existing_encrypted_payload.clone(),
                     deleted: existing_deleted,
                     updated_at: None,
                 });
@@ -163,6 +171,8 @@ pub async fn soft_delete_donation(pool: &DbPool, user_id: &str, donation_id: &st
                     donation_amount: existing_amount,
                     charity_id: existing_charity_id,
                     notes: existing_notes,
+                    is_encrypted: existing_is_encrypted,
+                    encrypted_payload: existing_encrypted_payload,
                     deleted: true,
                     updated_at: Some(updated_at.clone()),
                 });

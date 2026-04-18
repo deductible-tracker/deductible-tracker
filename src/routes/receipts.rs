@@ -2,9 +2,10 @@ use crate::auth::AuthenticatedUser;
 use crate::AppState;
 use axum::{
     extract::{Json, Query, State},
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
     response::{IntoResponse, Json as AxumJson},
 };
+use base64::Engine;
 use chrono::Datelike;
 use serde::Deserialize;
 use serde_json::json;
@@ -131,6 +132,8 @@ pub struct ConfirmReceiptRequest {
     pub content_type: Option<String>,
     pub size: Option<i64>,
     pub donation_id: String,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -192,6 +195,8 @@ pub async fn confirm_receipt(
         file_name: req.file_name.clone(),
         content_type: req.content_type.clone(),
         size: req.size,
+        is_encrypted: req.is_encrypted,
+        encrypted_payload: req.encrypted_payload.clone(),
         created_at: now,
     };
 
@@ -246,15 +251,17 @@ pub struct OcrResponse {
 pub async fn ocr_receipt(
     State(state): State<AppState>,
     user: AuthenticatedUser,
+    headers: HeaderMap,
     Json(req): Json<OcrRequest>,
 ) -> impl IntoResponse {
-    let (receipt_id, receipt_key, content_type, size) = if let Some(receipt_id) = req.id.clone() {
+    let (receipt_id, receipt_key, content_type, size, is_encrypted) = if let Some(receipt_id) = req.id.clone() {
         match crate::db::receipts::get_receipt(&state.db, &user.id, &receipt_id).await {
             Ok(Some(receipt)) => (
                 Some(receipt.id),
                 receipt.key,
                 receipt.content_type,
                 receipt.size,
+                receipt.is_encrypted.unwrap_or(false),
             ),
             Ok(None) => return (StatusCode::NOT_FOUND, "Receipt not found").into_response(),
             Err(e) => {
@@ -268,7 +275,7 @@ pub async fn ocr_receipt(
         if !normalized_key.starts_with(&user_prefix) {
             return (StatusCode::FORBIDDEN, "Forbidden").into_response();
         }
-        (None, normalized_key, req.content_type.clone(), req.size)
+        (None, normalized_key, req.content_type.clone(), req.size, false)
     } else {
         return (StatusCode::BAD_REQUEST, "Receipt id or key is required").into_response();
     };
@@ -284,7 +291,45 @@ pub async fn ocr_receipt(
         }
     }
 
-    match ocr::analyze_receipt(&state, &receipt_key, content_type.as_deref()).await {
+    let analysis_result = if is_encrypted {
+        let Some(vault_key) = headers.get("X-Vault-Key").and_then(|h| h.to_str().ok()) else {
+            return (StatusCode::BAD_REQUEST, "Vault key required for encrypted receipt").into_response();
+        };
+
+        // Download and decrypt transiently
+        let download_url = match crate::storage::presign_url(&state, "GET", &receipt_key, 300) {
+            Ok(url) => url,
+            Err(e) => {
+                tracing::error!("Failed to presign URL for transient OCR: {}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Storage Error").into_response();
+            }
+        };
+
+        let client = reqwest::Client::new();
+        let bytes = match client.get(download_url).send().await {
+            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+                Ok(b) => b,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read receipt bytes: {}", e)).into_response(),
+            },
+            Ok(resp) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to download receipt: {}", resp.status())).into_response(),
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Download request failed: {}", e)).into_response(),
+        };
+
+        let encrypted_b64 = base64::prelude::BASE64_STANDARD.encode(&bytes);
+        let decrypted_bytes = match crate::auth::decrypt_payload(vault_key, &encrypted_b64) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!("Failed to decrypt receipt for OCR: {}", e);
+                return (StatusCode::UNAUTHORIZED, "Invalid vault key or corrupted data").into_response();
+            }
+        };
+
+        ocr::analyze_receipt_bytes(&state, &decrypted_bytes, content_type.as_deref()).await
+    } else {
+        ocr::analyze_receipt(&state, &receipt_key, content_type.as_deref()).await
+    };
+
+    match analysis_result {
         Ok(analysis) => {
             if let Some(receipt_id_value) = receipt_id.clone() {
                 let ocr_text = analysis.ocr_text.clone();

@@ -14,7 +14,8 @@ pub(crate) async fn add_receipt(
     created_at: &str,
 ) -> anyhow::Result<()> {
     let conn = pool.get().await?;
-    let sql = "INSERT INTO receipts (id, donation_id, receipt_key, file_name, content_type, receipt_size, ocr_text, ocr_date, ocr_amount, ocr_status, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10, TO_TIMESTAMP_TZ(:11, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
+    let is_encrypted = input.is_encrypted.map(|v| if v { 1 } else { 0 });
+    let sql = "INSERT INTO receipts (id, donation_id, receipt_key, file_name, content_type, receipt_size, ocr_text, ocr_date, ocr_amount, ocr_status, is_encrypted, encrypted_payload, created_at) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12, TO_TIMESTAMP_TZ(:13, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
     conn.execute(
         sql,
         &crate::oracle_params![
@@ -28,6 +29,8 @@ pub(crate) async fn add_receipt(
             Option::<String>::None,
             Option::<i64>::None,
             Option::<String>::None,
+            is_encrypted,
+            input.encrypted_payload.clone(),
             created_at.to_string(),
         ],
     )
@@ -43,9 +46,9 @@ pub(crate) async fn list_receipts(
 ) -> anyhow::Result<Vec<Receipt>> {
     let conn = pool.get().await?;
     let sql = if donation_id.is_some() {
-        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.donation_id = :2 AND d.deleted = 0"
+        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at, r.is_encrypted, r.encrypted_payload FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.donation_id = :2 AND d.deleted = 0"
     } else {
-        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND d.deleted = 0"
+        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at, r.is_encrypted, r.encrypted_payload FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND d.deleted = 0"
     };
     let rows = if let Some(donation_id) = donation_id {
         conn.query(
@@ -71,6 +74,8 @@ pub(crate) async fn list_receipts(
             ocr_date: crate::db::oracle::row_naive_date(row, 7),
             ocr_amount: crate::db::oracle::row_i64(row, 8),
             ocr_status: crate::db::oracle::row_opt_string(row, 9),
+            is_encrypted: crate::db::oracle::row_bool(row, 11),
+            encrypted_payload: crate::db::oracle::row_opt_string(row, 12),
             created_at: crate::db::oracle::row_datetime_utc(row, 10).unwrap_or_else(Utc::now),
         });
     }
@@ -84,9 +89,9 @@ pub(crate) async fn list_receipt_summaries(
 ) -> anyhow::Result<Vec<Receipt>> {
     let conn = pool.get().await?;
     let sql = if donation_id.is_some() {
-        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.donation_id = :2 AND d.deleted = 0"
+        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.created_at, r.is_encrypted, r.encrypted_payload FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.donation_id = :2 AND d.deleted = 0"
     } else {
-        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND d.deleted = 0"
+        "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.created_at, r.is_encrypted, r.encrypted_payload FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND d.deleted = 0"
     };
     let rows = if let Some(donation_id) = donation_id {
         conn.query(
@@ -112,6 +117,8 @@ pub(crate) async fn list_receipt_summaries(
             ocr_date: None,
             ocr_amount: None,
             ocr_status: None,
+            is_encrypted: crate::db::oracle::row_bool(row, 7),
+            encrypted_payload: crate::db::oracle::row_opt_string(row, 8),
             created_at: crate::db::oracle::row_datetime_utc(row, 6).unwrap_or_else(Utc::now),
         });
     }
@@ -124,7 +131,7 @@ pub(crate) async fn get_receipt(
     receipt_id: &str,
 ) -> anyhow::Result<Option<Receipt>> {
     let conn = pool.get().await?;
-    let sql = "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.id = :2";
+    let sql = "SELECT r.id, r.donation_id, r.receipt_key, r.file_name, r.content_type, r.receipt_size, r.ocr_text, r.ocr_date, r.ocr_amount, r.ocr_status, r.created_at, r.is_encrypted, r.encrypted_payload FROM receipts r JOIN donations d ON d.id = r.donation_id WHERE d.user_id = :1 AND r.id = :2";
     let rows = conn
         .query(
             sql,
@@ -142,6 +149,8 @@ pub(crate) async fn get_receipt(
         ocr_date: crate::db::oracle::row_naive_date(r, 7),
         ocr_amount: crate::db::oracle::row_i64(r, 8),
         ocr_status: crate::db::oracle::row_opt_string(r, 9),
+        is_encrypted: crate::db::oracle::row_bool(r, 11),
+        encrypted_payload: crate::db::oracle::row_opt_string(r, 12),
         created_at: crate::db::oracle::row_datetime_utc(r, 10)
             .unwrap_or_else(|| parse_utc_or_now(None)),
     });

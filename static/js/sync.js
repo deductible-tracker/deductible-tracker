@@ -1,6 +1,7 @@
 import db from './db.js';
 import { getCurrentUser, getCurrentUserId, setCurrentUser } from './services/current-user.js';
 import { apiJson } from './services/http.js';
+import { registerVaultKey, unlockVaultKey, encryptData, decryptData, ensureVaultKey } from './services/crypto.js';
 
 const API_BASE = '/api';
 const PENDING_PROFILE_KEY_PREFIX = 'pending_profile:';
@@ -105,6 +106,8 @@ export const Sync = {
 
     console.log('Pushing changes (batched)...', queue.length);
 
+    const vaultKey = await ensureVaultKey(userId);
+
     const batch = {
       donations: [],
       receipts: [],
@@ -133,7 +136,7 @@ export const Sync = {
         if (task.table === 'donations') {
           const donation = await db.donations.get(itemId);
           if (donation || action === 'delete') {
-            batch.donations.push({
+            const item = {
               action,
               id: itemId,
               date: donation ? donation.date : null,
@@ -143,7 +146,25 @@ export const Sync = {
               charity_id: donation ? donation.charity_id : '',
               notes: donation ? donation.notes : null,
               updated_at: donation ? donation.updated_at : null,
-            });
+            };
+
+            if (vaultKey && donation) {
+              const sensitive = {
+                date: donation.date,
+                category: donation.category,
+                amount: donation.amount,
+                notes: donation.notes,
+              };
+              item.is_encrypted = true;
+              item.encrypted_payload = await encryptData(vaultKey, sensitive);
+              // Clear plaintext fields for transport
+              item.date = null;
+              item.category = null;
+              item.amount = null;
+              item.notes = null;
+            }
+
+            batch.donations.push(item);
             taskIds.push(task.id);
             if (action !== 'delete') {
               donationUpdates.push(itemId);
@@ -152,7 +173,7 @@ export const Sync = {
         } else if (task.table === 'receipts' && action === 'create') {
           const receipt = await db.receipts.get(itemId);
           if (receipt && receipt.donation_id) {
-            batch.receipts.push({
+            const item = {
               action: 'create',
               id: receipt.id,
               donation_id: receipt.donation_id,
@@ -160,7 +181,21 @@ export const Sync = {
               file_name: receipt.file_name,
               content_type: receipt.content_type,
               size: receipt.size,
-            });
+            };
+
+            if (vaultKey) {
+              const sensitive = {
+                file_name: receipt.file_name,
+                ocr_text: receipt.ocr_text,
+                ocr_date: receipt.ocr_date,
+                ocr_amount: receipt.ocr_amount,
+              };
+              item.is_encrypted = true;
+              item.encrypted_payload = await encryptData(vaultKey, sensitive);
+              item.file_name = null; // Don't leak filename
+            }
+
+            batch.receipts.push(item);
             taskIds.push(task.id);
           }
         }
@@ -236,8 +271,21 @@ export const Sync = {
         return;
       }
       if (data && Array.isArray(data.donations)) {
-        for (const remote of data.donations) {
+        for (let remote of data.donations) {
           try {
+            if (remote.is_encrypted && remote.encrypted_payload) {
+              const vaultKey = await ensureVaultKey(userId);
+              if (vaultKey) {
+                try {
+                  const decrypted = await decryptData(vaultKey, remote.encrypted_payload);
+                  remote = { ...remote, ...decrypted };
+                } catch (e) {
+                  console.error('Failed to decrypt remote donation', remote.id, e);
+                  continue;
+                }
+              }
+            }
+
             if (remote.deleted) {
               await db.donations.delete(remote.id);
             } else {

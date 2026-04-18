@@ -172,7 +172,7 @@ pub(crate) async fn get_user_profile_by_email(
     email: &str,
 ) -> anyhow::Result<Option<(String, UserProfileRow)>> {
     let conn = pool.get().await?;
-    let sql = "SELECT id, email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions FROM users WHERE email = :1";
+    let sql = "SELECT id, email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload, vault_credential_id FROM users WHERE email = :1";
     let rows = conn
         .query(sql, &crate::oracle_params![email.to_string()])
         .await?;
@@ -191,7 +191,7 @@ pub(crate) async fn get_user_profile(
     user_id: &str,
 ) -> anyhow::Result<Option<UserProfileRow>> {
     let conn = pool.get().await?;
-    let sql = "SELECT email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions FROM users WHERE id = :1";
+    let sql = "SELECT email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload, vault_credential_id FROM users WHERE id = :1";
     let rows = conn
         .query(sql, &crate::oracle_params![user_id.to_string()])
         .await?;
@@ -210,7 +210,10 @@ pub(crate) async fn upsert_user_profile(
     let itemize_deductions = input
         .itemize_deductions
         .map(|value| if value { 1 } else { 0 });
-    let sql = "MERGE INTO users u USING (SELECT :1 AS id, :2 AS email, :3 AS name, :4 AS provider, :5 AS filing_status, :6 AS agi, :7 AS marginal_tax_rate, :8 AS itemize_deductions FROM dual) s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email, u.name = s.name, u.provider = s.provider, u.filing_status = s.filing_status, u.agi = s.agi, u.marginal_tax_rate = s.marginal_tax_rate, u.itemize_deductions = s.itemize_deductions WHEN NOT MATCHED THEN INSERT (id, email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions) VALUES (s.id, s.email, s.name, s.provider, s.filing_status, s.agi, s.marginal_tax_rate, s.itemize_deductions)";
+    let is_encrypted = input
+        .is_encrypted
+        .map(|value| if value { 1 } else { 0 });
+    let sql = "MERGE INTO users u USING (SELECT :1 AS id, :2 AS email, :3 AS name, :4 AS provider, :5 AS filing_status, :6 AS agi, :7 AS marginal_tax_rate, :8 AS itemize_deductions, :9 AS is_encrypted, :10 AS encrypted_payload, :11 AS vault_credential_id FROM dual) s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email, u.name = s.name, u.provider = s.provider, u.filing_status = s.filing_status, u.agi = s.agi, u.marginal_tax_rate = s.marginal_tax_rate, u.itemize_deductions = s.itemize_deductions, u.is_encrypted = s.is_encrypted, u.encrypted_payload = s.encrypted_payload, u.vault_credential_id = s.vault_credential_id WHEN NOT MATCHED THEN INSERT (id, email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload, vault_credential_id) VALUES (s.id, s.email, s.name, s.provider, s.filing_status, s.agi, s.marginal_tax_rate, s.itemize_deductions, s.is_encrypted, s.encrypted_payload, s.vault_credential_id)";
     conn.execute(
         sql,
         &crate::oracle_params![
@@ -222,6 +225,9 @@ pub(crate) async fn upsert_user_profile(
             input.agi,
             input.marginal_tax_rate,
             itemize_deductions,
+            is_encrypted,
+            input.encrypted_payload.clone(),
+            input.vault_credential_id.clone(),
         ],
     )
     .await?;
@@ -449,6 +455,9 @@ async fn run_bootstrap_ddl(pool: &Pool) -> anyhow::Result<()> {
         "ALTER TABLE users ADD (agi NUMBER(14,2))",
         "ALTER TABLE users ADD (marginal_tax_rate NUMBER(6,4))",
         "ALTER TABLE users ADD (itemize_deductions NUMBER(1))",
+        "ALTER TABLE users ADD (is_encrypted NUMBER(1) DEFAULT 0)",
+        "ALTER TABLE users ADD (encrypted_payload CLOB)",
+        "ALTER TABLE users ADD (vault_credential_id VARCHAR2(512))",
         "ALTER TABLE users ADD (updated_at TIMESTAMP)",
         "ALTER TABLE charities ADD (category VARCHAR2(255))",
         "ALTER TABLE charities ADD (status VARCHAR2(255))",
@@ -459,8 +468,14 @@ async fn run_bootstrap_ddl(pool: &Pool) -> anyhow::Result<()> {
         "ALTER TABLE charities ADD (city VARCHAR2(120))",
         "ALTER TABLE charities ADD (state VARCHAR2(16))",
         "ALTER TABLE charities ADD (zip VARCHAR2(20))",
+        "ALTER TABLE charities ADD (is_encrypted NUMBER(1) DEFAULT 0)",
+        "ALTER TABLE charities ADD (encrypted_payload CLOB)",
         "ALTER TABLE donations ADD (donation_category VARCHAR2(32))",
         "ALTER TABLE donations ADD (donation_amount NUMBER(12,2))",
+        "ALTER TABLE donations ADD (is_encrypted NUMBER(1) DEFAULT 0)",
+        "ALTER TABLE donations ADD (encrypted_payload CLOB)",
+        "ALTER TABLE receipts ADD (is_encrypted NUMBER(1) DEFAULT 0)",
+        "ALTER TABLE receipts ADD (encrypted_payload CLOB)",
         "ALTER TABLE receipts ADD (updated_at TIMESTAMP)",
         "ALTER TABLE audit_logs ADD (updated_at TIMESTAMP)",
         "ALTER TABLE val_categories ADD (created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
@@ -518,6 +533,9 @@ fn user_profile_row_from_parts(
     provider: String,
     filing_status: Option<String>,
     numeric_fields: UserProfileNumericFields,
+    is_encrypted: Option<bool>,
+    encrypted_payload: Option<String>,
+    vault_credential_id: Option<String>,
 ) -> UserProfileRow {
     (
         email,
@@ -527,6 +545,9 @@ fn user_profile_row_from_parts(
         numeric_fields.agi,
         numeric_fields.marginal_tax_rate,
         numeric_fields.itemize_deductions,
+        is_encrypted,
+        encrypted_payload,
+        vault_credential_id,
     )
 }
 
@@ -541,6 +562,9 @@ fn user_profile_row_from_row(row: &Row, offset: usize) -> UserProfileRow {
             marginal_tax_rate: row_f64(row, offset + 5),
             itemize_deductions: row_bool(row, offset + 6),
         },
+        row_bool(row, offset + 7),
+        row_opt_string(row, offset + 8),
+        row_opt_string(row, offset + 9),
     )
 }
 

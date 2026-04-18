@@ -64,6 +64,9 @@ pub(crate) type UserProfileRow = (
     Option<f64>,
     Option<f64>,
     Option<bool>,
+    Option<bool>,
+    Option<String>,
+    Option<String>,
 );
 
 pub async fn get_user_profile_by_email(
@@ -162,6 +165,8 @@ pub async fn import_data(
             city: charity.city.clone(),
             state: charity.state.clone(),
             zip: charity.zip.clone(),
+            is_encrypted: charity.is_encrypted,
+            encrypted_payload: charity.encrypted_payload.clone(),
             created_at: charity.created_at,
         };
         let _ = crate::db::create_charity(pool, &new_charity).await;
@@ -179,6 +184,8 @@ pub async fn import_data(
             charity_id: donation.charity_id.clone(),
             amount: donation.amount,
             notes: donation.notes.clone(),
+            is_encrypted: donation.is_encrypted,
+            encrypted_payload: donation.encrypted_payload.clone(),
             created_at: donation.created_at,
         };
         let _ = add_donation(pool, &new_donation).await;
@@ -193,6 +200,8 @@ pub async fn import_data(
             file_name: receipt.file_name.clone(),
             content_type: receipt.content_type.clone(),
             size: receipt.size,
+            is_encrypted: receipt.is_encrypted,
+            encrypted_payload: receipt.encrypted_payload.clone(),
             created_at: receipt.created_at,
         };
         let _ = add_receipt(pool, &new_receipt).await;

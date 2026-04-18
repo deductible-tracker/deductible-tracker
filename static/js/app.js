@@ -44,6 +44,7 @@ import {
 } from './views/routes/charities.js';
 import { renderReportsRoute } from './views/routes/reports.js';
 import { renderPersonalInfoRoute } from './views/routes/personal.js';
+import { registerVaultKey, unlockVaultKey, encryptData, decryptData, isWebAuthnSupported } from './services/crypto.js';
 
 // Simple Router
 const routes = {
@@ -574,6 +575,11 @@ function buildRouteDeps() {
     db,
     deleteCharityOnServer,
     deleteDonationOnServer,
+    registerVaultKey,
+    unlockVaultKey,
+    encryptData,
+    decryptData,
+    isWebAuthnSupported,
     escapeHtml,
     formatCurrency,
     formatFigureText,

@@ -1,4 +1,6 @@
 import { apiJson } from './http.js';
+import { ensureVaultKey, encryptData, encryptBinaryData } from './crypto.js';
+import { getCurrentUserId } from './current-user.js';
 
 export function isImageReceipt(contentType) {
   return contentType === 'image/jpeg' || contentType === 'image/png';
@@ -30,13 +32,35 @@ export async function uploadReceiptBinary(uploadUrl, file) {
 }
 
 export async function uploadReceiptToStorage(file) {
-  const uploadData = await requestReceiptUpload(file.type);
-  await uploadReceiptBinary(uploadData.upload_url, file);
+  const userId = getCurrentUserId();
+  const vaultKey = await ensureVaultKey(userId);
+  
+  let uploadFile = file;
+  let isEncrypted = false;
+  let encryptedPayload = null;
+
+  if (vaultKey) {
+    const buffer = await file.arrayBuffer();
+    const base64Encrypted = await encryptBinaryData(vaultKey, buffer);
+    // Create a new blob from the encrypted bytes to upload
+    const binaryEncrypted = Uint8Array.from(atob(base64Encrypted), c => c.charCodeAt(0));
+    uploadFile = new Blob([binaryEncrypted], { type: 'application/octet-stream' });
+    isEncrypted = true;
+    
+    // Encrypt filename as part of metadata
+    encryptedPayload = await encryptData(vaultKey, { file_name: file.name });
+  }
+
+  const uploadData = await requestReceiptUpload(uploadFile.type || 'application/octet-stream');
+  await uploadReceiptBinary(uploadData.upload_url, uploadFile);
+  
   return {
     key: uploadData.key,
-    file_name: file.name,
+    file_name: isEncrypted ? null : file.name,
     content_type: file.type,
-    size: file.size,
+    size: uploadFile.size,
+    is_encrypted: isEncrypted,
+    encrypted_payload: encryptedPayload,
   };
 }
 
@@ -50,6 +74,8 @@ export async function confirmReceiptUpload(uploadedReceipt, donationId) {
       content_type: uploadedReceipt.content_type,
       size: uploadedReceipt.size,
       donation_id: donationId,
+      is_encrypted: uploadedReceipt.is_encrypted,
+      encrypted_payload: uploadedReceipt.encrypted_payload,
     }),
   });
 
@@ -99,9 +125,19 @@ export function normalizeReceiptAnalysis(data) {
 }
 
 export async function analyzeReceipt(payload) {
+  const userId = getCurrentUserId();
+  const vaultKey = await ensureVaultKey(userId);
+  const headers = { 'Content-Type': 'application/json' };
+
+  if (vaultKey) {
+    // Export vault key to base64 for header
+    const rawKey = await crypto.subtle.exportKey('raw', vaultKey);
+    headers['X-Vault-Key'] = btoa(String.fromCharCode(...new Uint8Array(rawKey)));
+  }
+
   const { res, data } = await apiJson('/api/receipts/ocr', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload),
   });
 

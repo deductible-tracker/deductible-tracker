@@ -15,7 +15,8 @@ pub(crate) async fn add_donation(
 ) -> anyhow::Result<()> {
     let conn = pool.get().await?;
     let donation_date = input.date.format("%Y-%m-%d").to_string();
-    let sql = "INSERT INTO donations (id, user_id, donation_year, donation_date, donation_category, donation_amount, charity_id, notes, created_at) VALUES (:1, :2, :3, TO_DATE(:4, 'YYYY-MM-DD'), :5, :6, :7, :8, TO_TIMESTAMP_TZ(:9, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
+    let is_encrypted = input.is_encrypted.map(|v| if v { 1 } else { 0 });
+    let sql = "INSERT INTO donations (id, user_id, donation_year, donation_date, donation_category, donation_amount, charity_id, notes, is_encrypted, encrypted_payload, created_at) VALUES (:1, :2, :3, TO_DATE(:4, 'YYYY-MM-DD'), :5, :6, :7, :8, :9, :10, TO_TIMESTAMP_TZ(:11, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
     conn.execute(
         sql,
         &crate::oracle_params![
@@ -27,6 +28,8 @@ pub(crate) async fn add_donation(
             input.amount,
             input.charity_id.clone(),
             input.notes.clone(),
+            is_encrypted,
+            input.encrypted_payload.clone(),
             created_at.to_string(),
         ],
     )
@@ -42,9 +45,9 @@ pub(crate) async fn list_donations(
 ) -> anyhow::Result<Vec<DonationModel>> {
     let conn = pool.get().await?;
     let sql = if year.is_some() {
-        "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.donation_year = :2 AND d.deleted = 0"
+        "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at, d.is_encrypted, d.encrypted_payload FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.donation_year = :2 AND d.deleted = 0"
     } else {
-        "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.deleted = 0"
+        "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at, d.is_encrypted, d.encrypted_payload FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND d.deleted = 0"
     };
     let rows = if let Some(year) = year {
         conn.query(sql, &crate::oracle_params![user_id.to_string(), year])
@@ -67,6 +70,8 @@ pub(crate) async fn list_donations(
             charity_name: crate::db::oracle::row_string(row, 7),
             charity_ein: crate::db::oracle::row_opt_string(row, 8),
             notes: crate::db::oracle::row_opt_string(row, 9),
+            is_encrypted: crate::db::oracle::row_bool(row, 12),
+            encrypted_payload: crate::db::oracle::row_opt_string(row, 13),
             shared_with: None,
             created_at: crate::db::oracle::row_datetime_utc(row, 10).unwrap_or_else(Utc::now),
             updated_at: crate::db::oracle::row_datetime_utc(row, 11).unwrap_or_else(Utc::now),
@@ -82,7 +87,7 @@ pub(crate) async fn list_donations_since(
     since: &str,
 ) -> anyhow::Result<Vec<DonationModel>> {
     let conn = pool.get().await?;
-    let sql = "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at, d.deleted FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND (d.updated_at > TO_TIMESTAMP_TZ(:2, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') OR d.created_at > TO_TIMESTAMP_TZ(:2, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
+    let sql = "SELECT d.id, d.user_id, d.donation_year, d.donation_date, d.donation_category, d.donation_amount, d.charity_id, c.name, c.ein, d.notes, d.created_at, d.updated_at, d.deleted, d.is_encrypted, d.encrypted_payload FROM donations d JOIN charities c ON c.id = d.charity_id WHERE d.user_id = :1 AND (d.updated_at > TO_TIMESTAMP_TZ(:2, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM') OR d.created_at > TO_TIMESTAMP_TZ(:2, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF TZH:TZM'))";
     let rows = conn
         .query(
             sql,
@@ -103,6 +108,8 @@ pub(crate) async fn list_donations_since(
             charity_name: crate::db::oracle::row_string(row, 7),
             charity_ein: crate::db::oracle::row_opt_string(row, 8),
             notes: crate::db::oracle::row_opt_string(row, 9),
+            is_encrypted: crate::db::oracle::row_bool(row, 13),
+            encrypted_payload: crate::db::oracle::row_opt_string(row, 14),
             shared_with: None,
             created_at: crate::db::oracle::row_datetime_utc(row, 10).unwrap_or_else(Utc::now),
             updated_at: crate::db::oracle::row_datetime_utc(row, 11).unwrap_or_else(Utc::now),

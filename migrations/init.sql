@@ -8,6 +8,9 @@ CREATE TABLE users (
     marginal_tax_rate NUMBER(6,4),
     itemize_deductions NUMBER(1),
     provider VARCHAR2(50),
+    is_encrypted NUMBER(1) DEFAULT 0,
+    encrypted_payload CLOB,
+    vault_credential_id VARCHAR2(512),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP
 );
@@ -22,6 +25,8 @@ CREATE TABLE donations (
     donation_amount NUMBER(12,2),
     charity_id VARCHAR2(255) NOT NULL,
     notes VARCHAR2(4000),
+    is_encrypted NUMBER(1) DEFAULT 0,
+    encrypted_payload CLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP,
     deleted NUMBER(1) DEFAULT 0,
@@ -47,6 +52,8 @@ CREATE TABLE charities (
     city VARCHAR2(120),
     state VARCHAR2(16),
     zip VARCHAR2(20),
+    is_encrypted NUMBER(1) DEFAULT 0,
+    encrypted_payload CLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP,
     CONSTRAINT fk_charities_user FOREIGN KEY (user_id) REFERENCES users(id)
@@ -69,6 +76,8 @@ CREATE TABLE receipts (
     ocr_date DATE,
     ocr_amount NUMBER,
     ocr_status VARCHAR2(50),
+    is_encrypted NUMBER(1) DEFAULT 0,
+    encrypted_payload CLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP,
     CONSTRAINT fk_receipts_donation FOREIGN KEY (donation_id) REFERENCES donations(id)

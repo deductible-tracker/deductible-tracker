@@ -81,6 +81,8 @@ pub async fn dev_login(
                     agi: row.4,
                     marginal_tax_rate: row.5,
                     itemize_deductions: row.6,
+                    is_encrypted: row.7,
+                    encrypted_payload: row.8,
                 }
             },
             _ => {
@@ -92,6 +94,8 @@ pub async fn dev_login(
                     agi: None,
                     marginal_tax_rate: None,
                     itemize_deductions: None,
+                    is_encrypted: None,
+                    encrypted_payload: None,
                     provider: "local".to_string(),
                 }
             }
@@ -106,6 +110,8 @@ pub async fn dev_login(
             agi: user.agi,
             marginal_tax_rate: user.marginal_tax_rate,
             itemize_deductions: user.itemize_deductions,
+            is_encrypted: user.is_encrypted,
+            encrypted_payload: user.encrypted_payload.clone(),
         }).await;
         match create_jwt(&user) {
             Ok(token) => {
@@ -182,7 +188,7 @@ pub async fn me(
     user: AuthenticatedUser,
 ) -> impl IntoResponse {
     match crate::db::users::get_user_profile(&state.db, &user.id).await {
-        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions))) => Json(UserProfile {
+        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload))) => Json(UserProfile {
             id: user.id,
             email,
             name,
@@ -190,6 +196,8 @@ pub async fn me(
             agi,
             marginal_tax_rate,
             itemize_deductions,
+            is_encrypted,
+            encrypted_payload,
             provider,
         }).into_response(),
         Ok(None) => {
@@ -197,6 +205,8 @@ pub async fn me(
             let agi = None;
             let marginal_tax_rate = None;
             let itemize_deductions = None;
+            let is_encrypted = None;
+            let encrypted_payload = None;
             let _ = crate::db::users::upsert_user_profile(&state.db, &crate::db::models::UserProfileUpsert {
                 user_id: user.id.clone(),
                 email: user.email.clone(),
@@ -206,6 +216,8 @@ pub async fn me(
                 agi,
                 marginal_tax_rate,
                 itemize_deductions,
+                is_encrypted,
+                encrypted_payload: encrypted_payload.clone(),
             }).await;
             Json(UserProfile {
                 id: user.id,
@@ -215,6 +227,8 @@ pub async fn me(
                 agi,
                 marginal_tax_rate,
                 itemize_deductions,
+                is_encrypted,
+                encrypted_payload,
                 provider: user.provider,
             }).into_response()
         }
@@ -228,6 +242,8 @@ pub async fn me(
                 agi: None,
                 marginal_tax_rate: None,
                 itemize_deductions: None,
+                is_encrypted: None,
+                encrypted_payload: None,
                 provider: user.provider,
             }).into_response()
         }
@@ -280,8 +296,20 @@ pub async fn update_me(
     user: AuthenticatedUser,
     Json(req): Json<UpdateMeRequest>,
 ) -> impl IntoResponse {
-    let email = req.email.trim().to_string();
-    let name = req.name.trim().to_string();
+    // 1. Fetch existing profile to fill in missing/null fields
+    let existing = match crate::db::users::get_user_profile(&state.db, &user.id).await {
+        Ok(Some(row)) => Some(row),
+        _ => None,
+    };
+
+    let email = req.email.map(|s| s.trim().to_string())
+        .or_else(|| existing.as_ref().map(|r| r.0.clone()))
+        .unwrap_or_else(|| user.email.clone());
+
+    let name = req.name.map(|s| s.trim().to_string())
+        .or_else(|| existing.as_ref().map(|r| r.1.clone()))
+        .unwrap_or_else(|| user.name.clone());
+
     if email.is_empty() || name.is_empty() {
         return (StatusCode::BAD_REQUEST, "Name and email are required").into_response();
     }
@@ -293,12 +321,19 @@ pub async fn update_me(
         } else {
             Some(normalized)
         }
-    });
-    let agi = req.agi.and_then(|value| if value.is_finite() && value >= 0.0 { Some(value) } else { None });
-    let marginal_tax_rate = req
-        .marginal_tax_rate
-        .and_then(|value| if value.is_finite() && (0.0..=1.0).contains(&value) { Some(value) } else { None });
-    let itemize_deductions = req.itemize_deductions;
+    }).or_else(|| existing.as_ref().and_then(|r| r.3.clone()));
+
+    let agi = req.agi
+        .and_then(|value| if value.is_finite() && value >= 0.0 { Some(value) } else { None })
+        .or_else(|| existing.as_ref().and_then(|r| r.4));
+
+    let marginal_tax_rate = req.marginal_tax_rate
+        .and_then(|value| if value.is_finite() && (0.0..=1.0).contains(&value) { Some(value) } else { None })
+        .or_else(|| existing.as_ref().and_then(|r| r.5));
+
+    let itemize_deductions = req.itemize_deductions.or_else(|| existing.as_ref().and_then(|r| r.6));
+    let is_encrypted = req.is_encrypted.or_else(|| existing.as_ref().and_then(|r| r.7));
+    let encrypted_payload = req.encrypted_payload.or_else(|| existing.as_ref().and_then(|r| r.8.clone()));
 
     match crate::db::users::upsert_user_profile(&state.db, &crate::db::models::UserProfileUpsert {
         user_id: user.id.clone(),
@@ -309,6 +344,8 @@ pub async fn update_me(
         agi,
         marginal_tax_rate,
         itemize_deductions,
+        is_encrypted,
+        encrypted_payload: encrypted_payload.clone(),
     }).await {
         Ok(_) => Json(UserProfile {
             id: user.id,
@@ -318,6 +355,8 @@ pub async fn update_me(
             agi,
             marginal_tax_rate,
             itemize_deductions,
+            is_encrypted,
+            encrypted_payload,
             provider: user.provider,
         }).into_response(),
         Err(e) => {
@@ -336,8 +375,8 @@ pub async fn export_me(
     // 1. Fetch metadata
     let profile_res = crate::db::users::get_user_profile(&state.db, &user_id).await;
     let profile = match profile_res {
-        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions))) => {
-            UserProfile { id: user_id.clone(), email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions }
+        Ok(Some((email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload))) => {
+            UserProfile { id: user_id.clone(), email, name, provider, filing_status, agi, marginal_tax_rate, itemize_deductions, is_encrypted, encrypted_payload }
         }
         _ => return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to load profile").into_response(),
     };
@@ -491,6 +530,8 @@ pub async fn import_me(
         agi: backup.profile.agi,
         marginal_tax_rate: backup.profile.marginal_tax_rate,
         itemize_deductions: backup.profile.itemize_deductions,
+        is_encrypted: backup.profile.is_encrypted,
+        encrypted_payload: backup.profile.encrypted_payload,
     };
 
     if let Err(e) = crate::db::users::import_data(

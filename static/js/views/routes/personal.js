@@ -58,6 +58,7 @@ export async function renderPersonalInfoRoute(deps) {
     agi: '',
     marginal_tax_rate: '0.22',
     itemize_deductions: false,
+    is_encrypted: false,
   };
 
   const cached = deps.getCurrentUser();
@@ -70,6 +71,7 @@ export async function renderPersonalInfoRoute(deps) {
       agi: cached.agi ?? '',
       marginal_tax_rate: cached.marginal_tax_rate ?? '0.22',
       itemize_deductions: !!cached.itemize_deductions,
+      is_encrypted: !!cached.is_encrypted,
     };
   }
 
@@ -84,6 +86,7 @@ export async function renderPersonalInfoRoute(deps) {
           agi: data.agi ?? '',
           marginal_tax_rate: data.marginal_tax_rate ?? '0.22',
           itemize_deductions: !!data.itemize_deductions,
+          is_encrypted: !!data.is_encrypted,
         };
       }
     } catch (e) {
@@ -158,6 +161,25 @@ export async function renderPersonalInfoRoute(deps) {
                         <button type="submit" class="dt-btn-primary">Save</button>
                     </div>
                     </form>
+                    </div>
+
+                    <div class="dt-panel p-6">
+                    <h2 class="text-lg font-medium text-slate-900 dark:text-slate-100">Privacy & Security</h2>
+                    <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Enable End-to-End Encryption (E2EE) to ensure your data is unreadable by anyone except you.</p>
+                    <div class="mt-4">
+                    ${
+                      profile.is_encrypted
+                        ? `<p class="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
+                            ${iconSvg('lock', 'h-4 w-4')}
+                            Your vault is locked and secure.
+                           </p>`
+                        : `<button id="enable-privacy-btn" class="dt-btn-secondary flex items-center gap-2">
+                            ${iconSvg('shield', 'h-4 w-4')}
+                            Enable Full Privacy
+                           </button>
+                           <p class="mt-2 text-xs text-slate-500">Requires a Passkey (TouchID, FaceID, or Windows Hello).</p>`
+                    }
+                    </div>
                     </div>
 
                     <div class="dt-panel p-6">
@@ -339,6 +361,59 @@ export async function renderPersonalInfoRoute(deps) {
       await deps.Sync.queueProfileUpdate(deps.getCurrentUserId(), updated);
       alert('Saved locally. Will sync when online.');
       await deps.updateTotals();
+    }
+  });
+
+  document.getElementById('enable-privacy-btn')?.addEventListener('click', async () => {
+    if (!deps.isWebAuthnSupported()) {
+      alert('Your browser does not support Passkeys (WebAuthn). Encryption cannot be enabled.');
+      return;
+    }
+
+    if (!confirm('Enable End-to-End Encryption? This will require your biometric (FaceID/TouchID) to access your data on any device.')) {
+      return;
+    }
+
+    try {
+      const userId = deps.getCurrentUserId();
+      const { key, credentialId } = await deps.registerVaultKey(userId);
+      
+      // Upgrade current profile to encrypted
+      const current = deps.getCurrentUser() || {};
+      const sensitiveProfileData = {
+        name: current.name,
+        agi: current.agi,
+        marginal_tax_rate: current.marginal_tax_rate,
+      };
+
+      const encryptedPayload = await deps.encryptData(key, sensitiveProfileData);
+      
+      const updated = {
+        ...current,
+        is_encrypted: true,
+        encrypted_payload: encryptedPayload,
+        vault_credential_id: credentialId,
+        // Nullify plaintext versions of sensitive fields
+        name: null,
+        agi: null,
+        marginal_tax_rate: null,
+      };
+
+      const { res } = await deps.apiJson('/api/me', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+
+      if (res.ok) {
+        alert('End-to-End Encryption enabled! Your data is now secure.');
+        window.location.reload();
+      } else {
+        alert('Failed to enable encryption on the server.');
+      }
+    } catch (e) {
+      console.error('Failed to enable privacy', e);
+      alert('An error occurred during vault setup.');
     }
   });
 }

@@ -300,6 +300,8 @@ pub async fn create_charity(
         city: resolved_city,
         state: resolved_state,
         zip: resolved_zip,
+        is_encrypted: None,
+        encrypted_payload: None,
         created_at: chrono::Utc::now(),
     };
 
@@ -417,6 +419,8 @@ pub async fn update_charity(
         city: city.clone(),
         state: state_code.clone(),
         zip: zip.clone(),
+        is_encrypted: None,
+        encrypted_payload: None,
         updated_at: chrono::Utc::now(),
     };
 

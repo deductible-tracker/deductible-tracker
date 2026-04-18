@@ -11,6 +11,9 @@ pub struct UserProfileUpsert {
     pub agi: Option<f64>,
     pub marginal_tax_rate: Option<f64>,
     pub itemize_deductions: Option<bool>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
+    pub vault_credential_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +26,8 @@ pub struct NewDonation {
     pub charity_id: String,
     pub amount: Option<f64>,
     pub notes: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -36,6 +41,8 @@ pub struct DonationPatch {
     pub charity_id_opt: Option<String>,
     pub amount_opt: Option<f64>,
     pub notes: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub incoming_updated_at: Option<DateTime<Utc>>,
 }
 
@@ -47,6 +54,8 @@ pub struct NewReceipt {
     pub file_name: Option<String>,
     pub content_type: Option<String>,
     pub size: Option<i64>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -65,6 +74,8 @@ pub struct NewCharity {
     pub city: Option<String>,
     pub state: Option<String>,
     pub zip: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -83,6 +94,8 @@ pub struct CharityPatch {
     pub city: Option<String>,
     pub state: Option<String>,
     pub zip: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -113,6 +126,8 @@ pub struct DonationSyncItem {
     pub amount: Option<f64>,
     pub charity_id: String,
     pub notes: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -125,6 +140,8 @@ pub struct ReceiptSyncItem {
     pub file_name: Option<String>,
     pub content_type: Option<String>,
     pub size: Option<i64>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -139,6 +156,8 @@ pub struct Donation {
     pub charity_name: String,
     pub charity_ein: Option<String>,
     pub notes: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub shared_with: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -157,6 +176,8 @@ pub struct Receipt {
     pub ocr_date: Option<NaiveDate>,
     pub ocr_amount: Option<i64>,
     pub ocr_status: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -175,6 +196,8 @@ pub struct Charity {
     pub city: Option<String>,
     pub state: Option<String>,
     pub zip: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

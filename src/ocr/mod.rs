@@ -105,11 +105,6 @@ mod real {
         key: &str,
         hinted_content_type: Option<&str>,
     ) -> anyhow::Result<ReceiptAnalysis> {
-        let api_key = state
-            .mistral_api_key
-            .as_ref()
-            .ok_or_else(|| anyhow!("Mistral API key not configured"))?;
-
         let url = crate::storage::presign_url(state, "GET", key, 300)?;
         let client = Client::new();
         let response = client
@@ -126,12 +121,27 @@ mod real {
             .bytes()
             .await
             .context("reading uploaded receipt bytes")?;
+        
+        analyze_receipt_bytes(state, &bytes, hinted_content_type).await
+    }
+
+    pub async fn analyze_receipt_bytes(
+        state: &AppState,
+        bytes: &[u8],
+        hinted_content_type: Option<&str>,
+    ) -> anyhow::Result<ReceiptAnalysis> {
+        let api_key = state
+            .mistral_api_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("Mistral API key not configured"))?;
+
         if bytes.is_empty() || bytes.len() > MAX_OCR_BYTES {
             return Err(anyhow!("receipt size is invalid for OCR"));
         }
 
+        let client = Client::new();
         let mime_type = get_mime_type(bytes.as_ref(), hinted_content_type);
-        let b64_file = BASE64_STANDARD.encode(&bytes);
+        let b64_file = BASE64_STANDARD.encode(bytes);
 
         let mut document = json!({
             "type": if is_image(&mime_type) { "image_url" } else { "document_url" }
@@ -219,4 +229,4 @@ mod real {
     }
 }
 
-pub use real::analyze_receipt;
+pub use real::{analyze_receipt, analyze_receipt_bytes};
