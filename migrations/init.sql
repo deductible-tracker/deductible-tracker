@@ -11,8 +11,8 @@ CREATE TABLE users (
     is_encrypted NUMBER(1) DEFAULT 0,
     encrypted_payload CLOB,
     vault_credential_id VARCHAR2(512),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Donations Table
@@ -27,8 +27,8 @@ CREATE TABLE donations (
     notes VARCHAR2(4000),
     is_encrypted NUMBER(1) DEFAULT 0,
     encrypted_payload CLOB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE,
     deleted NUMBER(1) DEFAULT 0,
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -54,8 +54,8 @@ CREATE TABLE charities (
     zip VARCHAR2(20),
     is_encrypted NUMBER(1) DEFAULT 0,
     encrypted_payload CLOB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_charities_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -78,8 +78,8 @@ CREATE TABLE receipts (
     ocr_status VARCHAR2(50),
     is_encrypted NUMBER(1) DEFAULT 0,
     encrypted_payload CLOB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_receipts_donation FOREIGN KEY (donation_id) REFERENCES donations(id)
 );
 
@@ -93,8 +93,8 @@ CREATE TABLE val_categories (
     id VARCHAR2(255) PRIMARY KEY,
     name VARCHAR2(255) NOT NULL,
     description VARCHAR2(2000),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE val_items (
@@ -103,8 +103,8 @@ CREATE TABLE val_items (
     name VARCHAR2(1024) NOT NULL,
     suggested_min NUMBER,
     suggested_max NUMBER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_val_category FOREIGN KEY (category_id) REFERENCES val_categories(id)
 );
 
@@ -119,8 +119,8 @@ CREATE TABLE audit_logs (
     table_name VARCHAR2(255) NOT NULL,
     record_id VARCHAR2(255),
     details VARCHAR2(4000),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_audit_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -132,8 +132,8 @@ CREATE TABLE audit_revisions (
     operation VARCHAR2(16) NOT NULL,
     old_values VARCHAR2(4000),
     new_values VARCHAR2(4000),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE,
     CONSTRAINT fk_audit_revisions_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
 

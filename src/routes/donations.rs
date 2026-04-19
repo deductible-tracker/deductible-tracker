@@ -24,7 +24,7 @@ fn normalize_category(input: &Option<String>) -> Option<String> {
 
 #[derive(Deserialize)]
 pub struct CreateDonationRequest {
-    pub date: String, // YYYY-MM-DD
+    pub date: Option<String>, // YYYY-MM-DD
     pub charity_name: String,
     pub charity_id: Option<String>,
     pub charity_ein: Option<String>,
@@ -32,6 +32,8 @@ pub struct CreateDonationRequest {
     pub amount: Option<f64>,
     pub notes: Option<String>,
     pub id: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -186,6 +188,8 @@ pub struct UpdateDonationRequest {
     pub amount: Option<f64>,
     pub notes: Option<String>,
     pub updated_at: Option<String>, // RFC3339
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -195,6 +199,10 @@ pub struct ListParams {
 }
 
 fn validate_create_donation_request(req: &CreateDonationRequest) -> Result<(), &'static str> {
+    if req.is_encrypted.unwrap_or(false) {
+        return Ok(());
+    }
+
     let has_charity_id = req
         .charity_id
         .as_deref()
@@ -203,6 +211,10 @@ fn validate_create_donation_request(req: &CreateDonationRequest) -> Result<(), &
 
     if req.charity_name.trim().is_empty() && !has_charity_id {
         return Err("Charity required");
+    }
+
+    if req.date.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        return Err("Date required");
     }
 
     if let Some(amount) = req.amount {
@@ -220,6 +232,10 @@ fn validate_create_donation_request(req: &CreateDonationRequest) -> Result<(), &
 }
 
 fn validate_update_donation_request(req: &UpdateDonationRequest) -> Result<(), &'static str> {
+    if req.is_encrypted.unwrap_or(false) {
+        return Ok(());
+    }
+
     if let Some(charity_id) = req.charity_id.as_deref() {
         if charity_id.trim().is_empty() {
             return Err("Charity id required");
@@ -253,15 +269,25 @@ pub async fn create_donation(
     let user_id = user.id;
     let charity_name = req.charity_name.trim().to_string();
 
-    let date = match NaiveDate::parse_from_str(&req.date, "%Y-%m-%d") {
-        Ok(d) => d,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                "Invalid date format, expected YYYY-MM-DD",
-            )
-                .into_response()
+    let date = if let Some(date_str) = &req.date {
+        match NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+            Ok(d) => d,
+            Err(_) => {
+                if req.is_encrypted.unwrap_or(false) {
+                    chrono::Utc::now().naive_utc().date()
+                } else {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        "Invalid date format, expected YYYY-MM-DD",
+                    )
+                        .into_response();
+                }
+            }
         }
+    } else if req.is_encrypted.unwrap_or(false) {
+        chrono::Utc::now().naive_utc().date()
+    } else {
+        return (StatusCode::BAD_REQUEST, "Date required").into_response();
     };
 
     let id = if let Some(provided) = req.id.clone() {
@@ -279,6 +305,8 @@ pub async fn create_donation(
         .filter(|value| !value.is_empty())
     {
         cid.to_string()
+    } else if req.is_encrypted.unwrap_or(false) {
+        "encrypted".to_string()
     } else {
         match crate::db::charities::find_charity_by_name_or_ein(
             &state.db,
@@ -332,8 +360,8 @@ pub async fn create_donation(
         charity_id: charity_id.clone(),
         amount: req.amount,
         notes: req.notes.clone(),
-        is_encrypted: None,
-        encrypted_payload: None,
+        is_encrypted: req.is_encrypted,
+        encrypted_payload: req.encrypted_payload.clone(),
         created_at: now,
     };
 
@@ -412,8 +440,8 @@ pub async fn update_donation(
             .map(ToString::to_string),
         amount_opt: req.amount,
         notes: req.notes.clone(),
-        is_encrypted: None,
-        encrypted_payload: None,
+        is_encrypted: req.is_encrypted,
+        encrypted_payload: req.encrypted_payload.clone(),
         incoming_updated_at,
     };
 
@@ -464,5 +492,44 @@ pub async fn list_donations(
             tracing::error!("DB Query Error: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_encrypted_create_request() {
+        let req = CreateDonationRequest {
+            date: None,
+            charity_name: "".to_string(),
+            charity_id: None,
+            charity_ein: None,
+            category: None,
+            amount: None,
+            notes: None,
+            id: Some("test".to_string()),
+            is_encrypted: Some(true),
+            encrypted_payload: Some("payload".to_string()),
+        };
+        assert!(validate_create_donation_request(&req).is_ok());
+    }
+
+    #[test]
+    fn test_validate_unencrypted_create_request_fails() {
+        let req = CreateDonationRequest {
+            date: None, // Missing date
+            charity_name: "".to_string(), // Missing charity
+            charity_id: None,
+            charity_ein: None,
+            category: None,
+            amount: None,
+            notes: None,
+            id: Some("test".to_string()),
+            is_encrypted: Some(false),
+            encrypted_payload: None,
+        };
+        assert!(validate_create_donation_request(&req).is_err());
     }
 }

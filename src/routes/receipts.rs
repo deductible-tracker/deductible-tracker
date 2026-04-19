@@ -50,6 +50,7 @@ fn allowed_ext_for_content_type(content_type: &str) -> Option<&'static str> {
         "application/x-tex" => Some("tex"),
         "text/x-opml" => Some("opml"),
         "text/troff" => Some("1"),
+        "application/octet-stream" => Some("bin"),
         _ => None,
     }
 }

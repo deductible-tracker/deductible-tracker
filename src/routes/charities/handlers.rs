@@ -37,6 +37,8 @@ pub struct CreateCharityRequest {
     pub city: Option<String>,
     pub state: Option<String>,
     pub zip: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,6 +54,8 @@ pub struct UpdateCharityRequest {
     pub city: Option<String>,
     pub state: Option<String>,
     pub zip: Option<String>,
+    pub is_encrypted: Option<bool>,
+    pub encrypted_payload: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -173,13 +177,17 @@ pub async fn create_charity(
         return (StatusCode::BAD_REQUEST, "Name required").into_response();
     }
 
+    let is_encrypted = req.is_encrypted.unwrap_or(false);
+
     let requested_ein = req
         .ein
         .as_ref()
         .map(|e| normalize_ein(e))
         .filter(|e| !e.is_empty());
 
-    let fetched = if let Some(ref ein) = requested_ein {
+    let fetched = if is_encrypted {
+        None
+    } else if let Some(ref ein) = requested_ein {
         if let Some(by_ein) = fetch_charity_details_by_ein(ein).await {
             Some(by_ein)
         } else {
@@ -201,87 +209,89 @@ pub async fn create_charity(
     let mut resolved_state: Option<String> = clean_opt_string(req.state);
     let mut resolved_zip: Option<String> = clean_opt_string(req.zip);
 
-    if let Some(org) = fetched {
-        if let Some(n) = org
-            .name
-            .as_ref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            resolved_name = n.to_string();
+    if !is_encrypted {
+        if let Some(org) = fetched {
+            if let Some(n) = org
+                .name
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                resolved_name = n.to_string();
+            }
+            if let Some(ein) = org
+                .ein
+                .as_ref()
+                .map(|s| normalize_ein(s))
+                .filter(|s| !s.is_empty())
+            {
+                resolved_ein = Some(ein);
+            }
+            if resolved_category.is_none() {
+                resolved_category = org.category;
+            }
+            if resolved_status.is_none() {
+                resolved_status = org.status;
+            }
+            if resolved_classification.is_none() {
+                resolved_classification = org.classification;
+            }
+            if resolved_nonprofit_type.is_none() {
+                resolved_nonprofit_type = org.nonprofit_type;
+            }
+            if resolved_deductibility.is_none() {
+                resolved_deductibility = org.deductibility;
+            }
+            if resolved_street.is_none() {
+                resolved_street = clean_opt_string(org.street);
+            }
+            if resolved_city.is_none() {
+                resolved_city = clean_opt_string(org.city);
+            }
+            if resolved_state.is_none() {
+                resolved_state = clean_opt_string(org.state);
+            }
+            if resolved_zip.is_none() {
+                resolved_zip = clean_opt_string(org.zip);
+            }
         }
-        if let Some(ein) = org
-            .ein
-            .as_ref()
-            .map(|s| normalize_ein(s))
-            .filter(|s| !s.is_empty())
-        {
-            resolved_ein = Some(ein);
-        }
-        if resolved_category.is_none() {
-            resolved_category = org.category;
-        }
-        if resolved_status.is_none() {
-            resolved_status = org.status;
-        }
-        if resolved_classification.is_none() {
-            resolved_classification = org.classification;
-        }
-        if resolved_nonprofit_type.is_none() {
-            resolved_nonprofit_type = org.nonprofit_type;
-        }
-        if resolved_deductibility.is_none() {
-            resolved_deductibility = org.deductibility;
-        }
-        if resolved_street.is_none() {
-            resolved_street = clean_opt_string(org.street);
-        }
-        if resolved_city.is_none() {
-            resolved_city = clean_opt_string(org.city);
-        }
-        if resolved_state.is_none() {
-            resolved_state = clean_opt_string(org.state);
-        }
-        if resolved_zip.is_none() {
-            resolved_zip = clean_opt_string(org.zip);
-        }
-    } else {
-        // `resolved_ein` is already normalized earlier; no further processing needed here.
     }
 
-    match crate::db::charities::find_charity_by_name_or_ein(
-        &state.db,
-        &user.id,
-        &resolved_name,
-        &resolved_ein,
-    )
-    .await
-    {
-        Ok(Some(existing)) => {
-            let payload = CharityResponse {
-                id: existing.id,
-                name: existing.name,
-                ein: existing.ein,
-                category: existing.category,
-                status: existing.status,
-                classification: existing.classification,
-                nonprofit_type: existing.nonprofit_type,
-                deductibility: existing.deductibility,
-                street: existing.street,
-                city: existing.city,
-                state: existing.state,
-                zip: existing.zip,
-            };
-            return (
-                StatusCode::OK,
-                AxumJson(json!({ "charity": payload, "created": false })),
-            )
-                .into_response();
-        }
-        Ok(None) => {}
-        Err(e) => {
-            tracing::error!("Charity lookup error: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response();
+    if !is_encrypted {
+        match crate::db::charities::find_charity_by_name_or_ein(
+            &state.db,
+            &user.id,
+            &resolved_name,
+            &resolved_ein,
+        )
+        .await
+        {
+            Ok(Some(existing)) => {
+                let payload = CharityResponse {
+                    id: existing.id,
+                    name: existing.name,
+                    ein: existing.ein,
+                    category: existing.category,
+                    status: existing.status,
+                    classification: existing.classification,
+                    nonprofit_type: existing.nonprofit_type,
+                    deductibility: existing.deductibility,
+                    street: existing.street,
+                    city: existing.city,
+                    state: existing.state,
+                    zip: existing.zip,
+                };
+                return (
+                    StatusCode::OK,
+                    AxumJson(json!({ "charity": payload, "created": false })),
+                )
+                    .into_response();
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::error!("Charity lookup error: {}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Database Error").into_response();
+            }
         }
     }
 
@@ -300,8 +310,8 @@ pub async fn create_charity(
         city: resolved_city,
         state: resolved_state,
         zip: resolved_zip,
-        is_encrypted: None,
-        encrypted_payload: None,
+        is_encrypted: Some(is_encrypted),
+        encrypted_payload: req.encrypted_payload.clone(),
         created_at: chrono::Utc::now(),
     };
 
@@ -419,8 +429,8 @@ pub async fn update_charity(
         city: city.clone(),
         state: state_code.clone(),
         zip: zip.clone(),
-        is_encrypted: None,
-        encrypted_payload: None,
+        is_encrypted: req.is_encrypted,
+        encrypted_payload: req.encrypted_payload.clone(),
         updated_at: chrono::Utc::now(),
     };
 
