@@ -59,12 +59,12 @@ function buildDonationFormHtml(
                         </div>
                     </div>
 
-                    <div id="valuation-fields" class="${currentCategory === 'items' ? '' : 'hidden'} space-y-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 p-4">
+                    <div id="valuation-fields" class="${currentCategory === 'items' ? '' : 'hidden'} space-y-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4">
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div>
                                 <label class="dt-label">Item Type</label>
                                 <input id="valuation-item-input" type="text" placeholder="Search item type" class="dt-input" autocomplete="off" />
-                                <div id="valuation-suggestions" class="mt-1 hidden max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 absolute z-10 w-64 shadow-lg"></div>
+                                <div id="valuation-suggestions" class="mt-1 hidden max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 absolute z-10 w-64 shadow-lg"></div>
                             </div>
                             <div id="brand-new-price-container" class="hidden">
                                 <label class="dt-label">Brand New Price ($)</label>
@@ -79,7 +79,7 @@ function buildDonationFormHtml(
                         <input id="donation-charity-input" type="text" required placeholder="Search or type to add" class="dt-input" autocomplete="off" value="${escapeHtml(d._charityName || '')}" />
                         <input id="donation-charity-id" type="hidden" value="${escapeHtml(d.charity_id || '')}" />
                         <input id="donation-charity-ein" type="hidden" />
-                        <div id="charity-suggestions" class="mt-1 hidden max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"></div>
+                        <div id="charity-suggestions" class="mt-1 hidden max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"></div>
                     </div>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
@@ -88,13 +88,13 @@ function buildDonationFormHtml(
                         </div>
                         <div>
                             <label class="dt-label uppercase tracking-wide text-slate-500 text-[10px] font-bold">Upload Receipts</label>
-                            <div id="receipt-dropzone" class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-xl cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400">
+                            <div id="receipt-dropzone" class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-800 border-dashed rounded-xl cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors">
                                 <div class="space-y-1 text-center">
                                   <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
                                     <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 00-4 4H12a4 4 0 00-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                                   </svg>
                                   <div class="flex flex-col items-center text-sm text-slate-600 dark:text-slate-400">
-                                    <label for="donation-receipts" class="relative cursor-pointer bg-white dark:bg-slate-800 rounded-md font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 focus-within:outline-hidden">
+                                    <label for="donation-receipts" class="relative cursor-pointer bg-white dark:bg-slate-900 rounded-md font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 focus-within:outline-hidden">
                                       <span>Upload or drag and drop</span>
                                       <input id="donation-receipts" name="donation-receipts" type="file" multiple 
                                         accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.csv,.txt,.epub,.xml,.rtf,.odt,.bib,.fb2,.ipynb,.tex,.opml,.1,.man,image/jpeg,image/png,image/avif,image/tiff,image/gif,image/heic,image/heif,image/bmp,image/webp" 
@@ -218,9 +218,9 @@ async function bindDonationFormHandlers({ userId, charities, existingDonation },
     if (!receiptStatus) return;
     const toneClass =
       tone === 'error'
-        ? 'text-rose-600 dark:text-rose-300'
+        ? 'text-rose-600 dark:text-rose-400'
         : tone === 'success'
-          ? 'text-emerald-600 dark:text-emerald-300'
+          ? 'text-emerald-600 dark:text-emerald-400'
           : 'text-slate-500 dark:text-slate-400';
     receiptStatus.className = `mt-2 text-xs ${toneClass}`;
     receiptStatus.textContent = message;
@@ -268,7 +268,7 @@ async function bindDonationFormHandlers({ userId, charities, existingDonation },
 
     if (draftReceipts.length === 0) {
       receiptList.innerHTML =
-        '<div class="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">No receipts selected yet.</div>';
+        '<div class="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">No receipts selected yet.</div>';
       return;
     }
 
@@ -281,7 +281,7 @@ async function bindDonationFormHandlers({ userId, charities, existingDonation },
           : `<p class="truncate text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(entry.file_name || 'Receipt')}</p>`;
 
         return `
-          <div class="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-3 bg-white dark:bg-slate-800">
+          <div class="rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-3 bg-white dark:bg-slate-900">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0 flex-1">
                 ${fileContent}
@@ -294,7 +294,7 @@ async function bindDonationFormHandlers({ userId, charities, existingDonation },
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
-                ${entry.stage === 'error' ? '<span class="text-xs font-medium text-rose-600 dark:text-rose-300">Error</span>' : ''}
+                ${entry.stage === 'error' ? '<span class="text-xs font-medium text-rose-600 dark:text-rose-400">Error</span>' : ''}
               </div>
             </div>
           </div>

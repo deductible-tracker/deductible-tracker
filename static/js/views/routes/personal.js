@@ -198,11 +198,11 @@ export async function renderPersonalInfoRoute(deps) {
                     </div>
                     </div>
 
-                    <div class="dt-panel p-6 border-red-200 dark:border-red-900/30">
+                    <div class="dt-panel p-6 border-red-200 dark:border-red-950 bg-white dark:bg-slate-900">
                     <h2 class="text-lg font-medium text-red-600 dark:text-red-400">Danger Zone</h2>
                     <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Once you delete your account, there is no going back. All your donations, receipts, and personal data will be permanently removed.</p>
                     <div class="mt-4">
-                    <button id="delete-account-btn" class="inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">
+                    <button id="delete-account-btn" class="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">
                         Delete My Account
                     </button>
                     </div>

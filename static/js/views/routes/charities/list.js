@@ -106,8 +106,8 @@ export async function renderCharitiesRoute(deps) {
             </div>
             <div class="dt-panel overflow-hidden">
                 <div class="hidden overflow-x-auto md:block">
-                    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                        <thead class="bg-slate-50 dark:bg-slate-700/50">
+                    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                        <thead class="bg-slate-50 dark:bg-slate-800">
                             <tr>
                                 <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="name">Name${getSortIcon('name')}</th>
                                 <th class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="ein">EIN${getSortIcon('ein')}</th>
@@ -118,14 +118,14 @@ export async function renderCharitiesRoute(deps) {
                                 <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Actions</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-800">
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                             ${
                               paginatedCharities.length === 0
                                 ? '<tr><td colspan="7" class="px-5 py-8 text-sm text-slate-500 dark:text-slate-400">No cached charities found.</td></tr>'
                                 : paginatedCharities
                                     .map(
                                       (c) => `
-                                <tr class="hover:bg-slate-50 dark:bg-slate-700/50/70 cursor-pointer charity-row" data-id="${c.id}">
+                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer charity-row" data-id="${c.id}">
                                     <td class="px-5 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(c.name)}</td>
                                     <td class="px-5 py-3 text-sm text-slate-700 dark:text-slate-300">${escapeHtml(c.ein || '—')}</td>
                                     <td class="px-5 py-3 text-sm text-slate-700 dark:text-slate-300">${escapeHtml(c.category || '—')}</td>
@@ -147,11 +147,11 @@ export async function renderCharitiesRoute(deps) {
                 <div class="space-y-3 p-4 md:hidden">
                     ${
                       paginatedCharities.length === 0
-                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 text-sm text-slate-500 dark:text-slate-400">No cached charities found.</div>'
+                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-sm text-slate-500 dark:text-slate-400">No cached charities found.</div>'
                         : paginatedCharities
                             .map(
                               (c) => `
-                        <article class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 charity-row" data-id="${c.id}">
+                        <article class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 charity-row" data-id="${c.id}">
                             <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(c.name)}</p>
                             <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">${escapeHtml(c.ein || 'No EIN')}</p>
                             <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(formatAddress(c))}</p>

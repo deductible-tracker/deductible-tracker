@@ -127,8 +127,8 @@ export async function renderDonationsRoute(deps) {
 
             <div class="dt-panel overflow-hidden">
                 <div class="hidden overflow-x-auto md:block">
-                    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                        <thead class="bg-slate-50 dark:bg-slate-700/50">
+                    <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                        <thead class="bg-slate-50 dark:bg-slate-800">
                             <tr>
                                 <th scope="col" class="sortable-header cursor-pointer px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400" data-sort="date">
                                   Date${getSortIcon('date')}
@@ -151,7 +151,7 @@ export async function renderDonationsRoute(deps) {
                                 <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Actions</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-800">
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                             ${
                               paginatedDonations.length === 0
                                 ? `
@@ -162,15 +162,15 @@ export async function renderDonationsRoute(deps) {
                                 : paginatedDonations
                                     .map(
                                       (d) => `
-                                <tr class="hover:bg-slate-50 dark:bg-slate-700/50/70 cursor-pointer donation-row" data-id="${d.id}">
+                                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer donation-row" data-id="${d.id}">
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(d.date)}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(charityNameMap.get(d.charity_id) || 'Unknown charity')}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
-                                        <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">${escapeHtml(d.sync_status || 'synced')}</span>
+                                        <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">${escapeHtml(d.sync_status || 'synced')}</span>
                                     </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(d.category || '')}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">${d.amount ? formatCurrency(d.amount) : ''}</td>
-                                    <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-emerald-700 dark:text-emerald-300">${formatCurrency(taxEstimates.perDonation.get(d.id) || 0)}</td>
+                                    <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-emerald-700 dark:text-emerald-400">${formatCurrency(taxEstimates.perDonation.get(d.id) || 0)}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
                                         <button class="edit-donation-btn dt-btn-secondary px-3 py-1.5" data-id="${d.id}">Edit</button>
                                         <button class="delete-donation-btn dt-btn-danger ml-2 px-3 py-1.5" data-id="${d.id}">Delete</button>
@@ -186,26 +186,26 @@ export async function renderDonationsRoute(deps) {
                 <div class="space-y-3 p-4 md:hidden">
                     ${
                       paginatedDonations.length === 0
-                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 text-sm text-slate-500 dark:text-slate-400">No donations found.</div>'
+                        ? '<div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-sm text-slate-500 dark:text-slate-400">No donations found.</div>'
                         : paginatedDonations
                             .map(
                               (d) => `
-                        <article class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 donation-row" data-id="${d.id}">
+                        <article class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 donation-row" data-id="${d.id}">
                             <div class="flex items-start justify-between gap-3">
                                 <div>
                                     <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(charityNameMap.get(d.charity_id) || 'Unknown charity')}</p>
                                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">${escapeHtml(d.date || '')} • ${escapeHtml(d.category || '')}</p>
                                 </div>
-                                <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">${escapeHtml(d.sync_status || 'synced')}</span>
+                                <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">${escapeHtml(d.sync_status || 'synced')}</span>
                             </div>
                             <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
-                                <div class="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
+                                <div class="rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2">
                                     <p class="text-xs text-slate-500 dark:text-slate-400">Amount</p>
                                     <p class="font-semibold text-slate-900 dark:text-slate-100">${d.amount ? formatCurrency(d.amount) : '$0.00'}</p>
                                 </div>
-                                <div class="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
+                                <div class="rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2">
                                     <p class="text-xs text-slate-500 dark:text-slate-400">Est. savings</p>
-                                    <p class="font-semibold text-emerald-700 dark:text-emerald-300">${formatCurrency(taxEstimates.perDonation.get(d.id) || 0)}</p>
+                                    <p class="font-semibold text-emerald-700 dark:text-emerald-400">${formatCurrency(taxEstimates.perDonation.get(d.id) || 0)}</p>
                                 </div>
                             </div>
                             <div class="mt-3 flex gap-2">

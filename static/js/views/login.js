@@ -37,7 +37,7 @@ export async function renderLoginView(deps) {
                 <div class="mt-8 flex flex-col items-center justify-center space-y-6">
                   <div id="g_id_onload" data-context="signin" data-ux_mode="redirect" data-auto_prompt="false"></div>
 
-                  <div class="flex min-h-11 w-full max-w-[320px] items-center justify-center rounded-xl border border-slate-200 bg-white/85 px-3 py-1 dark:border-slate-700 dark:bg-slate-800/85">
+                  <div class="flex min-h-11 w-full max-w-[320px] items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-1 dark:border-slate-700 dark:bg-slate-800">
                     <div class="g_id_signin"
                       data-type="standard"
                       data-shape="rectangular"
@@ -54,7 +54,7 @@ export async function renderLoginView(deps) {
                                 <div class="w-full border-t border-slate-200 dark:border-slate-700"></div>
                             </div>
                             <div class="relative flex justify-center text-sm">
-                                <span class="bg-white px-2 text-slate-500 dark:bg-slate-800">Or use traditional login</span>
+                                <span class="bg-white px-2 text-slate-500 dark:bg-slate-900 dark:text-slate-400">Or use traditional login</span>
                             </div>
                         </div>
 
@@ -76,15 +76,15 @@ export async function renderLoginView(deps) {
                     </div>
                 </div>
             </div>
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-linear-to-br from-indigo-50 to-white p-6 sm:p-10 order-2 lg:order-1">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-linear-to-br from-indigo-50 to-white dark:from-slate-900 dark:to-slate-950 p-6 sm:p-10 order-2 lg:order-1">
                 <p class="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-400">Deductible Tracker</p>
                 <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-4xl">A better way to track charitable giving</h1>
                 <p class="mt-4 max-w-xl text-sm text-slate-600 dark:text-slate-300 sm:text-base">An offline-first replacement for Turbotax's It's Deductible.</p>
                 <div class="mt-6 grid gap-3 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-2">
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Fast donation entry</div>
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Receipt management</div>
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">Offline-first sync</div>
-                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">CSV exports</div>
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">Fast donation entry</div>
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">Receipt management</div>
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">Offline-first sync</div>
+                    <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3">CSV exports</div>
                 </div>
             </div>
         </div>

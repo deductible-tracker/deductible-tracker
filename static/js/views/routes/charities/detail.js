@@ -30,7 +30,7 @@ export async function renderCharityViewRoute(charityId, deps) {
             <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div class="md:col-span-2 space-y-5">
                 <div class="dt-panel p-6">
-                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-700 pb-2">Organization Details</h3>
+                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">Organization Details</h3>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div>
                       <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">EIN</label>
@@ -47,7 +47,7 @@ export async function renderCharityViewRoute(charityId, deps) {
                     <div>
                       <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
                       <p class="mt-1 text-sm text-slate-900 dark:text-slate-100">
-                        <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">${escapeHtml(charity.status || 'Active')}</span>
+                        <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">${escapeHtml(charity.status || 'Active')}</span>
                       </p>
                     </div>
                     <div>
@@ -62,7 +62,7 @@ export async function renderCharityViewRoute(charityId, deps) {
                 </div>
 
                 <div class="dt-panel p-6">
-                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-700 pb-2">Location</h3>
+                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">Location</h3>
                   <div>
                     <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Address</label>
                     <p class="mt-1 text-sm text-slate-900 dark:text-slate-100 whitespace-pre-wrap">${escapeHtml(formatAddress(charity))}</p>
@@ -72,7 +72,7 @@ export async function renderCharityViewRoute(charityId, deps) {
 
               <div class="space-y-5">
                 <div class="dt-panel p-6">
-                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-700 pb-2">Sync Information</h3>
+                  <h3 class="text-lg font-medium text-slate-900 dark:text-slate-100 mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">Sync Information</h3>
                   <div class="space-y-4">
                     <div>
                       <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">System ID</label>

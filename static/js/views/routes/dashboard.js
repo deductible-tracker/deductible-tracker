@@ -8,10 +8,10 @@ export async function renderDashboardRoute(deps) {
   root.innerHTML = `
         <div class="mx-auto max-w-7xl">
             <div class="dt-panel overflow-hidden">
-                <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-5 py-4">
+                <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-5 py-4">
                     <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Recent activity</h2>
                 </div>
-                <ul class="divide-y divide-slate-100 dark:divide-slate-700" id="recent-list">
+                <ul class="divide-y divide-slate-100 dark:divide-slate-800" id="recent-list">
                     <li class="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">Loading...</li>
                 </ul>
             </div>
@@ -38,11 +38,11 @@ export async function renderRecentListRoute(deps) {
   list.innerHTML = donations
     .map(
       (d) => `
-        <li class="px-5 py-4 transition hover:bg-slate-50 dark:bg-slate-700/50">
+        <li class="px-5 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-800">
             <div class="flex items-center justify-between">
                 <p class="truncate text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(charityNameMap.get(d.charity_id) || 'Unknown charity')}</p>
                 <div class="ml-2 shrink-0 flex">
-                    <p class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                    <p class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
                         ${escapeHtml(d.sync_status || 'synced')}
                     </p>
                 </div>
