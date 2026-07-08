@@ -13,9 +13,7 @@ directory = "./dist"
 binding = "ASSETS"
 
 [vars]
-ALLOW_DEV_LOGIN = "true"
-DEV_USERNAME = "admin"
-DEV_PASSWORD = "dev-password-for-demo"
+ALLOW_DEV_LOGIN = "false"
 
 [observability]
 enabled = true
