@@ -48,3 +48,8 @@ github_action_key.pub
 # Secrets and credentials
 *.p12
 *.jks
+
+# Build outputs and CLI caches
+dist/
+.wrangler/
+.dev.vars

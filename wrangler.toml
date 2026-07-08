@@ -1,0 +1,21 @@
+name = "deductible-tracker"
+main = "src/server.ts"
+compatibility_date = "2024-04-03"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "deductible-tracker-db"
+database_id = "ccbdb20d-b238-48ca-8a72-a24adb793fda"
+migrations_dir = "./src/db/migrations"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+[vars]
+ALLOW_DEV_LOGIN = "true"
+DEV_USERNAME = "admin"
+DEV_PASSWORD = "dev-password-for-demo"
+
+[observability]
+enabled = true

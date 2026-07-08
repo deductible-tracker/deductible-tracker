@@ -1,0 +1,227 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Roboto', 'Inter', system-ui, sans-serif;
+  --font-display: 'Outfit', system-ui, sans-serif;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Base custom classes from original app */
+.dt-panel {
+  border-radius: 1rem;
+  border: 1px solid var(--color-slate-200);
+  background: #fff;
+}
+
+.dt-panel-muted {
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-slate-200);
+  background: var(--color-slate-50);
+}
+
+.dt-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: var(--color-indigo-600);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.dt-btn-primary:hover {
+  background: var(--color-indigo-700);
+}
+
+.dt-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-slate-200);
+  background: #fff;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-slate-700);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.dt-btn-secondary:hover {
+  background: var(--color-slate-50);
+}
+
+.dt-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-rose-200);
+  background: var(--color-rose-50);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-rose-700);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.dt-btn-danger:hover {
+  background: var(--color-rose-100);
+}
+
+.dt-input {
+  margin-top: 0.25rem;
+  display: block;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-slate-200);
+  background: #fff;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-slate-900);
+  transition: all 0.15s ease;
+}
+
+.dt-input::placeholder {
+  color: var(--color-slate-400);
+}
+
+.dt-input:focus {
+  outline: none;
+  border-color: var(--color-indigo-500);
+  box-shadow: 0 0 0 3px var(--color-indigo-100);
+}
+
+.dt-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-slate-700);
+}
+
+.dt-modal-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
+  .dt-modal-wrap {
+    padding: 2rem;
+  }
+}
+
+.dt-modal {
+  width: 100%;
+  max-width: 42rem;
+  border-radius: 1rem;
+  border: 1px solid var(--color-slate-200);
+  background: #fff;
+  padding: 1.25rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+@media (min-width: 640px) {
+  .dt-modal {
+    padding: 1.5rem;
+  }
+}
+
+/* Dark Mode classes */
+.dark .dt-panel {
+  border-color: var(--color-slate-800);
+  background: var(--color-slate-900);
+}
+
+.dark .dt-panel-muted {
+  border-color: var(--color-slate-800);
+  background: var(--color-slate-950);
+}
+
+.dark .dt-btn-primary {
+  background: var(--color-indigo-500);
+}
+
+.dark .dt-btn-primary:hover {
+  background: var(--color-indigo-600);
+}
+
+.dark .dt-btn-secondary {
+  border-color: var(--color-slate-800);
+  background: var(--color-slate-900);
+  color: var(--color-slate-300);
+}
+
+.dark .dt-btn-secondary:hover {
+  background: var(--color-slate-800);
+  color: var(--color-slate-200);
+}
+
+.dark .dt-btn-danger {
+  border-color: var(--color-rose-900);
+  background: #450a0a;
+  color: var(--color-rose-200);
+}
+
+.dark .dt-btn-danger:hover {
+  background: var(--color-rose-900);
+}
+
+.dark .dt-input {
+  border-color: var(--color-slate-800);
+  background: var(--color-slate-900);
+  color: var(--color-slate-100);
+}
+
+.dark .dt-input::placeholder {
+  color: var(--color-slate-500);
+}
+
+.dark .dt-input:focus {
+  border-color: var(--color-indigo-500);
+  box-shadow: 0 0 0 3px var(--color-indigo-900);
+}
+
+.dark .dt-label {
+  color: var(--color-slate-300);
+}
+
+.dark .dt-modal {
+  border-color: var(--color-slate-800);
+  background: var(--color-slate-900);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
